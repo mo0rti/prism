@@ -1215,6 +1215,35 @@ class BoardServiceValidatorTests(unittest.TestCase):
             self.actor, "po-intake", changes, moves, read_revisions=_read_revisions(self.service, self.actor, "po-intake", changes, moves)
         )
 
+    def test_feature_creation_accepts_empty_tables_and_prose_but_refuses_rows(self) -> None:
+        headers = {
+            "Delivery evidence": "| App | Artifact | Contract | Implementation | Tests | Basis |\n|---|---|---|---|---|---|",
+            "QA verification": "| Row | Criteria | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |\n|---|---|---|---|---|---|---|---|---|",
+            "Release": "| App | Target | Version | Attempt | Outcome | Record | Basis |\n|---|---|---|---|---|---|---|",
+        }
+        rows = {
+            "Delivery evidence": "| backend | `build:backend#1` | none | Reviewed source record | Review check passed | checked |",
+            "QA verification": "| backend | AC-1@v1:" + "a" * 64 + " | manual | `build:backend#1` | ci | qa-1 | pass | Reviewed check | checked |",
+            "Release": "| backend | production | `build:backend#1` | release-1 | released | [REL-001](https://records.example/REL-001) | checked |",
+        }
+        for skill in ("po-intake", "ingest"):
+            changes, moves, path = self._po_intake_proposal([])
+            for heading, header in headers.items():
+                changes[0]["content"] = _replace_body_section_text(changes[0]["content"], heading, header)
+            preview = self.service.preview_skill(self.actor, skill, changes, moves, _read_revisions(self.service, self.actor, skill, changes, moves))
+            self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]), preview["checks"])
+            base = changes[0]["content"]
+            for heading, header in headers.items():
+                with self.subTest(skill=skill, heading=heading):
+                    changes[0]["content"] = _replace_body_section_text(base, heading, "None yet.")
+                    preview = self.service.preview_skill(self.actor, skill, changes, moves, _read_revisions(self.service, self.actor, skill, changes, moves))
+                    self.assertEqual(("ready", True), (preview["classification"], preview["applicable"]), preview["checks"])
+                    changes[0]["content"] = _replace_body_section_text(base, heading, header + "\n" + rows[heading])
+                    error = self._rejected_preview(skill, changes, moves, read_revisions=_read_revisions(self.service, self.actor, skill, changes, moves))
+                    self.assertEqual("lifecycle_evidence_changed", error.code)
+                    self.assertEqual([heading], error.details["sections"])
+                    self.assertIn("already has rows in", error.message)
+
     def test_po_intake_rejects_a_pending_source_and_writes_nothing(self) -> None:
         pending = INTAKE_ITEM.parent.as_posix()
         processed = pending.replace("pending", "processed", 1)

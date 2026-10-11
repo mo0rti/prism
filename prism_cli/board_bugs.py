@@ -54,6 +54,7 @@ from prism_cli.wiki_model import (
     read_feature_pages,
     row_digest,
     section_ambiguities,
+    section_is_empty,
     section_text,
     status_rank,
 )
@@ -106,12 +107,6 @@ def is_bug_path(relative: str) -> bool:
 
 def _quoted(values: Iterable[str]) -> str:
     return ", ".join(f"`{value}`" for value in values)
-
-
-def _blank(text: str) -> bool:
-    """Whether a section holds no content: only whitespace and HTML comments."""
-
-    return not re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL).strip()
 
 
 class BugActionsMixin:
@@ -287,9 +282,9 @@ class BugActionsMixin:
         extra = [key for key in ("deferred-reason", "close-reason", "duplicate-of", "promoted-to") if key in frontmatter]
         if extra:
             problems.append(f"a new bug has none of {_quoted(extra)}")
-        filled = [heading for heading in ("Fix", "Verification", "Release", "Evidence history") if not _blank(section_text(body, heading))]
+        filled = [heading for heading in ("Fix", "Verification", "Release", "Evidence history") if not section_is_empty(section_text(body, heading))]
         if filled:
-            problems.append(f"the section(s) {_quoted(filled)} are empty on a new bug")
+            problems.append(f"the section(s) {_quoted(filled)} hold rows or text and must be empty on a new bug")
         if problems:
             raise bs.BoardError(
                 "bug_creation_invalid",

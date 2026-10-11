@@ -6,7 +6,7 @@ import unittest
 
 from prism_cli.board_service import BoardError
 from prism_cli.wiki_lint import lint_wiki
-from prism_cli.wiki_model import parse_evidence_history
+from prism_cli.wiki_model import parse_evidence_history, section_text
 from tests.board_approval import approve
 from tests.qa_support import (
     BUGS,
@@ -18,10 +18,12 @@ from tests.qa_support import (
     bug_page,
     fix_row,
     history_entry,
+    release_row,
     verification_row,
 )
 from tests.test_board_service import _read_revisions
 from tests.test_lifecycle_model import table
+from tests.qa_pages import format_bug_page
 
 BUG = f"{BUGS}/BUG-001-summary-export-drops-comments.md"
 OTHER = f"{BUGS}/BUG-002-second-defect.md"
@@ -111,6 +113,42 @@ class BugCreationTests(BugBoard):
 
 
 class BugActionTests(BugBoard):
+    def test_reopen_without_prior_rows_accepts_prose_but_refuses_added_rows(self) -> None:
+        self.plant("closed", extra={"close-reason": "wont-fix: Accepted."})
+        base = format_bug_page(feature="none")
+        self.ready("bug-update", [{"path": BUG, "content": base}])
+        rows = {"Fix": fix_row(), "Verification": verification_row(), "Release": release_row("worker")}
+        for heading in ("Fix", "Verification", "Release"):
+            with self.subTest(heading=heading):
+                content = self.with_section(heading, "None yet.", base)
+                self.ready("bug-update", [{"path": BUG, "content": content}])
+                content = self.with_section(heading, section_text(base, heading).strip() + "\n" + rows[heading], base)
+                self.assertEqual("evidence_unexpectedly_added", self.refuse(content, approver=self.pat).code)
+
+    def test_bug_resets_accept_empty_tables_and_prose_but_refuse_rows_after_archiving(self) -> None:
+        scenarios = (
+            ("bug-scope", "fixed", [("Fix", fix_row())], {"apps": ["backend", "worker"]}, self.quinn),
+            ("bug-reject", "verified", [("Fix", fix_row()), ("Verification", verification_row()), ("Verification", verification_row(result="fail"))], {}, self.quinn),
+            ("bug-reopen", "closed", [("Fix", fix_row()), ("Verification", verification_row())], {}, self.pat),
+        )
+        for action, status, archived, fields, approver in scenarios:
+            extra = {"close-reason": "wont-fix: Accepted."} if status == "closed" else {}
+            self.plant(status, fix=fix(), verification=verification() if status != "fixed" else "", extra=extra)
+            history = "\n" + self.entry(action, archived)
+            if action != "bug-reopen":
+                fields["release"] = ""
+            base = format_bug_page(status="open" if action == "bug-reopen" else "in-fix", feature="none", history=history, **fields)
+            self.ready("bug-update", [{"path": BUG, "content": base}])
+            headings = ("Fix", "Verification", "Release") if action == "bug-reopen" else ("Fix", "Verification")
+            rows = {"Fix": fix_row(), "Verification": verification_row(), "Release": release_row("worker")}
+            for heading in headings:
+                with self.subTest(action=action, heading=heading):
+                    content = self.with_section(heading, "None yet.", base)
+                    self.ready("bug-update", [{"path": BUG, "content": content}])
+                    content = self.with_section(heading, section_text(base, heading).strip() + "\n" + rows[heading], base)
+                    code = "evidence_still_active" if (heading, rows[heading]) in archived else "evidence_unexpectedly_added"
+                    self.assertEqual(code, self.refuse(content, approver=approver).code)
+
     def test_triage_is_done_by_dev_or_qa_while_the_bug_is_open(self) -> None:
         self.plant()
         preview = self.update(self.bug(severity="critical"), approver=self.devi)

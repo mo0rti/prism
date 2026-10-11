@@ -47,7 +47,9 @@ pages and API contract, and every bug page of the feature.
 Each named app needs a failure on record (`qa_failure_unsupported`): a `fail` or `blocked` QA row in its current attempt, or a
 linked bug. A linked bug is listed under `- Linked bugs:` of the history entry, belongs to the feature, lists the app, is
 `open`, `in-fix` or `fixed`, and is not deferred. Record the failure first with `@@invoke:qa-verify@@`, or create the bug in
-this proposal (a new `open` + `dev` page under `knowledge/wiki/bugs/`).
+this proposal (a new `open` + `dev` page under `knowledge/wiki/bugs/`, in the format of `bugs/_FORMAT.md`).
+A new bug has no rows in Fix, Verification or Release, and no text or entries in Evidence history.
+A table header and separator alone are fine: they count as empty (`bug_creation_invalid`).
 
 The proposal, in one write:
 

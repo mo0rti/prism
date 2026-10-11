@@ -823,6 +823,22 @@ def has_section(body: str, heading: str) -> bool:
     return any(section.name.casefold() == wanted for section in markdown_sections(body))
 
 
+def section_is_empty(text: str) -> bool:
+    """Whether section text contains only whitespace, HTML comments or tables without data rows."""
+
+    lines = [line.strip() for line in re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL).splitlines() if line.strip()]
+    if len(lines) % 2:
+        return False
+    for header, separator in zip(lines[::2], lines[1::2]):
+        if "|" not in header or "|" not in separator:
+            return False
+        cells = re.split(r"(?<!\\)\|", header.strip("|"))
+        delimiters = re.split(r"(?<!\\)\|", separator.strip("|"))
+        if len(cells) != len(delimiters) or not all(re.fullmatch(r":?-+:?", cell.strip()) for cell in delimiters):
+            return False
+    return True
+
+
 def body_without_sections(body: str, headings: Iterable[str]) -> str:
     """The body with every section named in `headings` removed, heading line included; text above the first heading stays."""
 
@@ -1076,13 +1092,14 @@ def parse_evidence_table(
 ) -> tuple[list[tuple[str, ...]], list[EvidenceProblem]]:
     """The data rows of the table under `## heading`, as cell tuples, and the problems with its shape.
 
-    A section with no text, or with text and no table, has no rows and no problem: an empty section is the state before
-    the evidence exists. A table must start with the header `columns` (case, bold and backticks are ignored) and every
-    row must have one cell per column. Lines inside code fences and HTML comments are not read.
+    Empty sections have no rows or shape problems. Text without a table has no parseable rows; rules that require
+    emptiness check it separately with `section_is_empty`. A populated table must start with the header `columns`
+    (case, bold and backticks are ignored) and every row must have one cell per column.
+    Lines inside code fences and HTML comments are not read.
     """
 
     section = section_text(body, heading)
-    if not section.strip():
+    if section_is_empty(section):
         return [], []
     lines = _visible_evidence_table_lines(section)
     if not lines:

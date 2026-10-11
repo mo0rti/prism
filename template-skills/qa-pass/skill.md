@@ -61,6 +61,11 @@ The proposal:
 - sets the feature's status and owner to the minimum over the app stages;
 - may resolve open questions owned by `qa`.
 
+A defect found while testing may be a new `open` + `dev` bug page in the same proposal, in the format of
+`knowledge/wiki/bugs/_FORMAT.md`. It has no rows in Fix, Verification or Release, and no text or entries in
+Evidence history. A table header and separator alone are fine: they count as empty (`bug_creation_invalid`).
+A bug of an app being passed still blocks that app; pass only the unaffected apps.
+
 The board refuses the pass when any of these fails:
 
 - coverage of each named app: every criterion that lists the app has a passing row of the app at its current revision, on its

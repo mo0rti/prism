@@ -7,7 +7,7 @@ import unittest
 from datetime import date
 from pathlib import Path
 
-from prism_cli.release_rules import check_record_page, group_conflicts, record_front_matter_problems, snapshot_problems
+from prism_cli.release_rules import check_record_page, group_conflicts, record_front_matter_problems, record_row_problems, snapshot_problems
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_model import contract_page_citation, parse_markdown_text
 from prism_cli.wiki_releases import (
@@ -212,6 +212,12 @@ class RecordPageTests(unittest.TestCase):
 
     def test_a_record_page_in_the_form_has_no_problem(self) -> None:
         self.assertEqual([], self.problems(record_page(1, [delivery("F-001", "backend")])))
+
+    def test_empty_delivery_headers_still_do_not_make_a_release_record(self) -> None:
+        content = record_page(1, [])
+        rows, problems = parse_record_rows(content)
+        self.assertEqual(([], []), (rows, problems))
+        self.assertIn("release_record_invalid", [item.code for item in record_row_problems(rows, KIND_RELEASE)])
 
     def test_the_fields_and_sections_are_exact(self) -> None:
         good = record_page(1, [delivery("F-001", "backend")])

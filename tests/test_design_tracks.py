@@ -819,6 +819,26 @@ class DevReturnTests(TrackCase):
         none = self.returned("in-design", tracks=DesignTracks("done", "done"), affected="none")
         self.assertEqual("impact_review_required", self.rejected("feature-reopen", none).code)
 
+    def test_dev_returns_accept_headers_and_prose_but_refuse_evidence_rows(self) -> None:
+        from tests.test_lifecycle_model import DELIVERY_HEADER, QA_HEADER, RELEASE_HEADER, delivery_row, qa_row, release_row, table
+
+        tables = {
+            "Delivery evidence": table(DELIVERY_HEADER, [delivery_row("backend")]),
+            "QA verification": table(QA_HEADER, [qa_row("backend", ["AC-1@v1:" + "a" * 64], "`build:backend#1`")]),
+            "Release": table(RELEASE_HEADER, [release_row("backend")]),
+        }
+        self.in_dev()
+        for route, tracks in (("specified", None), ("in-design", DesignTracks("pending", "pending"))):
+            changes = self.returned(route, tracks=tracks, affected="ui, technical")
+            self.ready("feature-reopen", changes)
+            base = changes[0]["content"]
+            for heading, populated in tables.items():
+                with self.subTest(route=route, heading=heading):
+                    changes[0]["content"] = _replace_body_section_text(base, heading, "None yet.")
+                    self.ready("feature-reopen", changes)
+                    changes[0]["content"] = _replace_body_section_text(base, heading, populated)
+                    self.assertEqual("evidence_still_active", self.rejected("feature-reopen", changes).code)
+
     def test_a_return_with_delivered_evidence_archives_the_row_verbatim(self) -> None:
         self.in_dev(delivered=True)
         # One app delivered and one not: the status is the minimum, `in-dev`.

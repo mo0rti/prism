@@ -71,8 +71,9 @@ result.
 
 A defect found while testing is a new bug page in the same proposal: `knowledge/wiki/bugs/BUG-XXX-[slug].md`, `open` +
 `dev`, in the format of `knowledge/wiki/bugs/_FORMAT.md`, with `feature` the feature (or `none`), only apps of the
-feature, and empty Fix, Verification, Release and Evidence history sections (`bug_creation_invalid`, `bug_id_taken`). Take the
-next free bug number. A `fail` row records the failure; the bug records the defect.
+feature, and no rows in Fix, Verification or Release, and no text or entries in Evidence history
+(`bug_creation_invalid`, `bug_id_taken`). A table header and separator alone are fine: they count as empty.
+Take the next free bug number. A `fail` row records the failure; the bug records the defect.
 
 The proposal may also resolve open questions owned by `qa`, each with its answer. It changes no other section and no front
 matter beyond `status` and `owner`, which become the minimum over the app stages after the new rows (`app_stage_mismatch`

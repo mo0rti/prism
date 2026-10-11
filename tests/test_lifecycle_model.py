@@ -170,6 +170,16 @@ class ParserTests(unittest.TestCase):
         _rows, problems = parse_delivery_rows(body_of([], delivery=["| backend | `build:backend#1` | none | Reviewed source record | Review check passed | maybe |"]))
         self.assertEqual(["basis_invalid"], [item.code for item in problems])
 
+    def test_empty_evidence_tables_have_no_rows_or_shape_problems(self) -> None:
+        body = body_of([])
+        for heading in ("Delivery evidence", "QA verification", "Release"):
+            from prism_cli.wiki_model import section_text
+
+            header = section_text(body, heading).strip()
+            body = _replace_body_section_text(body, heading, f"<!-- before -->\n{header}\n\n{header}\n<!-- after -->")
+        evidence = read_feature_evidence(body)
+        self.assertEqual(((), (), (), ()), (evidence.delivery, evidence.qa, evidence.release, evidence.problems))
+
     def test_a_table_is_read_by_its_header_and_not_inside_fences_or_comments(self) -> None:
         # Case, bold and backticks of the header cells are ignored; another header is a problem and yields no rows.
         loose = "| **app** | Artifact | `Contract` | implementation | TESTS | Basis |\n|---|---|---|---|---|---|\n" + delivery_row("backend")
@@ -647,6 +657,25 @@ class LintTests(_Workspace):
     def criteria(self) -> list[str]:
         return [f"AC-1 [backend, worker] {TEXT_ONE}", f"AC-2 [backend] {TEXT_TWO}"]
 
+    def test_before_development_evidence_accepts_headers_and_prose_but_refuses_rows(self) -> None:
+        tables = {
+            "Delivery evidence": table(DELIVERY_HEADER, [delivery_row("backend")]),
+            "QA verification": table(QA_HEADER, [qa_row("backend", [ref(1, self.BOTH, TEXT_ONE)], "`build:backend#1`")]),
+            "Release": table(RELEASE_HEADER, [release_row("backend")]),
+        }
+        for status, owner in (("raw", "po"), ("specified", "po"), ("in-design", "tech-lead")):
+            base = self.page(status, owner, self.BOTH, self.criteria())
+            self.seed(status, owner, base)
+            self.assertNotIn("app-row-ahead-of-status", self.codes())
+            for heading, populated in tables.items():
+                with self.subTest(status=status, heading=heading):
+                    changed = _replace_body_section_text(base, heading, "None yet.")
+                    self.seed(status, owner, changed)
+                    self.assertNotIn("app-row-ahead-of-status", self.codes())
+                    self.assertNotIn("invalid-evidence-row", self.codes())
+                    self.seed(status, owner, _replace_body_section_text(base, heading, populated))
+                    self.assertIn("app-row-ahead-of-status", self.codes())
+
     def delivered(self, apps: list[str] | None = None) -> list[str]:
         return [delivery_row(app) for app in apps or self.BOTH]
 
@@ -807,6 +836,46 @@ class FlowTests(_Workspace):
     def status(self) -> tuple[str, str]:
         frontmatter = _parse_markdown(self.read(FEATURE))[0]
         return frontmatter["status"], frontmatter["owner"]
+
+    def test_specification_preview_accepts_headers_and_prose_but_refuses_rows(self) -> None:
+        specified = _set_feature_stage(self.read(FEATURE), "specified", "po", self.service)
+        self.skill("po-specify", [{"path": FEATURE, "content": specified}])
+        tables = {
+            "Delivery evidence": table(DELIVERY_HEADER, [delivery_row("backend")]),
+            "QA verification": table(QA_HEADER, [qa_row("backend", [ref(1, self.BOTH, TEXT_ONE)], "`build:backend#1`")]),
+            "Release": table(RELEASE_HEADER, [release_row("backend")]),
+        }
+        for heading, populated in tables.items():
+            with self.subTest(heading=heading):
+                changed = _replace_body_section_text(specified, heading, "None yet.")
+                self.skill("po-specify", [{"path": FEATURE, "content": changed}])
+                changed = _replace_body_section_text(specified, heading, populated)
+                error = self.rejection("po-specify", [{"path": FEATURE, "content": changed}])
+                self.assertEqual("evidence_sections_not_empty", error.code)
+                self.assertEqual([heading], error.details["sections"])
+
+    def test_specification_preflight_accepts_headers_and_prose_but_refuses_rows(self) -> None:
+        before = self.read(FEATURE)
+        preview = build_board_transition_preflight(self.root, "F-001", "po-specify")
+        check = next(item for item in preview["checks"] if item["code"] == "evidence-sections-empty")
+        self.assertEqual("pass", check["status"])
+        tables = {
+            "Delivery evidence": table(DELIVERY_HEADER, [delivery_row("backend")]),
+            "QA verification": table(QA_HEADER, [qa_row("backend", [ref(1, self.BOTH, TEXT_ONE)], "`build:backend#1`")]),
+            "Release": table(RELEASE_HEADER, [release_row("backend")]),
+        }
+        for heading, populated in tables.items():
+            with self.subTest(heading=heading):
+                self.seed("raw", "po", _replace_body_section_text(before, heading, "None yet."))
+                preview = build_board_transition_preflight(self.root, "F-001", "po-specify")
+                check = next(item for item in preview["checks"] if item["code"] == "evidence-sections-empty")
+                self.assertEqual("pass", check["status"])
+                self.seed("raw", "po", _replace_body_section_text(before, heading, populated))
+                preview = build_board_transition_preflight(self.root, "F-001", "po-specify")
+                check = next(item for item in preview["checks"] if item["code"] == "evidence-sections-empty")
+                self.assertEqual("blocked", check["status"])
+                self.assertIn("already hold rows.", check["message"])
+                self.seed("raw", "po", before)
 
     def deliver(self, app: str, status: str, owner: str) -> list[dict[str, str]]:
         current = self.read(FEATURE)

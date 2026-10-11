@@ -4,6 +4,10 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+
+- A new bug with header-only Fix, Verification and Release tables is accepted as empty, as the documented format shows. Board previews and wiki lint share the empty-section rule, and a creation rejection names the sections that hold rows or text and says they must be empty.
+
 ## [0.7.0]
 
 Release date: 2026-10-11

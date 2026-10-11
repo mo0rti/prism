@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from pathlib import Path
 
 import yaml
 
@@ -58,6 +59,18 @@ def bug_page(
 
 FIX_HEADER = "| App | Artifact | Implementation | Tests | Basis |"
 VERIFICATION_HEADER = "| App | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |"
+
+
+def format_bug_page(**kwargs: object) -> str:
+    """A new bug with the empty tables copied exactly from the canonical format."""
+
+    text = (Path(__file__).resolve().parents[1] / "template/knowledge/wiki/bugs/_FORMAT.md").read_text(encoding="utf-8")
+    for heading in ("Fix", "Verification", "Release"):
+        match = re.search(rf"^## {heading}\n((?:\|.*\n)+)", text, flags=re.MULTILINE)
+        if match is None:
+            raise AssertionError(f"The bug format needs the {heading} table.")
+        kwargs.setdefault(heading.lower(), match.group(1).rstrip())
+    return bug_page(**kwargs)  # type: ignore[arg-type]
 
 
 def fix_row(app: str = "worker", artifact: str = "build:worker#2") -> str:
