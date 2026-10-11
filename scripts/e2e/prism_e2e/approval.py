@@ -2,7 +2,23 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+# A bug or incident page is named by its ID and a slug the agent derives from the title, so the
+# fixture's slug is one valid name among many. Any slug is permitted for an ID the fixtures write.
+_ID_PAGE = re.compile(r"(knowledge/wiki/(?:bugs|incidents)/(?:BUG|INC)-\d{3})-[a-z0-9]+(?:-[a-z0-9]+)*\.md")
+
+
+def path_permitted(path: str, permitted: list[str]) -> bool:
+    """Whether ``path`` is a permitted write: a fixture path, or a bug or incident page of a fixture ID with another slug."""
+
+    if path in permitted:
+        return True
+    match = _ID_PAGE.fullmatch(path)
+    if match is None:
+        return False
+    return any((other := _ID_PAGE.fullmatch(candidate)) is not None and other.group(1) == match.group(1) for candidate in permitted)
 
 
 def check_preview(preview: dict[str, Any], preview_id: str, expected: dict[str, Any]) -> None:
@@ -28,7 +44,7 @@ def check_preview(preview: dict[str, Any], preview_id: str, expected: dict[str, 
     for write in writes:
         require(isinstance(write, dict), "write entry")
         path = write.get("path")
-        require(isinstance(path, str) and path in expected["permitted_paths"] and path not in paths, "write path")
+        require(isinstance(path, str) and path_permitted(path, expected["permitted_paths"]) and path not in paths, "write path")
         require("before" in write and isinstance(write.get("after"), str), "write content")
         paths.add(path)
     moves = preview.get("moves", [])

@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from prism_e2e import browser_client, config, report as reports, runner, workspace as ws  # noqa: E402
+from prism_e2e import approval, browser_client, config, report as reports, runner, workspace as ws  # noqa: E402
 from prism_e2e.browser import HumanBrowser  # noqa: E402
 from prism_e2e.browser_client import BrowserClient  # noqa: E402
 from prism_e2e.hosts import HostRun  # noqa: E402
@@ -555,6 +555,43 @@ class BrowserClientTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as caught:
                 client.approve(PREVIEW, "human-po", approval_expectations())
         self.assertIn("refused the approval", str(caught.exception))
+
+
+class WritePathTests(unittest.TestCase):
+    """A bug or incident page may carry any slug for its ID; every other path must be a fixture path."""
+
+    def test_a_bug_or_incident_page_of_a_fixture_id_may_have_another_slug(self) -> None:
+        for step_id, renamed in (
+            ("qa-verify", "knowledge/wiki/bugs/BUG-001-summary-does-not-say-how-many-comments-are-not-shown.md"),
+            ("ingest-incident", "knowledge/wiki/incidents/INC-001-summaries-are-blank.md"),
+        ):
+            permitted = list(ws.fixture_files([step_id]))
+            self.assertNotIn(renamed, permitted)
+            self.assertTrue(approval.path_permitted(renamed, permitted), renamed)
+
+    def test_another_id_or_an_unlisted_path_is_refused(self) -> None:
+        permitted = list(ws.fixture_files(["qa-verify"]))
+        for path in (
+            "knowledge/wiki/bugs/BUG-002-summary-does-not-say-how-many-comments-are-not-shown.md",
+            "knowledge/wiki/bugs/BUG-001-Upper-Case.md",
+            "knowledge/wiki/features/F-001-another-slug.md",
+            "knowledge/wiki/decisions/ADR-001-anything.md",
+        ):
+            self.assertFalse(approval.path_permitted(path, permitted), path)
+
+    def test_check_preview_accepts_the_renamed_bug_page(self) -> None:
+        step = config.STEPS[config.STEP_IDS.index("qa-verify")]
+        preview = preview_for(step)
+        preview["writes"] = [
+            {**write, "path": write["path"].replace("BUG-001-summary-lacks-hidden-comment-count", "BUG-001-summary-does-not-say-how-many-comments-are-not-shown")}
+            for write in preview["writes"]
+        ]
+        expected = {
+            "action": "qa-verify", "item_id": "F-001", "proposer_label": "codex", "proposer_id": AGENT_IDS["codex"],
+            "required_roles": {"all_of": list(step.roles), "any_of": []},
+            "permitted_paths": list(ws.fixture_files(["qa-verify"])), "permitted_moves": [],
+        }
+        approval.check_preview(preview, PREVIEW, expected)
 
 
 if __name__ == "__main__":
