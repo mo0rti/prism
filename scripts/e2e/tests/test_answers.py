@@ -3,13 +3,15 @@
 import ast
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from prism_e2e import answers, config, workspace as ws  # noqa: E402
-from prism_e2e.runner import build_preview_prompt, load_prompt  # noqa: E402
+from prism_e2e import answers, config, report as reports, workspace as ws  # noqa: E402
+from prism_e2e.runner import Journey, Options, build_preview_prompt, load_prompt  # noqa: E402
 
 FEATURE_PAGE = "knowledge/wiki/features/F-001-review-summary-export.md"
 CHECK_INSTALLED_CLI = config.REPO_ROOT / "scripts" / "check-installed-cli.py"
@@ -39,13 +41,17 @@ def fixture_feature(step: str) -> ws.FeatureState:
     return ws.FeatureState("", "", None, None, ws.parse_questions(text), text)
 
 
+def topic_answer(role: str, name: str) -> str:
+    return next(topic.answer for topic in answers.TOPICS[role] if topic.name == name)
+
+
 class AnswerForTests(unittest.TestCase):
     def test_each_recorded_question_gets_its_scripted_answer(self):
         cases = {
             "po": {
                 "In what format and by what channel does the reviewer receive the summary (for example a downloaded file, text to copy, or an email)?": "A downloaded PDF file.",
                 "If the comments do not fit on one page, what should happen?": "One page stays the limit.",
-                "Should the summary include the date of the review or the document version?": "The header shows the date the review was finished.",
+                "Should the summary include the date of the review or the document version?": "The header shows the date the review was finished,",
                 "Does the summary have to be available in more than one language?": "No. English only",
             },
             "designer": {"Where does the export control appear and what does the summary look like?": 'One "Export summary" button'},
@@ -58,17 +64,102 @@ class AnswerForTests(unittest.TestCase):
 
     def test_a_question_of_another_topic_gets_the_fallback_decision(self):
         for role, question in (
-            ("po", "What should the summary show when the reviewer left no comments?"),
             ("po", "What is the fallback when the user is offline?"),
-            ("po", "What date format should the header use?"),
             ("designer", "What does the empty state look like?"),
-            ("dev", "Does the platform record the decision, reviewer and per-reviewer comments in a form that supports this export?"),
+            ("designer", "How should the dashboard layout look?"),
+            ("po", "What format should the billing report use?"),
+            ("po", "In which order should invoices be paid?"),
+            ("dev", "How should the billing service deliver invoices?"),
+            ("dev", "How should the backend deliver invoices?"),
         ):
             with self.subTest(role=role, question=question):
-                self.assertEqual(answers.answer_for(role, question), answers.FALLBACK)
+                self.assertEqual(answers.answer_for(role, question), answers.fallback_for(role))
 
-    def test_the_fallback_is_a_plain_fixed_decision(self):
-        self.assertEqual(answers.FALLBACK, "Not needed for this release; decide later.")
+    def test_po_and_designer_fallbacks_remain_out_of_scope(self):
+        self.assertEqual(answers.FALLBACK, "Out of scope for this release: the feature does not include it.")
+        self.assertEqual(answers.fallback_for("po"), answers.FALLBACK)
+        self.assertEqual(answers.fallback_for("designer"), answers.FALLBACK)
+
+    def test_dev_fallback_names_the_technical_design_page(self):
+        self.assertEqual(answers.fallback_for("dev"), "The technical design page settles this; build it as that page says.")
+
+    def test_every_role_fallback_contains_no_deferral(self):
+        for role in answers.CLARIFY_ROLES.values():
+            fallback = answers.fallback_for(role)
+            with self.subTest(role=role):
+                for word in ("later", "defer", "decide", "TBD"):
+                    self.assertNotIn(word.lower(), fallback.lower())
+
+    def test_every_real_host_question_gets_the_intended_topic(self):
+        cases = (
+            ("po", "What export file format should the reviewer receive?", "format and channel"),
+            ("po", "How should a review with comments too long for one page meet the one-page summary requirement?", "overflow"),
+            ("po", "Does the summary have to be available in more than one language?", "language"),
+            ("designer", "What should the one-page summary layout and export interaction look like?", "export control and summary layout"),
+            ("dev", "How should the backend deliver the export to the reviewer, and what technical constraints affect generation?", "delivery and generation"),
+            ("po", "What file format should the exported summary use?", "format and channel"),
+            ("po", "Which review states count as finished and permit export?", "finished review and export eligibility"),
+            ("po", "Does the summary have to be available in more than one language?", "language"),
+            ("po", "What file format must the exported summary use?", "format and channel"),
+            ("po", "What determines that a review is finished and eligible for export?", "finished review and export eligibility"),
+            ("po", "How must the one-page summary handle comments that exceed one page without losing the reviewer's comments?", "overflow"),
+            ("po", "Does the summary have to be available in more than one language?", "language"),
+            ("designer", "How should the document title, reviewer, decision and comments be arranged on the one-page summary?", "export control and summary layout"),
+        )
+        self.assert_topics(cases)
+
+    def assert_topics(self, cases):
+        for role, question, name in cases:
+            with self.subTest(role=role, question=question):
+                answer = answers.answer_for(role, question)
+                self.assertNotEqual(answer, answers.FALLBACK)
+                self.assertEqual(answer, topic_answer(role, name))
+
+    def test_domain_variants_go_to_the_intended_topic(self):
+        self.assert_topics((
+            ("po", "When may a review be exported?", "finished review and export eligibility"),
+            ("po", "Can we export reviews still in progress?", "finished review and export eligibility"),
+            ("po", "Which decisions permit export?", "finished review and export eligibility"),
+            ("po", "Who may export a finished review?", "export access and comment ownership"),
+            ("po", "Whose comments does the one-page summary contain?", "export access and comment ownership"),
+            ("po", "What should the header of a finished review summary show?", "header"),
+            ("po", "What date format should the header use?", "header"),
+            ("po", "Should the header show the review completion date?", "header"),
+            ("po", "Should the document title in the summary be translated?", "language"),
+            ("po", "Should comments be sorted by severity or in the order they were left?", "comment order"),
+            ("po", "What should the one-page summary show when the reviewer left no comments?", "no comments"),
+            ("po", "Can a review without comments be exported?", "no comments"),
+            ("po", "How do we fit very long comments in the summary?", "overflow"),
+            ("designer", "Where should the export button appear?", "export control and summary layout"),
+            ("designer", "How should we arrange the summary?", "export control and summary layout"),
+            ("designer", "What should the summary look like?", "export control and summary layout"),
+            ("designer", "How should the summary appear?", "export control and summary layout"),
+            ("designer", "What structure and order should the summary use?", "export control and summary layout"),
+            ("dev", "How is the PDF generated?", "delivery and generation"),
+            ("dev", "How should we deliver the summary?", "delivery and generation"),
+            ("dev", "Is the PDF stored or generated on request?", "delivery and generation"),
+            ("dev", "Does PDF generation need a new service or the existing stack?", "delivery and generation"),
+            ("dev", "What time and size limits apply to PDF generation?", "generation constraints"),
+            ("dev", "What timeout applies to PDF generation?", "generation constraints"),
+            ("dev", "What happens when generation fails?", "generation failure"),
+            ("dev", "How should errors during export be handled?", "generation failure"),
+            ("dev", "What happens if PDF generation times out?", "generation failure"),
+            ("dev", "How should we handle a PDF generation timeout?", "generation failure"),
+            ("dev", "Does the platform record the decision, reviewer and per-reviewer comments in a form that supports this export?", "review data and eligibility"),
+            ("dev", "How does the backend identify a finished review and the requesting reviewer's comments for export?", "review data and eligibility"),
+            ("dev", "How do we authorize export of a finished review?", "review data and eligibility"),
+            ("dev", "Whose comments are read when the PDF is generated?", "review data and eligibility"),
+            ("dev", "How do permissions affect the PDF download?", "review data and eligibility"),
+            ("dev", "How does the backend generate a PDF for a finished review?", "delivery and generation"),
+        ))
+
+    def test_eligibility_and_ownership_answers_preserve_the_brief(self):
+        eligibility = topic_answer("po", "finished review and export eligibility")
+        self.assertIn("once its reviewer records a decision: approved, changes requested or rejected", eligibility)
+        self.assertIn("never offered while the review is in progress", eligibility)
+        ownership = topic_answer("po", "export access and comment ownership")
+        self.assertIn("Only the signed-in reviewer", ownership)
+        self.assertIn("only that reviewer's comments", ownership)
 
     def test_a_role_without_scripted_topics_gets_the_fallback(self):
         self.assertEqual(answers.answer_for("unknown", "Anything?"), answers.FALLBACK)
@@ -88,7 +179,7 @@ class PreviewPromptTests(unittest.TestCase):
             with self.subTest(step=step_id):
                 self.assertTrue(open_questions)
                 self.assertNotIn("{", prompt)
-                self.assertNotIn(answers.FALLBACK, prompt, "every recorded question has a scripted answer")
+                self.assertNotIn(answers.fallback_for(role), prompt, "every recorded question has a scripted answer")
                 for question in open_questions:
                     self.assertIn(f'- Question {question.number} ("{question.text}"): {answers.answer_for(role, question.text)}', prompt)
 
@@ -100,8 +191,8 @@ class PreviewPromptTests(unittest.TestCase):
         self.assertEqual(
             lines,
             [
-                '- Question 1 ("In what format is the summary delivered (for example PDF, plain text or email body)?"): ' + answers.TOPICS["po"][0].answer,
-                '- Question 2 ("What should the summary show when the reviewer left no comments?"): ' + answers.FALLBACK,
+                '- Question 1 ("In what format is the summary delivered (for example PDF, plain text or email body)?"): ' + topic_answer("po", "format and channel"),
+                '- Question 2 ("What should the summary show when the reviewer left no comments?"): ' + topic_answer("po", "no comments"),
                 '- Question 5 ("Does the summary have to be available in more than one language?"): No. English only; no other language is needed for this feature.',
             ],
         )
@@ -115,7 +206,7 @@ class PreviewPromptTests(unittest.TestCase):
         self.assertIn('- Question 3 ("Where in the review screen does the reviewer choose export?"): One "Export summary" button', designer)
         developer = build_preview_prompt("dev-clarify", None, feature)
         self.assertIn(
-            '- Question 4 ("Does the platform record the decision, reviewer and per-reviewer comments in a form that supports this export?"): ' + answers.FALLBACK,
+            '- Question 4 ("Does the platform record the decision, reviewer and per-reviewer comments in a form that supports this export?"): ' + topic_answer("dev", "review data and eligibility"),
             developer,
         )
         self.assertNotIn("Question 1", developer)
@@ -148,6 +239,74 @@ class PreviewPromptTests(unittest.TestCase):
         for step_id in ("po-intake", "ask", "po-specify", "design-handoff", "dev-done"):
             with self.subTest(step=step_id):
                 self.assertEqual(build_preview_prompt(step_id, None, feature), load_prompt(step_id))
+
+
+class FallbackNoteTests(unittest.TestCase):
+    def test_each_fallback_is_noted_before_launch_even_when_the_launch_fails(self):
+        for step_id, role in answers.CLARIFY_ROLES.items():
+            with self.subTest(step=step_id):
+                feature = feature_with(
+                    "## Open questions\n| # | Question | Owner | Status |\n|---|----------|-------|--------|\n"
+                    f"| 9 | What about billing? | {role} | open |\n"
+                    f"| 13 | Do we need notifications? | {role} | open |\n"
+                    f"| 15 | What about reporting? | {role} | resolved: No. |\n"
+                    "| 21 | What about subscriptions? | qa | open |\n"
+                )
+                journey = Journey(Options(tier="smoke", out=Path("."), steps=[step_id], hosts=["claude"]))
+                journey.env = SimpleNamespace(workspace=Path("."))
+                journey.board = object()
+                result = reports.StepResult(step=step_id, kind="agent", host="claude")
+                expected = [
+                    f'{step_id}: fallback answer for question 9 ("What about billing?"): {answers.fallback_for(role)}',
+                    f'{step_id}: fallback answer for question 13 ("Do we need notifications?"): {answers.fallback_for(role)}',
+                ]
+
+                def failed_launch(*args):
+                    self.assertEqual(result.notes, expected)
+                    self.assertEqual(args[2].count(answers.fallback_for(role)), 2)
+                    raise RuntimeError("host launch failed")
+
+                with patch.object(ws, "read_feature", return_value=feature), patch.object(Journey, "_launch", side_effect=failed_launch) as launch:
+                    with self.assertRaisesRegex(RuntimeError, "host launch failed"):
+                        journey.run_agent_step(config.STEPS_BY_ID[step_id], 3, "claude", result)
+                launch.assert_called_once()
+                report = reports.build_report({}, [result], [], "smoke")
+                self.assertEqual(report["steps"][0]["notes"], expected)
+
+    def test_scripted_answers_add_no_fallback_note(self):
+        for step_id, role, state in (("po-clarify", "po", "ask"), ("design-clarify", "designer", "design-start"), ("dev-clarify", "dev", "design-handoff")):
+            with self.subTest(step=step_id):
+                journey = Journey(Options(tier="smoke", out=Path("."), steps=[step_id], hosts=["claude"]))
+                journey.env = SimpleNamespace(workspace=Path("."))
+                journey.board = object()
+                result = reports.StepResult(step=step_id, kind="agent", host="claude")
+                feature = fixture_feature(state)
+                self.assertTrue(feature.open_questions(role))
+                with patch.object(ws, "read_feature", return_value=feature), patch.object(Journey, "_launch", side_effect=RuntimeError("host launch failed")):
+                    with self.assertRaisesRegex(RuntimeError, "host launch failed"):
+                        journey.run_agent_step(config.STEPS_BY_ID[step_id], 3, "claude", result)
+                self.assertEqual(result.notes, [])
+
+
+class TechLeadDecisionTests(unittest.TestCase):
+    def test_both_fixture_sets_receive_the_technical_decisions(self):
+        for fixture_set in (None, config.API_WORK_FIXTURES_DIR):
+            with self.subTest(fixture_set=fixture_set):
+                prompt = load_prompt("tech-design-done", fixture_set)
+                for decision in (
+                    "My technical decisions:",
+                    "generates the PDF on request from the stored review",
+                    "same response as a file download",
+                    "No generated file is stored or cached",
+                    "approved, changes requested or rejected",
+                    "an in-progress review cannot be exported",
+                    "only the requesting reviewer's comments",
+                    "backend's existing stack, with no new service",
+                    "5 seconds and a PDF of at most 1 MiB",
+                    "no PDF or partial download",
+                    "every acceptance criterion at unit and service level",
+                ):
+                    self.assertIn(decision, prompt)
 
 
 class InstalledCliScriptTests(unittest.TestCase):
