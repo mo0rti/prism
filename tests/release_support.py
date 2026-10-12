@@ -10,9 +10,13 @@ from __future__ import annotations
 import atexit
 import shutil
 import tempfile
+from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
+from uuid import uuid4
 
 from tests import qa_support
+from tests.board_approval import apply_preview
 from tests.qa_pages import FIX_HEADER, VERIFICATION_HEADER, bug_page, fix_row, verification_row  # noqa: F401
 from tests.qa_support import (
     BUGS,
@@ -140,6 +144,22 @@ class ReleaseTests(ReleaseBoard):
 
     def settle(self, feature: str, record: str, number: int = 1, approver=None) -> dict:
         return self.apply("release-done", [{"path": FEATURE, "content": feature}, {"path": record_path(number), "content": record}], approver=approver or self.owner)
+
+    def apply_next_day(self, skill: str, changes: list[dict[str, str]], approver=None) -> dict:
+        """Preview today and approve the operation on the next day: the apply runs against the operation's own preview day."""
+
+        preview = self.ready(skill, changes)
+        tomorrow = date.today() + timedelta(days=1)
+
+        class Tomorrow(date):
+            @classmethod
+            def today(cls) -> "Tomorrow":
+                return cls(tomorrow.year, tomorrow.month, tomorrow.day)
+
+        with patch("prism_cli.board_service.date", Tomorrow), patch("prism_cli.board_release.date", Tomorrow):
+            receipt = apply_preview(self.service, self.agent, preview, str(uuid4()), approver=approver or self.owner)
+        self.assertEqual("applied", receipt["state"], f"{skill}: {receipt}")
+        return preview
 
     def refuse(self, feature: str, record: str, number: int = 1, approver=None) -> tuple[str, int]:
         return self.refusal([{"path": FEATURE, "content": feature}, {"path": record_path(number), "content": record}], approver)

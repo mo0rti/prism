@@ -180,11 +180,11 @@ change or whether confirmation happened.
 If the optional CLI surface is present, use
 `prism wiki transition-preflight F-XXX [path] --action <action> --json` only when
 the response identifies envelope schema 1, command facts for the requested
-action, transition capability version 2 with that action's surface, transition
-version 1, and a consistent snapshot. A version string alone is insufficient;
+action, transition capability version 3 with that action's surface, transition
+version 2, and a consistent snapshot. A version string alone is insufficient;
 missing or unsupported probes fall back to direct-file reads. Use **Copy
 request** only for a ready result. Static captures are snapshot-relative; live
-refresh observes later source changes. Delivery evidence, UI design exemptions,
+refresh observes later source changes. Delivery evidence, design tracks,
 and reopen revalidation are defined in `LIFECYCLE.md`.
 
 ## Skill Map

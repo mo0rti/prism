@@ -131,7 +131,7 @@ docs/          -> Human-readable reference documentation
 - `wiki-show F-XXX` - focused context bundle for one feature
 - `wiki-blockers` - blockers view using the canonical blocker categories
 - `wiki-query "text"` - retrieval-assisted wiki search across features, rules, design, and requirements
-- `wiki-owner po|designer|dev|none` - role dashboard for open questions, waiting work, and stale pages (last verification older than `wiki-stale-after-days`)
+- `wiki-owner po|designer|tech-lead|dev|qa|release|none` - role dashboard for open questions, waiting work, and stale pages (last verification older than `wiki-stale-after-days`)
 - `wiki-app <app-id>` - app queue for active features, requirement state, and blockers
 
 Read `knowledge/wiki/WIKI_REPORT.md` first when present. If it is absent, run
@@ -203,11 +203,11 @@ no date, so freshness comes from `log.md`: a current-state page's last verificat
 - `qa-verify [F-XXX] [app ...]` - record QA results for apps or integrations, and a bug for each defect found
 - `qa-pass [F-XXX] [app ...]` - pass apps through QA toward release
 - `qa-fail [F-XXX] app ...` - send apps back to development after a QA failure
-- `release-done [F-XXX] [app ...]` - record a release record and release the named apps (or the apps of the bugs it ships) to their delivery targets, or record the failed delivery
+- `release-done F-XXX[,F-YYY] [BUG-XXX ...] [--return in-dev | --rollback REL-XXX | --redeploy REL-XXX]` - record a release of the features and verified bugs it names, or the failed delivery, a rollback or a redeploy, in a release record
 - `bug-update BUG-XXX <triage|scope|in-fix|fixed|verified|reverify|reject|closed|defer|undefer|open>` - move one bug through its lifecycle
 - `feature-reopen [F-XXX] [specified|in-design|in-dev]` - send a feature in development or QA back to `specified` or `in-design`, or reopen a `released` feature to `specified`, `in-design` or `in-dev`, after impact review
 - `feature-scope [F-XXX]` - edit the app scope of one feature that is not `released`: its `apps`, its `## App scope` section and the requirement pages of the apps it gains (the way out of `app-retired-in-scope`)
-- `ask [F-XXX] "question" --to po|designer|dev` - route a question
+- `ask [F-XXX] "question" --to po|designer|tech-lead|dev|qa|release` - route a question
 
 ### Feature lifecycle contract
 
@@ -230,7 +230,7 @@ Use the canonical selected-surface instructions and shared contract:
 
 - Codex: `.agents/skills/<action>/SKILL.md`
 - Claude: `.claude/commands/<action>.md`
-- Shared protocol, evidence, exemptions, and reopen rules: `knowledge/wiki/LIFECYCLE.md`, read after `knowledge/wiki/SCHEMA.md`
+- Shared protocol, evidence, design tracks, and reopen rules: `knowledge/wiki/LIFECYCLE.md`, read after `knowledge/wiki/SCHEMA.md`
 - Action registry, approver roles, write scopes and action contracts: `knowledge/wiki/ACTIONS.md`, read after `knowledge/wiki/LIFECYCLE.md`
 
 Each action resolves one feature, rereads its source and context, shows a
@@ -239,8 +239,8 @@ complete proposed write set, and waits for final confirmation. In the board that
 `dev-start` directly after reviewing the exact changes; every other action stays
 with the skills. Copy, clipboard,
 dashboard, and preflight output are read-only; cancel means no mutation. The
-selected generated file must carry its matching `prism:<command>-contract:v1`
-marker. The other surface is optional.
+selected generated file must carry its matching `prism:<command>-contract:v<n>`
+marker, the version its own file states. The other surface is optional.
 
 When available, the read-only preflight is:
 
@@ -249,8 +249,8 @@ prism wiki transition-preflight F-XXX [path] --action po-handoff --json
 ```
 
 Use a preflight only when its common envelope is schema 1, command facts identify
-the requested action, transition capability is version 2 with that action's
-surface, transition version is 1, and the snapshot is consistent. A version
+the requested action, transition capability is version 3 with that action's
+surface, transition version is 2, and the snapshot is consistent. A version
 string alone is insufficient. Old or unsupported capabilities and generated
 instructions require the direct-file protocol after the selected surface is
 refreshed. Copy only a ready result; blocked or unknown results require review
@@ -263,7 +263,7 @@ owner, advisory state, and fingerprint with current files. Use **Copy request** 
 ready result on the selected invocation. The preview is not an "Approve move" action, does
 not execute an agent, move a card, or mutate the wiki. The board derives its columns from
 current source fields and cannot prove which human or agent changed them or whether
-confirmation happened. Delivery evidence, design exemptions, and reopen revalidation follow
+confirmation happened. Delivery evidence, design tracks, and reopen revalidation follow
 the shared schema.
 
 ### Audit / review
@@ -361,7 +361,7 @@ and adds only what is specific to Claude Code:
    Start implementation with `dev-start [F-XXX]`, add endpoints to
    `shared/api-contracts/openapi.yml`, and run `task generate-clients` as needed.
 6. Implement the selected platform slices per `knowledge/wiki/app-requirements/`.
-7. When built, verify delivery evidence (per app, release evidence or a delivery
-   attestation, never a commit or pull request alone) and run `dev-done [F-XXX]`; QA the apps
+7. When built, verify delivery evidence (per app: an artifact reference, including `commit:`, an
+   implementation reference and a test result, `attested` when the approving human vouches for it) and run `dev-done [F-XXX]`; QA the apps
    with `qa-verify` and `qa-pass`, then deliver them with `release-done [F-XXX]`. Use
    `feature-reopen [F-XXX] [specified|in-design|in-dev]` only after impact review.

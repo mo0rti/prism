@@ -606,6 +606,12 @@ def check_feature_release_rows(
         named.append(ReleasedApp(row.app, row.target, row.version, row.attempt or 0, row.outcome, row.basis))
     named_apps = {item.app for item in named}
     remaining = Counter(_cells(row) for row in new.release)
+    # A staging row is replaced by a new staging row of the same app and target that the environment check above accepts.
+    replacements = Counter(
+        (row.app, row.target)
+        for row in new.release
+        if not row.authoritative and _cells(row) not in old_cells and row.app in active and row.target in environments_of(policy, row.app)
+    )
     for row in old.release:
         if row.app in skipped:
             continue
@@ -614,6 +620,9 @@ def check_feature_release_rows(
             remaining[cells] -= 1
             continue
         if row.authoritative and row.outcome in {"pending", "failed"} and row.app in named_apps and counts[row.app] == 1:
+            continue
+        if not row.authoritative and replacements[(row.app, row.target)]:
+            replacements[(row.app, row.target)] -= 1
             continue
         problems.append(
             Problem("release_row_invalid", f"`release-done` preserves every row of an app it does not release; `{row.app}` loses a row without exactly one validated replacement. A return or reopen archives it.", {"app": row.app})

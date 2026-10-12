@@ -153,6 +153,25 @@ class ReleaseDoneTests(ReleaseTests):
         self.assertEqual(("record_date_invalid", 409), self.refuse(feature, record_page(1, rows, day="someday")))
         self.assertEqual(("release_record_invalid", 409), self.refuse(feature, record_page(1, rows, operation="op-123")))
 
+    def test_a_release_approved_the_next_day_applies_and_keeps_the_preview_day(self) -> None:
+        self.apply_next_day("release-done", self.release_changes())
+        self.assertEqual(("released", "none"), self.status())
+        self.assertEqual(["REL-001.md"], self.records())
+        self.assertEqual(date.today().isoformat(), str(self.record(1)[0]["date"]))
+        self.assertEqual(set(), self.errors())
+
+    def test_a_record_dated_other_than_the_operations_preview_day_is_refused_when_it_applies(self) -> None:
+        feature, record = self.all_released()
+        rows = [delivery("F-001", "backend"), delivery("F-001", "worker")]
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        # An apply re-validates the operation against its own preview day, here yesterday: today's date is not that day.
+        self.service._replay.day = yesterday
+        try:
+            self.assertEqual(("record_date_invalid", 409), self.refuse(feature, record))
+            self.assertEqual("ready", self.propose("release-done", [{"path": FEATURE, "content": feature}, {"path": record_path(1), "content": record_page(1, rows, day=yesterday)}])["classification"])
+        finally:
+            self.service._replay.day = None
+
     def test_the_record_must_follow_the_form_of_a_record(self) -> None:
         feature, _record = self.all_released()
         good = record_page(1, [delivery("F-001", "backend"), delivery("F-001", "worker")])

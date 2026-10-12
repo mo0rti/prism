@@ -160,7 +160,7 @@ class ReleaseActionsMixin:
                 409,
                 {"path": path},
             )
-        today = None if self._recovering else date.today()
+        today = None if self._recovering else date.fromisoformat(self._history_day())
         raise_first(check_record_page(path, frontmatter, body, today=today, proposal=True), path)
         number = int(RELEASE_FILE_PATTERN.match(name).group("id")[4:]) if match else 0  # type: ignore[union-attr]
         expected = next_release_number(records)
@@ -830,7 +830,8 @@ class ReleaseActionsMixin:
             raise bs.BoardError(
                 "bug_release_requires_feature",
                 f"{bug.bug_id} is linked to {facts['id']}, whose `{app}` is {stage or 'not delivered'}, not released. A bug ships with its feature: add {facts['id']} to the proposal "
-                f"with the Release row of `{app}` (it must be `ready-for-release`), or release the bug after the feature app is released.",
+                f"with the Release row of `{app}` (it must be `ready-for-release`), or release the bug after the feature app is released. "
+                f"An app of the bug that this release does not deliver is left out: the bug stays `verified` until every one of its apps is released.",
                 409,
                 {"bug": bug.bug_id, "feature": facts["id"], "app": app, "stage": stage},
             )

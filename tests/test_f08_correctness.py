@@ -7,12 +7,13 @@ from pathlib import Path
 
 from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.release_lint import validate_release_records
+from prism_cli.qa_rules import check_qa_pass_release_rows
 from prism_cli.release_rules import check_feature_release_rows, rollback_problems
-from prism_cli.wiki_model import parse_markdown_text, read_feature_evidence
+from prism_cli.wiki_model import app_stages, parse_markdown_text, read_feature_evidence
 from prism_cli.wiki_releases import ReleaseRecord, current_delivery, next_release_number, parse_record_rows, record_kinds
 from tests.qa_support import FEATURE, QaBoard, app_row, requirement_path
 from tests.release_pages import delivery, record_page, record_path, release_row
-from tests.release_support import ReleaseTests
+from tests.release_support import ReleaseTests, pending_row
 from tests.test_bug_actions import BUG, OTHER, BugBoard, fix, verification
 from tests import test_feature_scope_edit as scope_tests
 from tests.test_feature_scope_edit import with_apps
@@ -233,6 +234,82 @@ class ReleasePreservationTests(ReleaseTests):
         self.assertIn("release_row_invalid", [problem.code for problem in problems])
         record = record_page(1, [delivery("F-001", "worker")])
         self.assertEqual(("release_row_invalid", 409), self.refuse(page, record))
+
+
+class StagingRowReplacementTests(ReleaseTests):
+    """`release-done` replaces a staging row as `qa-pass` does; losing one without a replacement is still refused."""
+
+    STAGING = "| backend | staging | `build:backend#1` | — | released | — | checked |"
+    REPLACEMENT = "| backend | staging | `build:backend#1` | — | released | — | attested |"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.plant([self.STAGING])
+
+    def plant(self, staging_rows: list[str]) -> None:
+        self.planted = self.released_page([*staging_rows, pending_row("backend"), pending_row("worker")], status="ready-for-release", owner="release")
+        self.put(FEATURE, self.planted)
+
+    def release_page(self, staging_rows: list[str]) -> tuple[str, str]:
+        feature = self.released_page([*staging_rows, release_row("backend", 1), release_row("worker", 1)], content=self.planted)
+        return feature, record_page(1, [delivery("F-001", "backend"), delivery("F-001", "worker")])
+
+    def rule_problems(self, feature: str) -> list[str]:
+        _named, problems = check_feature_release_rows(
+            feature_id="F-001", old=self.evidence(), new=read_feature_evidence(_parse_markdown(feature)[1]),
+            stages={"backend": "ready-for-release", "worker": "ready-for-release"},
+            active=["backend", "worker"], policy=self.service._read_policy(), attempt_of=lambda app: 1, record_id="REL-001",
+        )
+        return [problem.code for problem in problems]
+
+    def test_a_staging_row_is_replaced_by_the_one_known_at_release(self) -> None:
+        feature, record = self.release_page([self.REPLACEMENT])
+        self.assertEqual([], self.rule_problems(feature))
+        self.settle(feature, record)
+        self.assertEqual(("released", "none"), self.status())
+        self.assertIn(self.REPLACEMENT, self.read(FEATURE))
+        self.assertNotIn(self.STAGING, self.read(FEATURE))
+        self.assertEqual(set(), self.errors())
+
+    def test_a_staging_row_kept_as_it_is_still_passes(self) -> None:
+        feature, record = self.release_page([self.STAGING])
+        self.assertEqual([], self.rule_problems(feature))
+        self.settle(feature, record)
+
+    def test_a_staging_row_lost_without_a_replacement_is_refused(self) -> None:
+        feature, record = self.release_page([])
+        self.assertEqual(["release_row_invalid"], self.rule_problems(feature))
+        self.assertEqual(("release_row_invalid", 409), self.refuse(feature, record))
+
+    def test_a_staging_row_replaced_by_a_row_of_another_app_or_target_is_refused(self) -> None:
+        for name, row in (
+            ("other app", self.REPLACEMENT.replace("| backend |", "| worker |", 1)),
+            ("other target", self.REPLACEMENT.replace("| staging |", "| canary |", 1)),
+        ):
+            with self.subTest(case=name):
+                feature, record = self.release_page([row])
+                self.assertIn("release_row_invalid", self.rule_problems(feature))
+                self.assertEqual(409, self.refuse(feature, record)[1])
+
+    def test_one_new_staging_row_replaces_one_old_row(self) -> None:
+        self.plant([self.STAGING, self.STAGING.replace("released", "failed", 1)])
+        feature, _record = self.release_page([self.REPLACEMENT])
+        self.assertEqual(["release_row_invalid"], self.rule_problems(feature))
+
+    def test_a_replacement_does_not_rescue_a_lost_authoritative_row(self) -> None:
+        feature = self.released_page([self.REPLACEMENT, release_row("worker", 1)], content=self.planted)
+        self.assertEqual(["release_row_invalid"], self.rule_problems(feature))
+
+    def test_qa_pass_and_release_done_agree_on_a_replaced_staging_row(self) -> None:
+        old = self.evidence()
+        replaced = self.released_page([self.REPLACEMENT, pending_row("backend"), pending_row("worker")], status="ready-for-release", owner="release", content=self.planted)
+        new = read_feature_evidence(_parse_markdown(replaced)[1])
+        active = ["backend", "worker"]
+        named, problems = check_qa_pass_release_rows(
+            old=old, new=new, stages=app_stages(active, old), active=active, policy=self.service._read_policy(), attempt_of=lambda app: 1
+        )
+        self.assertEqual(((), []), (named, [item.code for item in problems]))
+        self.assertEqual([], self.rule_problems(replaced))
 
 
 class BugIntegrityTests(BugBoard):
