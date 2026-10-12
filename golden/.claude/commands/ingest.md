@@ -72,7 +72,7 @@ joined by hyphens. The connected board rejects any other name.
    - A defect report: assign the next free bug number and create `knowledge/wiki/bugs/[BUG-XXX]-[slug].md`
      in the format of `knowledge/wiki/bugs/_FORMAT.md`: `status: open` and `owner: dev`, none of `deferred-reason`,
      `close-reason`, `duplicate-of` and `promoted-to`, no rows in Fix, Verification or Release, and no text or entries
-     in Evidence history (`bug_creation_invalid`). A table header and separator alone are fine: they count as empty.
+     in Evidence history (`bug_creation_invalid`). Keep each section's table header and separator exactly as `_FORMAT.md` shows them, written once: they alone count as empty.
      Set `feature` to an existing feature or `none`, and `apps` to apps of that feature. A bug is
      created and never rewritten here; `/bug-update` changes it.
    - An incident report, or an update to one: create `knowledge/wiki/incidents/[INC-XXX]-[slug].md` with the next free

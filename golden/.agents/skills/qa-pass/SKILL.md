@@ -57,7 +57,7 @@ The proposal:
 
 A defect found while testing may be a new `open` + `dev` bug page in the same proposal, in the format of
 `knowledge/wiki/bugs/_FORMAT.md`. It has no rows in Fix, Verification or Release, and no text or entries in
-Evidence history. A table header and separator alone are fine: they count as empty (`bug_creation_invalid`).
+Evidence history. Keep each section's table header and separator exactly as `_FORMAT.md` shows them, written once: they alone count as empty (`bug_creation_invalid`).
 A bug of an app being passed still blocks that app; pass only the unaffected apps.
 
 The board refuses the pass when any of these fails:

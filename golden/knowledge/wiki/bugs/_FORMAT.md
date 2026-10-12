@@ -81,8 +81,9 @@ Append-only entries, one for every action that removes evidence from the active 
 
 A new bug is `open` + `dev`, has none of `deferred-reason`, `close-reason`, `duplicate-of` and
 `promoted-to`, and has no rows in Fix, Verification or Release, and no text or entries in Evidence history
-(`bug_creation_invalid`). A table header and separator alone are fine: they count as empty, as do HTML
-comments. Omit the illustrative Evidence history text and entry above when creating a bug.
+(`bug_creation_invalid`). Fix, Verification and Release each keep the header and separator shown above, written
+once: that alone counts as empty, as do HTML comments. A second table, another header, a row or text does not.
+Omit the illustrative Evidence history text and entry above when creating a bug.
 Its ID is free (`bug_id_taken`); its `feature` names an existing feature
 or `none`, and its `apps` are apps of that feature. `qa-verify`, `qa-pass` and `qa-fail` create a
 bug in the same proposal that records the failure; `ingest` creates one from a defect report.

@@ -30,6 +30,8 @@ from prism_cli.wiki_bugs import (
     BUG_STATUS_ORDER,
     CLOSE_DISPOSITIONS,
     FEATURE_ID_PATTERN,
+    FIX_COLUMNS,
+    VERIFICATION_COLUMNS,
     BugPage,
     bugs_by_id,
     duplicate_target_problem,
@@ -42,6 +44,7 @@ from prism_cli.wiki_bugs import (
 from prism_cli.wiki_model import (
     _ENVIRONMENT_TOKEN,
     HISTORY_HEADING,
+    RELEASE_COLUMNS,
     active_scope,
     app_stages,
     bug_qa_attempt,
@@ -282,7 +285,8 @@ class BugActionsMixin:
         extra = [key for key in ("deferred-reason", "close-reason", "duplicate-of", "promoted-to") if key in frontmatter]
         if extra:
             problems.append(f"a new bug has none of {_quoted(extra)}")
-        filled = [heading for heading in ("Fix", "Verification", "Release", "Evidence history") if not section_is_empty(section_text(body, heading))]
+        documented = (("Fix", FIX_COLUMNS), ("Verification", VERIFICATION_COLUMNS), ("Release", RELEASE_COLUMNS), ("Evidence history", None))
+        filled = [heading for heading, columns in documented if not section_is_empty(section_text(body, heading), columns)]
         if filled:
             problems.append(f"the section(s) {_quoted(filled)} hold rows or text and must be empty on a new bug")
         if problems:

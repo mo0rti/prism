@@ -23,6 +23,7 @@ from prism_cli.wiki_model import (
     normalize_feature_id,
     parse_iso_date,
     read_markdown_pages,
+    remove_html_comments,
     section_text,
 )
 from prism_cli.wiki_releases import RELEASE_ID_PATTERN
@@ -39,7 +40,6 @@ INCIDENT_FIELDS = ("id", "title", "date", "status", "severity", "apps", "release
 INCIDENT_SECTIONS = ("Impact", "Timeline", "Cause", "Mitigation", "Resolution", "Follow-ups")
 # `- YYYY-MM-DD[ HH:MM[ Z|UTC|+HH:MM]]: what happened`.
 TIMELINE_LINE = re.compile(r"^[-*+]\s+(?P<date>\d{4}-\d{2}-\d{2})(?:\s+\d{2}:\d{2}(?:\s*(?:Z|UTC|[+-]\d{2}:?\d{2}))?)?:\s+(?P<text>\S.*)$")
-_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _UNKNOWN_LABEL = re.compile(r"^\*\*Unknown:\*\*", re.IGNORECASE)
 
 
@@ -50,7 +50,7 @@ def is_incident_path(relative: str) -> bool:
 def section_is_blank(body: str, heading: str) -> bool:
     """Whether a section holds no content: only whitespace and HTML comments."""
 
-    return not _COMMENT.sub("", section_text(body, heading)).strip()
+    return not remove_html_comments(section_text(body, heading)).strip()
 
 
 def timeline_items(body: str) -> tuple[list[str], list[str]]:
@@ -61,7 +61,7 @@ def timeline_items(body: str) -> tuple[list[str], list[str]]:
 
     lines: list[str] = []
     malformed: list[str] = []
-    for raw in _COMMENT.sub("", section_text(body, "Timeline")).splitlines():
+    for raw in remove_html_comments(section_text(body, "Timeline")).splitlines():
         line = raw.strip()
         if not line:
             continue
@@ -86,7 +86,7 @@ def section_layout_problem(body: str) -> str | None:
     sections = markdown_sections(body)
     headings = [section.name for section in sections]
     preamble = body.splitlines(keepends=True)[: sections[0].heading_line] if sections else [body]
-    if _COMMENT.sub("", "".join(preamble)).strip():
+    if remove_html_comments("".join(preamble)).strip():
         return "the page has text above `## Impact`; an incident page holds only its six sections"
     if headings != list(INCIDENT_SECTIONS):
         listed = ", ".join(f"`## {heading}`" for heading in INCIDENT_SECTIONS)
@@ -97,12 +97,12 @@ def section_layout_problem(body: str) -> str | None:
 def cause_is_unknown(body: str) -> bool:
     """Whether `## Cause` says the cause is not known yet: it starts with the `**Unknown:**` label."""
 
-    text = _COMMENT.sub("", section_text(body, "Cause")).strip()
+    text = remove_html_comments(section_text(body, "Cause")).strip()
     return bool(_UNKNOWN_LABEL.match(text))
 
 
 def _normalized(text: str) -> str:
-    return re.sub(r"\s+", " ", _COMMENT.sub("", text)).strip()
+    return re.sub(r"\s+", " ", remove_html_comments(text)).strip()
 
 
 def section_changed(old_body: str, new_body: str, heading: str) -> bool:
