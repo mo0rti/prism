@@ -1886,6 +1886,39 @@ class EvidenceHistoryValidatorTests(unittest.TestCase):
         wrong_action = self.after(self.entry(["- Archived evidence:", f"  {self.ARCHIVED}"], heading=f"### {CHECK_DATE.isoformat()} - reopen-dev"))
         self.assertEqual("history_entry_required", self.error(wrong_action).code)
 
+    def test_earlier_entries_are_compared_by_their_content(self) -> None:
+        placeholder = "Append-only dated entries; empty until evidence is archived."
+        archive = ["- Archived evidence:", f"  {self.ARCHIVED}"]
+        earlier = self.entry(archive, heading="### 2026-08-01 - qa-fail")
+        self.before = _append_body_section(self.service, self.before, "Evidence history", f"{placeholder}\n\n{earlier}")
+        self.old_frontmatter = _parse_markdown(self.before)[0]
+        appended = self.entry(archive)
+        without_row = _replace_body_section(self.service, self.before, "Delivery evidence", "\n".join(self.TABLE[:2]))
+
+        def after(history: str) -> str:
+            return _replace_body_section(self.service, without_row, "Evidence history", history)
+
+        # The placeholder sentence may stay or go, and blank lines or trailing spaces after the earlier entry do not matter.
+        self.check(after(f"{placeholder}\n\n{earlier}\n\n{appended}"))
+        self.check(after(f"{earlier}\n\n\n\n{appended}"))
+        self.check(after(f"{placeholder}\n\n{earlier}  \n   \n\n{appended}"))
+        # A change to the earlier entry is refused, and the message says which entry changed.
+        changed = self.error(after(f"{placeholder}\n\n{earlier.replace('saved outcome', 'saved result')}\n\n{appended}"))
+        self.assertEqual(("history_not_append_only", 409, "### 2026-08-01 - qa-fail"), (changed.code, changed.status, changed.details["entry"]))
+        self.assertIn("`### 2026-08-01 - qa-fail` (number 1) was changed", changed.message)
+        missing = self.error(after(placeholder))
+        self.assertEqual("history_not_append_only", missing.code)
+        self.assertIn("`### 2026-08-01 - qa-fail` (number 1) is missing", missing.message)
+        # Two new entries are still refused.
+        two = self.error(after(f"{earlier}\n\n{appended}\n\n{self.entry(archive, heading='### 2026-10-12 - reopen-dev')}"))
+        self.assertEqual("history_entry_required", two.code)
+
+    def test_the_archived_section_name_ignores_letter_case(self) -> None:
+        for name in ("delivery evidence", "DELIVERY EVIDENCE", "Delivery   Evidence"):
+            with self.subTest(name=name):
+                row = self.ARCHIVED.replace("| Delivery evidence |", f"| {name} |", 1)
+                self.check(self.after(self.entry(["- Archived evidence:", f"  {row}"])))
+
     def test_the_entry_names_its_apps_tracks_and_invalidations(self) -> None:
         archive = ["- Archived evidence:", f"  {self.ARCHIVED}"]
         good = self.entry(archive)

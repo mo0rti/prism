@@ -492,6 +492,60 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual("blocked", linked["classification"])
         self.assertEqual("blocked", next(check for check in linked["checks"] if check["code"] == "api-contract")["status"])
 
+    def test_a_draft_contract_the_api_surface_no_longer_declares_does_not_block_dev_start(self) -> None:
+        self._write_all_capabilities()
+        self._write_completed_advisory_review()
+
+        def feature_body(surface: str) -> str:
+            return (
+                FEATURE_TEMPLATE.format(feature_id="F-001", title="Payout summary", status="ready-for-dev", owner="dev", platforms="backend", advisory="done", advisory_reason="")
+                + f"## API surface\n{surface}\n"
+            )
+
+        requirements_dir = self.wiki_root / "app-requirements"
+        requirements_dir.mkdir(parents=True, exist_ok=True)
+        (requirements_dir / "F-001-backend.md").write_text(
+            "---\nfeature-id: F-001\napp: backend\nstatus: pending\n---\n\n## Acceptance criteria\n- Data is prepared.\n",
+            encoding="utf-8",
+        )
+        contracts = self.wiki_root / "api-contracts"
+        contracts.mkdir(parents=True, exist_ok=True)
+        own = contracts / "F-001.md"
+        own.write_text("---\nfeature-id: F-001\nversion: 1\nstatus: draft\n---\n\n## Endpoints\nGET /payouts\n", encoding="utf-8")
+
+        def api_check() -> str:
+            transition = build_transition_preflight(self.root, "F-001", action="dev-start")["facts"]["transition"]
+            return next(check for check in transition["checks"] if check["code"] == "api-contract")["status"]
+
+        def codes(code: str) -> list:
+            return [item for item in lint_wiki(self.root).diagnostics if item.code == code]
+
+        # The surface declares no API: the draft of the feature's own blocks nothing, and lint warns so a human deletes the page.
+        self._write_feature(status="ready-for-dev", owner="dev", advisory="done", body=feature_body("None."))
+        self.assertEqual("pass", api_check())
+        self.assertEqual([], codes("api-contract-not-ready"))
+        warnings = codes("unused-api-contract")
+        self.assertEqual(["warning"], [item.severity for item in warnings])
+        self.assertEqual(("F-001.md", "F-001"), (Path(warnings[0].path).name, warnings[0].feature_id))
+        self.assertIn("`F-001.md`", warnings[0].message)
+        # The surface declares API work: the draft blocks, at preflight and in lint, and nothing asks for its deletion.
+        self._write_feature(status="ready-for-dev", owner="dev", advisory="done", body=feature_body("GET /payouts returns the summary."))
+        self.assertEqual("blocked", api_check())
+        self.assertEqual(["error"], [item.severity for item in codes("api-contract-not-ready")])
+        self.assertEqual([], codes("unused-api-contract"))
+        # A draft that another feature owns and this one links still blocks, whatever this surface declares.
+        own.unlink()
+        shared = contracts / "SHARED.md"
+        shared.write_text("---\nfeature-id: F-999\nversion: 1\nstatus: draft\n---\n\n## Endpoints\nGET /shared\n", encoding="utf-8")
+        (requirements_dir / "F-001-backend.md").write_text(
+            "---\nfeature-id: F-001\napp: backend\nstatus: pending\n---\n\n## API contract reference\nSee [shared](../api-contracts/SHARED.md).\n",
+            encoding="utf-8",
+        )
+        self._write_feature(status="ready-for-dev", owner="dev", advisory="done", body=feature_body("None."))
+        self.assertEqual("blocked", api_check())
+        self.assertEqual(1, len(codes("api-contract-not-ready")))
+        self.assertEqual([], codes("unused-api-contract"))
+
     def test_advisory_required_actions_block_development_but_deferred_actions_do_not(self) -> None:
         self._write_all_capabilities()
         body = FEATURE_TEMPLATE.format(

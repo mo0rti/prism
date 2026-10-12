@@ -845,7 +845,10 @@ def _lint_api_contracts_implemented(
                 feature.feature_id,
             )
         )
+    # A feature requires the status only of its own contracts; one it links and another feature owns is that feature's to deliver.
     for page in api_pages:
+        if _contract_feature_id(page) != normalize_feature_id(feature.feature_id):
+            continue
         if page.frontmatter.get("status") != "implemented":
             diagnostics.append(
                 _diag(
@@ -892,6 +895,15 @@ def _lint_delivered_apps(
             )
     diagnostics.extend(_lint_api_contracts_implemented(feature, requirement_pages, pages, wiki_root, "Delivered"))
     return diagnostics
+
+
+def _contract_feature_id(page: MarkdownPage) -> str | None:
+    """The normalized feature ID an API contract page belongs to: its `feature-id`, or the one its file name starts with."""
+
+    value = page.frontmatter.get("feature-id")
+    if not isinstance(value, str) or not value.strip():
+        value = feature_id_from_path(page.path)
+    return normalize_feature_id(value) if isinstance(value, str) and value.strip() else None
 
 
 def _api_contract_pages_for_feature(
@@ -1298,9 +1310,22 @@ def _lint_api_contract_blockers(
         for contract in api_by_feature.get(feature.feature_id, []):
             if contract not in references:
                 references.append(contract)
+        api_declared = api_surface_declared(section_text(feature.page.body, "API surface"))
         for contract in sorted(references, key=lambda page: page.path.as_posix()):
             if contract.frontmatter.get("status") == "draft":
                 contract_name = contract.path.name
+                if not api_declared and _contract_feature_id(contract) == feature_id:
+                    # A re-specification dropped the API work this draft was written for: a human deletes the page.
+                    diagnostics.append(
+                        _diag(
+                            "unused-api-contract",
+                            "warning",
+                            contract.path,
+                            f"API contract `{contract_name}` is a draft of `{feature.feature_id}`, whose API surface declares no API work; delete the page, or declare the API work.",
+                            feature.feature_id,
+                        )
+                    )
+                    continue
                 diagnostics.append(
                     _diag(
                         "api-contract-not-ready",

@@ -20,6 +20,7 @@ from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.roles import RolePredicate, required_roles
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_model import (
+    _split_table_row,
     app_stage,
     app_stages,
     app_stages_text,
@@ -303,6 +304,58 @@ class ParserTests(unittest.TestCase):
         ]
         self.assertEqual((2, 1), (release_attempt(records, "F-001", "backend"), release_attempt(records, "F-001", "worker")))
 
+    def test_archived_row_section_names_ignore_letter_case(self) -> None:
+        delivery = "| delivery evidence |" + delivery_row("backend").strip("|")
+        qa = "| QA Verification | backend | AC-1@v1:x | automated | `build:backend#1` | ci | qa-1 | fail | run | checked |"
+        history = "\n".join(
+            [
+                "### 2026-10-01 - qa-fail",
+                "- Reason: The saved outcome is not read back.",
+                "- Affected apps: backend",
+                "- Participants: none",
+                "- Affected tracks: none",
+                "- Archived evidence:",
+                f"  {delivery}",
+                f"  {qa}",
+                "- Reaffirmed evidence:",
+                "  | RELEASE | backend | production | `build:backend#1` | release-1 | pending | — | — |",
+                "- Requirement/API invalidations: No requirement or API page is invalidated.",
+                "- Linked bugs: none",
+            ]
+        )
+        entries = parse_evidence_history(body_of([], history=history))
+        self.assertEqual(["Delivery evidence", "QA verification"], [section for section, _cells in entries[0].archived_rows])
+        self.assertEqual(["Release"], [section for section, _cells in entries[0].reaffirmed_rows])
+        self.assertEqual(2, evidence_generation(entries, "Delivery evidence", "backend"))
+        self.assertEqual(2, qa_attempt("backend", entries))
+
+    def test_a_list_nested_under_a_label_names_the_apps(self) -> None:
+        history = "\n".join(
+            [
+                "### 2026-10-01 - qa-fail",
+                "- Reason: The saved outcome is not read back.",
+                "- Affected apps:",
+                "  - backend",
+                "  - `worker`",
+                "- Participants: none",
+                "- Affected tracks: ui, technical",
+                "- Archived evidence:",
+                "- Requirement/API invalidations: No requirement or API page is invalidated.",
+                "- Linked bugs: none",
+            ]
+        )
+        entry = parse_evidence_history(body_of([], history=history))[0]
+        self.assertEqual(["backend", "worker"], entry.affected_apps)
+        self.assertEqual([], entry.participants)
+        self.assertEqual(["ui", "technical"], entry.names("Affected tracks"))
+
+    def test_an_escaped_pipe_stays_inside_its_cell(self) -> None:
+        self.assertEqual(["a \\| b", "c"], _split_table_row("| a \\| b | c |"))
+        self.assertEqual(["x", "y", "z"], _split_table_row("|x|y|z|"))
+        rows, problems = parse_delivery_rows(body_of([], delivery=["| backend | `build:backend#1` | none | Reviewed `a \\| b` record | Review check passed | checked |"]))
+        self.assertEqual([], problems)
+        self.assertEqual("Reviewed `a \\| b` record", rows[0].implementation)
+
 
 class CriteriaTests(unittest.TestCase):
     """CONTRACTS 4.1: criterion IDs, the applies-to forms, the revision and the high-water mark."""
@@ -328,6 +381,36 @@ class CriteriaTests(unittest.TestCase):
         self.assertEqual(["criterion-id-required", "invalid-applies-to", "invalid-applies-to"], [item.problems[0][0] for item in items[3:]])
         self.assertTrue(all(item.revision for item in items[:3]))
         self.assertTrue(all(item.revision is None for item in items[3:]))
+
+    def test_an_indented_sub_bullet_joins_the_criterion_above(self) -> None:
+        body = (
+            "## Acceptance criteria\n"
+            "- [ ] AC-1 [backend] A reviewer can save the outcome:\n"
+            "  - the summary is stored\n"
+            "    - and read back\n"
+            "\t- with its follow-up\n"
+            "- [ ] AC-2 [worker] The worker receives it.\n"
+            "  1. as a message\n\n"
+            "## Next\nText.\n"
+        )
+        items = parse_criteria(body, "F-001")
+        self.assertEqual([1, 2], [item.number for item in items])
+        self.assertEqual([(), ()], [item.problems for item in items])
+        self.assertEqual("A reviewer can save the outcome: the summary is stored and read back with its follow-up", items[0].text)
+        self.assertEqual("The worker receives it. as a message", items[1].text)
+        # A list that is indented as a whole is still a list of criteria.
+        indented = parse_criteria("## Acceptance criteria\n  - [ ] AC-1 [backend] One.\n  - [ ] AC-2 [backend] Two.\n", "F-001")
+        self.assertEqual([1, 2], [item.number for item in indented])
+
+    def test_a_label_with_its_colon_outside_the_bold_is_a_label(self) -> None:
+        inside, outside = parse_criteria(
+            "## Acceptance criteria\n- [ ] **Decided:** AC-1 [backend] The outcome is saved.\n- [ ] **Decided**: AC-2 [backend] The outcome is saved.\n",
+            "F-001",
+        )
+        self.assertEqual(("Decided", "Decided"), (inside.label, outside.label))
+        self.assertEqual(((), ()), (inside.problems, outside.problems))
+        self.assertEqual((1, 2), (inside.number, outside.number))
+        self.assertEqual(outside.text, inside.text)
 
     def test_the_revision_covers_the_id_scope_label_and_text(self) -> None:
         base = criterion_revision("F-001", 1, ["backend"], False, "", "Text.")

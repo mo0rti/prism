@@ -1104,7 +1104,9 @@ class EvidenceProblem:
 
 
 def _split_table_row(line: str) -> list[str]:
-    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+    """The cells of a table row; an escaped pipe stays inside its cell, as `section_is_empty` reads it."""
+
+    return [cell.strip() for cell in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
 
 
 def _plain_header(cell: str) -> str:
@@ -1507,6 +1509,8 @@ HISTORY_LABELS = (
 )
 ARCHIVED_SECTIONS = ("Delivery evidence", "QA verification", "Release", "Fix", "Verification")
 _HEADING_ANY = re.compile(r"^\s{0,3}#{1,6}\s")
+_NESTED_ITEM = re.compile(r"^[ \t]*[-*+][ \t]+")
+_ARCHIVED_SECTION_NAMES = {name.casefold(): name for name in ARCHIVED_SECTIONS}
 
 
 @dataclass(frozen=True)
@@ -1520,10 +1524,18 @@ class HistoryEntry:
     fields: Mapping[str, str]
 
     def names(self, label: str) -> list[str]:
-        """The identifiers a labelled field lists (`none` and brackets are ignored)."""
+        """The identifiers a labelled field lists (`none` and brackets are ignored).
 
-        value = self.fields.get(label, "").splitlines()[0] if self.fields.get(label) else ""
-        items = [part.strip().strip("`[]").strip() for part in re.split(r"[,;]", value)]
+        They follow the label on its line, separated by commas or semicolons, or form a list nested under it
+        (`- Affected apps:` and then one `- app` line each).
+        """
+
+        lines = self.fields.get(label, "").splitlines()
+        if not lines:
+            return []
+        # The text after the label opens the field; when it is empty the first line of the field is the first nested item.
+        values = [_NESTED_ITEM.sub("", lines[0]), *(_NESTED_ITEM.sub("", line) for line in lines[1:] if _NESTED_ITEM.match(line))]
+        items = [part.strip().strip("`[]").strip() for value in values for part in re.split(r"[,;]", value)]
         return [item for item in items if item and item.lower() != "none"]
 
     @property
@@ -1535,7 +1547,7 @@ class HistoryEntry:
         return self.names("Participants")
 
     def rows(self, label: str) -> list[tuple[str, tuple[str, ...]]]:
-        """The table rows of a block field as (section name, the row's own cells)."""
+        """The table rows of a block field as (canonical section name, the row's own cells); letter case of the name does not matter."""
 
         found: list[tuple[str, tuple[str, ...]]] = []
         for line in self.fields.get(label, "").splitlines():
@@ -1543,9 +1555,12 @@ class HistoryEntry:
             if not stripped.startswith("|"):
                 continue
             cells = _split_table_row(stripped)
-            if _is_separator_row(cells) or not cells or cells[0] not in ARCHIVED_SECTIONS:
+            if _is_separator_row(cells) or not cells:
                 continue
-            found.append((cells[0], tuple(cells[1:])))
+            section = _ARCHIVED_SECTION_NAMES.get(" ".join(cells[0].split()).casefold())
+            if section is None:
+                continue
+            found.append((section, tuple(cells[1:])))
         return found
 
     @property
@@ -1984,7 +1999,7 @@ def contract_page_citation(frontmatter: Mapping[str, Any], body: str) -> str | N
 # --- Acceptance criteria -------------------------------------------------------------------------------------------
 
 _CRITERION_ITEM = re.compile(r"^(?P<indent>[ \t]*)(?:[-*+]|\d+[.)])[ \t]+(?:\[(?P<check>[ xX])\][ \t]+)?(?P<rest>.*)$")
-_CRITERION_LABEL = re.compile(r"^\*\*(?P<label>Decided|Observed|Proposed|Assumed|Unknown):\*\*[ \t]*(?P<rest>.*)$")
+_CRITERION_LABEL = re.compile(r"^\*\*(?P<label>Decided|Observed|Proposed|Assumed|Unknown)(?::\*\*|\*\*:)[ \t]*(?P<rest>.*)$")
 _CRITERION_ID = re.compile(r"^AC-(?P<number>[0-9]+)(?:[ \t]+(?P<rest>.*))?$")
 _CRITERION_SCOPE = re.compile(r"^\[(?P<scope>[^\]]*)\][ \t]*(?P<text>.*)$")
 _LINK_IN_TEXT = re.compile(r"(?<!!)\[([^\]]*)\]\(\s*<?([^)\s>]+)>?[^)]*\)")
@@ -2068,14 +2083,21 @@ def _raw_visible_lines(text: str) -> list[tuple[int, str]]:
 def parse_criteria(body: str, feature_id: str) -> list[Criterion]:
     """The acceptance criteria of a feature page body, with their IDs, `applies-to`, text and revisions.
 
-    Every list item of `## Acceptance criteria` is one criterion; an indented line below it continues it.
+    Every list item of `## Acceptance criteria` is one criterion; an indented line below it continues it, and so does a list
+    item indented deeper than the criterion (a sub-bullet).
     """
 
     section = section_text(body, "Acceptance criteria")
     items: list[tuple[int, str, bool, str]] = []  # (line, raw first line, checked, text so far)
+    indent = 0  # the indentation of the last criterion
     for index, raw in _raw_visible_lines(section):
         match = _CRITERION_ITEM.match(raw)
-        if match:
+        width = len(match.group("indent").expandtabs(4)) if match else 0
+        if match and items and width > indent:
+            line, first, checked, text = items[-1]
+            items[-1] = (line, first, checked, f"{text} {match.group('rest').strip()}".strip())
+        elif match:
+            indent = width
             items.append((index, raw.strip(), (match.group("check") or " ").lower() == "x", match.group("rest").strip()))
         elif items and raw.strip() and raw[:1] in {" ", "\t"}:
             line, first, checked, text = items[-1]
