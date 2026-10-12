@@ -20,7 +20,8 @@ Prism 0.7.1 fixes the defects found by the full Fable 5.1 and GPT-6 Astra review
 - The packaged skills and `AGENTS.md` require `prism-kit>=0.7.1`, because their bug guidance relies on the empty-section rule below.
 - A feature changes and requires the status only of its own API contract. A return, `qa-fail` or reopen of a consumer feature no longer lowers the owner's contract, and a consumer's `dev-done` no longer waits for the owner's contract to be `implemented`; a linked contract of another feature is still checked for its binding and digest.
 - `AGENTS.md`, `ACTIONS.md` and the AI agents guide state the current preflight versions (capability 3, transition 2), that each command's contract marker carries the version its own file states, the full role lists for `ask` and `wiki-owner`, the `release-done` arguments, and design tracks instead of design exemptions.
-- The QA skills read every bug page in `knowledge/wiki/bugs/`, as the board requires when a proposal creates a bug. The `release-done` skill writes a bug's Release rows only for the apps the release delivers.
+- The QA skills read every bug page in `knowledge/wiki/bugs/`, as the board requires when a proposal creates a bug. The `release-done` skill writes a bug's Release rows only for the apps the release delivers. The `ingest` skill lists the processed source in `sources` only on a page whose format has that field; an incident record has none.
+- The docs state the real-host coverage: every journey step has passed on Codex with the gated approvals in the browser, in separate runs.
 
 ### Fixed
 

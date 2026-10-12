@@ -55,7 +55,7 @@ No other host setting is needed. In particular, `MAX_MCP_OUTPUT_TOKENS` is not n
 ## Not tested
 
 - Remote hosting, Cursor and other hosts.
-- Claude Code through the gated flow, and any host through the journey steps from technical design on.
+- Claude Code through the gated flow, and one Codex run through all 23 journey steps (each step has passed in separate runs).
 - Codex with its TOML configuration file instead of `-c` overrides, and Claude Code in interactive mode.
 - A host with a small tool-result limit.
 
