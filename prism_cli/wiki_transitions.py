@@ -2440,7 +2440,10 @@ def _contract_owner(page: Any) -> str | None:
 
 
 def matching_contract_pages(feature: FeaturePage, wiki_pages: list[Any]) -> list[Any]:
-    """The API contract pages that cover a feature: its own, those with its `feature-id`, and those its pages link."""
+    """The API contract pages that cover a feature: its own, those with its `feature-id`, and those its pages link.
+
+    A `draft` contract of the feature's own does not cover it while its API surface declares no API work.
+    """
 
     path = feature.page.path
     feature_id = normalize_feature_id(feature.feature_id)
@@ -2478,6 +2481,11 @@ def matching_contract_pages(feature: FeaturePage, wiki_pages: list[Any]) -> list
             for page in wiki_pages:
                 if page.path.resolve() == target and page not in matching:
                     matching.append(page)
+    if not api_surface_declared(section_text(feature.page.body, "API surface")):
+        # A draft of the feature's own that a re-specification no longer needs is no obligation: nothing waits for it, requires it
+        # to be `implemented` or binds a delivery to it. Lint warns (`unused-api-contract`) so a human deletes the page.
+        feature_id = normalize_feature_id(feature.feature_id)
+        matching = [page for page in matching if not (page.frontmatter.get("status") == "draft" and _contract_owner(page) == feature_id)]
     return matching
 
 
@@ -2485,10 +2493,6 @@ def _api_contract_check(feature: FeaturePage, wiki_pages: list[Any], *, require_
     path = feature.page.path
     section_applicable = api_surface_declared(section_text(feature.page.body, "API surface"))
     matching = matching_contract_pages(feature, wiki_pages)
-    if not section_applicable:
-        # A draft of the feature's own that a re-specification no longer needs does not block; lint warns so a human deletes it.
-        feature_id = normalize_feature_id(feature.feature_id)
-        matching = [page for page in matching if not (page.frontmatter.get("status") == "draft" and _contract_owner(page) == feature_id)]
     if not matching and not section_applicable:
         return _check("api-contract", "pass", "No API surface is declared for this feature.", path)
     if not matching:

@@ -6405,6 +6405,20 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                         found.add(target.relative_to(resolved_root).as_posix())
                     except ValueError:
                         continue
+        if not api_surface_declared(section_text(_parse_markdown(supplied[feature["path"]], feature["path"])[1], "API surface")):
+            # A draft of the feature's own that a re-specification no longer needs is no obligation: it is not required to be
+            # `implemented`, bound to a delivery or lowered by a return. Lint warns (`unused-api-contract`) so a human deletes it.
+            unused: set[str] = set()
+            for relative in found:
+                text = supplied.get(relative)
+                if text is None:
+                    text = self._optional_text(self._safe_path(relative, allow_missing=True))
+                if text is None:
+                    continue
+                owner = _page_feature_id(text, PurePosixPath(relative).stem)
+                if isinstance(owner, str) and owner.casefold() == feature_id and _parse_markdown(text, relative)[0].get("status") == "draft":
+                    unused.add(relative)
+            found -= unused
         return found
 
     def _validate_evidence_history(

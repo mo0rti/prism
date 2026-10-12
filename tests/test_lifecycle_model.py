@@ -21,6 +21,7 @@ from prism_cli.roles import RolePredicate, required_roles
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_model import (
     _split_table_row,
+    api_surface_declared,
     app_stage,
     app_stages,
     app_stages_text,
@@ -42,6 +43,7 @@ from prism_cli.wiki_model import (
     read_wiki_settings,
     release_attempt,
     row_digest,
+    section_text,
     stale_qa_rows,
     status_rank,
     workflow_policy,
@@ -1081,6 +1083,51 @@ class FlowTests(_Workspace):
         self.assertEqual({self.human.participant_id}, self.service._excluded_approvers(operation))
         found = self.service._producing_operation("delivery", "F-001", "backend", 1, produced[0]["row_digest"])
         self.assertEqual({"status": "match", "operation_id": operation}, found)
+
+    def test_an_unused_draft_contract_blocks_no_step_of_the_progression_and_lint_only_warns(self) -> None:
+        specified = _set_feature_stage(self.read(FEATURE), "specified", "po", self.service)
+        self.apply_skill("po-specify", [{"path": FEATURE, "content": specified}])
+        self.human_action("po-handoff")
+        self.human_action("design-start")
+        handed = _set_feature_stage(self.read(FEATURE), "ready-for-dev", "dev", self.service)
+        self.apply_skill(
+            "design-handoff",
+            [
+                {"path": FEATURE, "content": handed},
+                {"path": "knowledge/wiki/app-requirements/F-001-backend.md", "content": self.requirement("backend", "pending")},
+                {"path": "knowledge/wiki/app-requirements/F-001-worker.md", "content": self.requirement("worker", "pending")},
+            ],
+        )
+        # A re-specification dropped the API work and left the feature's own contract as a draft.
+        contract = "knowledge/wiki/api-contracts/F-001.md"
+        (self.root / contract).parent.mkdir(parents=True, exist_ok=True)
+        (self.root / contract).write_bytes(b"---\nfeature-id: F-001\nversion: 1\nstatus: draft\n---\n\n## Endpoints\n- `GET /reviews` lists reviews.\n")
+        surface = _parse_markdown(self.read(FEATURE))[1]
+        self.assertFalse(api_surface_declared(section_text(surface, "API surface")))
+
+        def lint(code: str) -> list:
+            return [item for item in lint_wiki(self.root).diagnostics if item.code == code]
+
+        # The same page with a declared API surface keeps every obligation: the draft blocks `dev-start`.
+        original = self.read(FEATURE)
+        declared = _replace_body_section_text(original, "API surface", "`GET /reviews` lists reviews.")
+        (self.root / FEATURE).write_bytes(declared.encode("utf-8"))
+        blocked = self.service.preview_transition(self.human, "F-001", "dev-start", {"semantic_review_acknowledged": True})
+        self.assertFalse(blocked["applicable"])
+        self.assertEqual("blocked", next(check for check in blocked["checks"] if check["code"] == "api-contract")["status"])
+        self.assertEqual(["error"], [item.severity for item in lint("api-contract-not-ready")])
+        (self.root / FEATURE).write_bytes(original.encode("utf-8"))
+        # With no API work declared, the progression goes through and lint reports only the warning.
+        started = self.human_action("dev-start")
+        self.assertEqual("pass", next(check for check in started["checks"] if check["code"] == "api-contract")["status"])
+        self.assertNotIn("source-integrity:unused-api-contract", {check["code"] for check in started["checks"]})
+        self.apply_skill("dev-done", self.deliver("backend", "in-dev", "dev"))
+        self.apply_skill("dev-done", self.deliver("worker", "ready-for-qa", "qa"))
+        self.assertEqual(("ready-for-qa", "qa"), self.status())
+        self.assertEqual(["warning"], [item.severity for item in lint("unused-api-contract")])
+        for code in ("api-contract-not-ready", "delivered-api-contract", "stale-delivery-evidence"):
+            self.assertEqual([], lint(code), code)
+        self.assertIn("status: draft", self.read(contract))
 
     def test_a_dev_done_status_must_be_the_minimum_of_the_stages(self) -> None:
         self.walk_to_dev()
