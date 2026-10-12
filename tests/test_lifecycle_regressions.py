@@ -828,7 +828,8 @@ class LifecycleRegressionTests(unittest.TestCase):
         )
         self._write_review(required_action=False, deferred_action=False)
         requirement = self._write_requirement(status="in-progress")
-        api = self._write_api(status="agreed")
+        # The contract carries the feature's own `feature-id`: a feature answers for the status of only its own contracts.
+        api = self._write_api(status="agreed", feature_id="F-001")
         self._cite_contract()
 
         request = self._transition("dev-done")

@@ -2430,6 +2430,15 @@ def _requirements_check(feature: FeaturePage, requirement_pages: list[Any], *, r
     return _check("app-requirements", "pass", message, path)
 
 
+def _contract_owner(page: Any) -> str | None:
+    """The normalized feature ID an API contract page belongs to: its `feature-id`, or the one its file name starts with."""
+
+    value = page.frontmatter.get("feature-id")
+    if not isinstance(value, str) or not value.strip():
+        value = feature_id_from_path(page.path)
+    return normalize_feature_id(value) if isinstance(value, str) and value.strip() else None
+
+
 def matching_contract_pages(feature: FeaturePage, wiki_pages: list[Any]) -> list[Any]:
     """The API contract pages that cover a feature: its own, those with its `feature-id`, and those its pages link."""
 
@@ -2476,6 +2485,10 @@ def _api_contract_check(feature: FeaturePage, wiki_pages: list[Any], *, require_
     path = feature.page.path
     section_applicable = api_surface_declared(section_text(feature.page.body, "API surface"))
     matching = matching_contract_pages(feature, wiki_pages)
+    if not section_applicable:
+        # A draft of the feature's own that a re-specification no longer needs does not block; lint warns so a human deletes it.
+        feature_id = normalize_feature_id(feature.feature_id)
+        matching = [page for page in matching if not (page.frontmatter.get("status") == "draft" and _contract_owner(page) == feature_id)]
     if not matching and not section_applicable:
         return _check("api-contract", "pass", "No API surface is declared for this feature.", path)
     if not matching:

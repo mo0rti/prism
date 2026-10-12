@@ -10,7 +10,7 @@ from typing import Any
 from prism_cli.app_model import WorkspaceModel
 from prism_cli.status import detect_setup_state, list_queue_items
 from prism_cli.wiki_lint import FRESHNESS_CODES, WIKI_BLOCKER_CODES, lint_wiki
-from prism_cli.wiki_index import general_page_kind
+from prism_cli.wiki_index import general_page_kind, is_page_path
 from prism_cli.wiki_links import NON_PAGE_FILENAMES, markdown_files, page_references_feature
 from prism_cli.wiki_model import (
     FEATURE_STATUS_ORDER,
@@ -29,7 +29,7 @@ from prism_cli.wiki_model import (
     within_wiki_read_scope,
 )
 from prism_cli.wiki_query import build_envelope
-from prism_cli.qa_rules import QA_STAGES
+from prism_cli.qa_rules import QA_FAIL_STAGES
 from prism_cli.wiki_transitions import (
     ACTION_BY_ID,
     evaluate_transition_summaries,
@@ -40,6 +40,9 @@ from prism_cli.workspace import inspect_workspace
 
 
 
+# The folders of the records and design pages a feature links; they are not graph nodes, and a link to one is not dangling.
+_RECORD_FOLDERS = frozenset({"releases", "bugs", "incidents", "technical-design"})
+
 # The release actions of a feature that is not yet released: they settle apps that are ready for release.
 _RELEASE_ACTIONS = frozenset({"release-done", "release-return-dev"})
 
@@ -49,7 +52,8 @@ def _offered_transitions(node: GraphNode, records: list[dict[str, Any]]) -> tupl
     release actions only once one of its apps is ready for release."""
 
     stages = [stage for _app, stage in node.app_stages or ()]
-    in_qa = any(stage in QA_STAGES for stage in stages)
+    # An app at `ready-for-release` can still fail QA (F15), so it counts with the apps in QA.
+    in_qa = any(stage in QA_FAIL_STAGES for stage in stages)
     offered = list(records)
     if "ready-for-release" not in stages:
         offered = [record for record in offered if record.get("action") not in _RELEASE_ACTIONS]
@@ -434,11 +438,16 @@ def _collect_edges(
 
 
 def _is_general_page(target: Path, wiki_root: Path) -> bool:
+    """Whether a link target is a page the graph leaves out of its nodes: a general page, or a release record, bug, incident or technical design page."""
+
     try:
         relative = target.relative_to(wiki_root.resolve()).as_posix()
     except ValueError:
         return False
-    return general_page_kind(relative) is not None and target.is_file()
+    if general_page_kind(relative) is not None:
+        return target.is_file()
+    parts = relative.split("/")
+    return len(parts) == 2 and parts[0] in _RECORD_FOLDERS and is_page_path(relative) and target.is_file()
 
 
 # ---------------------------------------------------------------------------

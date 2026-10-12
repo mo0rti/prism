@@ -41,7 +41,6 @@ from prism_cli.wiki_bugs import (
 )
 from prism_cli.wiki_model import (
     _ENVIRONMENT_TOKEN,
-    HISTORY_HEADING,
     active_scope,
     app_stages,
     bug_qa_attempt,
@@ -782,11 +781,19 @@ class BugActionsMixin:
         """
 
         relative = context["relative"]
-        old_history = section_text(context["old_body"], "Evidence history")
-        new_history = section_text(context["new_body"], "Evidence history")
-        if not new_history.startswith(old_history):
-            raise bs.BoardError("history_not_append_only", "Evidence history must preserve all previous entries and append one new entry.", 409, {"path": relative})
-        addition = new_history[len(old_history):]
+        old_entries = parse_evidence_history(context["old_body"])
+        new_entries = parse_evidence_history(context["new_body"])
+        for index, old_entry in enumerate(old_entries):
+            changed = index >= len(new_entries) or bs._history_entry_text(new_entries[index]) != bs._history_entry_text(old_entry)
+            if changed:
+                verb = "is missing" if index >= len(new_entries) else "was changed"
+                raise bs.BoardError(
+                    "history_not_append_only",
+                    f"Evidence history must preserve all previous entries and append one new entry; the entry `{old_entry.heading}` (number {index + 1}) {verb}.",
+                    409,
+                    {"path": relative, "entry": old_entry.heading},
+                )
+        addition = new_entries[len(old_entries):]
         today = self._history_day()  # type: ignore[attr-defined]
 
         def key(section: str, cells: Iterable[str]) -> tuple[str, tuple[str, ...]]:
@@ -814,7 +821,7 @@ class BugActionsMixin:
             added = Counter({item: count for item, count in added.items() if item[0] != "Verification"})
         if added:
             raise bs.BoardError("evidence_unexpectedly_added", f"`{action}` cannot add, replace or duplicate active evidence outside its prescribed rows.", 409, {"path": relative})
-        if not addition.strip():
+        if not addition:
             if require_entry or active_before != active_after or expected_counts:
                 raise bs.BoardError(
                     "history_entry_required",
@@ -823,7 +830,7 @@ class BugActionsMixin:
                     {"path": relative, "action": action},
                 )
             return None
-        headings = [(match.group(1), match.group(2)) for line in addition.splitlines() if (match := HISTORY_HEADING.match(line.strip()))]
+        headings = [(item.date, item.action) for item in addition]
         if len(headings) != 1 or headings[0] != (today, action):
             raise bs.BoardError(
                 "history_entry_required",
@@ -831,7 +838,7 @@ class BugActionsMixin:
                 409,
                 {"path": relative, "action": action},
             )
-        entry = parse_evidence_history(context["new_body"])[-1]
+        entry = addition[0]
         reason = entry.fields.get("Reason", "").strip()
         if len(reason) < 8:
             raise bs.BoardError("impact_review_required", "Evidence history must include a `- Reason:` bullet with substantive text.", 409, {"label": "Reason"})

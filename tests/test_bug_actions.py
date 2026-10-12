@@ -346,6 +346,27 @@ class BugActionTests(BugBoard):
         history = "\n" + self.entry("bug-reopen", archived)
         self.assertEqual("bug_reopen_after_release", self.refuse(self.bug("open", history=history), approver=self.pat).code)
 
+    def test_earlier_history_entries_are_compared_by_their_content(self) -> None:
+        placeholder = "Append-only dated entries; empty until evidence is archived."
+        archived = [("Fix", fix_row("worker", "build:worker#2")), ("Verification", verification_row("worker", "build:worker#2"))]
+        earlier = self.entry("bug-reopen", archived, day="2026-08-01")
+        appended = self.entry("bug-reopen", archived)
+        closed_fields = {"close-reason": "wont-fix: The report was withdrawn."}
+        self.plant("closed", fix=fix(), verification=verification(), history=f"{placeholder}\n\n{earlier}", extra=closed_fields)
+        # Blank lines and trailing spaces after the earlier entry, and a dropped placeholder sentence, are not a change.
+        self.update(self.bug("open", history=f"{earlier}\n\n\n{appended}"), approver=self.pat)
+        self.plant("closed", fix=fix(), verification=verification(), history=f"{placeholder}\n\n{earlier}", extra=closed_fields)
+        self.update(self.bug("open", history=f"{placeholder}\n\n{earlier}  \n   \n\n{appended}"), approver=self.pat)
+        # A change to an earlier entry is refused, and the message names the entry.
+        self.plant("closed", fix=fix(), verification=verification(), history=f"{placeholder}\n\n{earlier}", extra=closed_fields)
+        changed = self.refuse(self.bug("open", history=f"{placeholder}\n\n{earlier.replace('saved summary', 'saved result')}\n\n{appended}"), approver=self.pat)
+        self.assertEqual("history_not_append_only", changed.code)
+        self.assertIn("`### 2026-08-01 - bug-reopen` (number 1) was changed", changed.message)
+        self.assertEqual("### 2026-08-01 - bug-reopen", changed.details["entry"])
+        missing = self.refuse(self.bug("open", history=placeholder), approver=self.pat)
+        self.assertEqual("history_not_append_only", missing.code)
+        self.assertIn("`### 2026-08-01 - bug-reopen` (number 1) is missing", missing.message)
+
 
 class DuplicateAndPromotionTests(BugBoard):
     def plant_pair(self, **canonical) -> None:

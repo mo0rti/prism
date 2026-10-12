@@ -76,7 +76,6 @@ from prism_cli.wiki_operations import (
     row_kind,
     table_text,
 )
-from prism_cli.wiki_model import HISTORY_HEADING as _HISTORY_HEADING
 from prism_cli.wiki_model import (
     APP_REVALIDATION_DOMAINS,
     APP_STAGE_ORDER,
@@ -6142,7 +6141,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             )
 
     def _assert_delivered_pages_complete(self, supplied: Mapping[str, str], feature: Mapping[str, Any], named_apps: tuple[str, ...]) -> None:
-        """The requirement of each delivered app is `done`, and the API contracts are `implemented` once every app is delivered (CONTRACTS 2.5)."""
+        """The requirement of each delivered app is `done`, and the feature's own API contracts are `implemented` once every app is delivered (CONTRACTS 2.5)."""
 
         feature_id = str(feature["id"])
         for app_id in named_apps:
@@ -6163,7 +6162,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         evidence = read_feature_evidence(_parse_markdown(supplied[feature["path"]], feature["path"])[1])
         stages = app_stages(active_scope(_scope_of(after) or [], self._model), evidence)
         if stages and all(APP_STAGE_ORDER.index(stage) >= APP_STAGE_ORDER.index("ready-for-qa") for stage in stages.values()):
-            for contract in sorted(self._feature_api_contract_paths(feature, supplied)):
+            for contract in sorted(self._own_api_contract_paths(feature, supplied)):
                 text = supplied.get(contract) or self._optional_text(self._safe_path(contract, allow_missing=True))
                 status = _parse_markdown(text, contract)[0].get("status") if text is not None else None
                 if status != "implemented":
@@ -6222,6 +6221,26 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             {"path": canonical, "feature_id": feature_id, "status": "agreed", "sections": sections},
         )
 
+    def _own_api_contract_paths(self, feature: Mapping[str, Any], supplied: Mapping[str, str]) -> set[str]:
+        """The API contracts of the feature itself: those among its covering contracts whose `feature-id` is the feature's.
+
+        A feature changes and requires the status of only these. A contract it links but another feature owns is still read
+        for the binding and digest checks (`_feature_api_contract_paths`).
+        """
+
+        feature_id = str(feature["id"]).casefold()
+        own: set[str] = set()
+        for relative in self._feature_api_contract_paths(feature, supplied):
+            text = supplied.get(relative)
+            if text is None:
+                text = self._optional_text(self._safe_path(relative, allow_missing=True))
+            if text is None:
+                continue
+            owner = _page_feature_id(text, PurePosixPath(relative).stem)
+            if isinstance(owner, str) and owner.casefold() == feature_id:
+                own.add(relative)
+        return own
+
     def _feature_api_contract_paths(self, feature: Mapping[str, Any], supplied: Mapping[str, str]) -> set[str]:
         """Workspace paths of the API contracts that cover a feature: its own pages, pages it links and pages in the proposal."""
 
@@ -6274,11 +6293,19 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
 
         _old_fm, old_body = _parse_markdown(original, relative)
         _new_fm, new_body = _parse_markdown(proposed, relative)
-        old_history = _section(old_body, "Evidence history")
-        new_history = _section(new_body, "Evidence history")
-        if not new_history.startswith(old_history):
-            raise BoardError("history_not_append_only", "Evidence history must preserve all previous entries and append one new entry.", 409)
-        addition = new_history[len(old_history):]
+        old_entries = parse_evidence_history(old_body)
+        new_entries = parse_evidence_history(new_body)
+        for index, old_entry in enumerate(old_entries):
+            changed = index >= len(new_entries) or _history_entry_text(new_entries[index]) != _history_entry_text(old_entry)
+            if changed:
+                verb = "is missing" if index >= len(new_entries) else "was changed"
+                raise BoardError(
+                    "history_not_append_only",
+                    f"Evidence history must preserve all previous entries and append one new entry; the entry `{old_entry.heading}` (number {index + 1}) {verb}.",
+                    409,
+                    {"path": relative, "entry": old_entry.heading},
+                )
+        addition = new_entries[len(old_entries):]
         old_evidence = read_feature_evidence(old_body)
         new_evidence = read_feature_evidence(new_body)
 
@@ -6310,7 +6337,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         expected_rows = list(expected_archive)
         expected = {key(section, cells): (section, cells) for section, cells in expected_rows}
         expected_counts = Counter(key(section, cells) for section, cells in expected_rows)
-        if not addition.strip():
+        if not addition:
             if require_entry or removed or expected:
                 raise BoardError(
                     "history_entry_required",
@@ -6319,7 +6346,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                     {"path": relative, "action": action},
                 )
             return
-        headings = [(match.group(1), match.group(2)) for line in addition.splitlines() if (match := _HISTORY_HEADING.match(line.strip()))]
+        headings = [(item.date, item.action) for item in addition]
         if len(headings) != 1 or headings[0] != (self._history_day(), action):
             raise BoardError(
                 "history_entry_required",
@@ -6327,7 +6354,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 409,
                 {"path": relative, "action": action},
             )
-        entry = parse_evidence_history(new_body)[-1]
+        entry = addition[0]
         labels = {
             "Reason": 8,
             "Affected apps": 1,
@@ -8555,6 +8582,12 @@ def _normalized_table_text(text: str) -> str:
     """Case-folded text with whitespace collapsed and no space around table pipes."""
 
     return re.sub(r"\s*\|\s*", "|", re.sub(r"\s+", " ", text)).strip().casefold()
+
+
+def _history_entry_text(entry: Any) -> tuple[str, str]:
+    """An Evidence history entry as it is compared: its heading and its lines, without trailing blanks after the last line or on a line."""
+
+    return entry.heading.strip(), "\n".join(line.rstrip() for line in entry.text.splitlines()).strip()
 
 
 def _page_feature_id(content: str, filename: str) -> str | None:

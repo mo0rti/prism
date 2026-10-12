@@ -45,7 +45,8 @@ corresponding status board, index, log or evidence records. `D` is the design ow
 | `scope-edit` | `ready-for-dev` up to `released` | the minimum of the app stages after the edit | Remove an app from the scope (the `feature-scope` skill from `ready-for-dev` on). |
 
 `/dev-done` from `ready-for-dev` also starts development in the same write. Before `ready-for-dev`,
-`/feature-scope` is an ordinary write that edits `apps` and the App scope section and, at `ready-for-design`
+`/feature-scope` is an ordinary write that edits `apps`, the App scope section and the `applies-to` of the acceptance
+criteria (each criterion names only apps of the scope, and each app of the scope has a criterion) and, at `ready-for-design`
 or `in-design`, sets the owner to the design owner of the new scope.
 
 Bug handling is the `bug-update` skill, which selects one of the bug actions of `bugs/_FORMAT.md`; a bug is released inside

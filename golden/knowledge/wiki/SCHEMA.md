@@ -428,7 +428,8 @@ The headers are exact. The status board is a current-state page: it has no date 
 the row of a feature whenever its status, owner, `advisory-review` field, tracks, app stages or
 open bugs change, and add the row when a feature is created. `Design tracks` is
 `ui: <state>; technical: <state>` once the feature has tracks, and `—` before. `App stages` lists
-the stage of each active app as `app: stage` joined by `; ` from `in-dev` on, and is `—` before.
+the stage of each active app as `app: stage` joined by `; ` from `in-dev` on, and is `—` before; the cell
+of a `released` feature lists its whole scope, retired apps included.
 `Open bugs` lists the bugs of the feature that are not `released` or `closed`, or `—`.
 
 - **Bugs** lists every bug that is not `released` or `closed`.
