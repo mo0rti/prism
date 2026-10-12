@@ -105,7 +105,8 @@ joined by hyphens. The connected board rejects any other name.
    Mark each claim with an evidence label (`**Observed:**`, `**Decided:**` for what the user
    confirmed in step 6, `**Proposed:**`, `**Assumed:**`) and link the processed path of the
    source file as the evidence of every Decided or Observed claim, for example
-   `../../intake/processed/[folder-name]/notes.md`. List the processed path in `sources`.
+   `../../intake/processed/[folder-name]/notes.md`. List the processed path in `sources` on a page whose
+   `_FORMAT.md` frontmatter has that field. An incident record has no `sources` field: its Timeline links the intake item instead.
 8. Add or replace the `knowledge/wiki/index.md` line of every page you write: one sentence
    in the present tense that states what the page says now (an incident's line states its impact). Add a row to
    `knowledge/wiki/status-board.md` for each new feature. A new or changed bug or incident also changes the board's
