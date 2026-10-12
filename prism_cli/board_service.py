@@ -1719,8 +1719,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         )
 
     @staticmethod
-    def _evidence_row_digests(kind: str, app: str, text: str, relative: str) -> set[str]:
-        """The digests of the evidence rows of ``kind`` for ``app`` that a page holds; none for a page that does not parse."""
+    def _evidence_row_digests(kind: str, app: str, text: str, relative: str) -> set[str] | None:
+        """The digests of the evidence rows of ``kind`` for ``app`` that a page holds, or None for a page that does not parse."""
 
         try:
             body = _parse_markdown(text, relative)[1]
@@ -1730,8 +1730,27 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             if kind == "fix":
                 return {row_digest(row.cells) for row in parse_fix_rows(body)[0] if row.app == app}
         except (BoardError, ValueError):
-            pass
+            return None
         return set()
+
+    def _evidence_shown_absent(self, produced: Mapping[str, Any], paths: Iterable[str]) -> bool:
+        """Whether every page that was to hold the evidence row can be read and no longer holds it.
+
+        A page that is missing holds nothing. A page that cannot be read or parsed shows nothing, so the evidence is not
+        shown absent: a whole-file conflict is not proof that the row is gone.
+        """
+
+        for relative in paths:
+            try:
+                text = self._optional_text(self._safe_path(relative, allow_missing=True))
+            except (BoardError, OSError, ValueError):
+                return False
+            if text is None:
+                continue
+            held = self._evidence_row_digests(str(produced["kind"]), str(produced["app"]), text, relative)
+            if held is None or str(produced["row_digest"]) in held:
+                return False
+        return True
 
     @staticmethod
     def _provenance_root(intent: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -1742,9 +1761,10 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         return intent
 
     def _unlanded_provenance(self, intent: Mapping[str, Any], applied: Iterable[str]) -> list[Mapping[str, Any]]:
-        """The evidence an operation reserved whose producing page write did not land.
+        """The evidence an operation reserved that is shown to be absent from the pages that were to hold it.
 
-        A row is kept when it cannot be tied to a write of the operation, or when that write is among ``applied``.
+        A row is kept when it cannot be tied to a write of the operation, when that write is among ``applied``, when a page
+        still holds the row (a page edited after the write is a conflict, not an absence) and when a page cannot be inspected.
         """
 
         landed = set(applied)
@@ -1756,9 +1776,9 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 for write in intent.get("writes", [])
                 if write.get("role") not in {*_ROW_ROLES, "log"}
                 and isinstance(write.get("after"), str)
-                and digest in self._evidence_row_digests(str(produced["kind"]), str(produced["app"]), write["after"], write["path"])
+                and digest in (self._evidence_row_digests(str(produced["kind"]), str(produced["app"]), write["after"], write["path"]) or ())
             ]
-            if producing and not landed.intersection(producing):
+            if producing and not landed.intersection(producing) and self._evidence_shown_absent(produced, producing):
                 released.append(produced)
         return released
 

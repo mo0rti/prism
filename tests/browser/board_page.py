@@ -212,7 +212,7 @@ class BoardPage:
         return self.page.locator("#board-session")
 
     def operations_button(self) -> Locator:
-        return self.page.get_by_role("button", name=re.compile(r"^Review \d+ pending board operations$"))
+        return self.page.get_by_role("button", name=re.compile(r"^Review \d+ pending( and \d+ abandoned)? board operations$"))
 
     def proposals_button(self) -> Locator:
         """The session-bar button that opens the proposals waiting for approval (a human who may write sees it)."""

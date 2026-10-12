@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import unittest
+from unittest.mock import patch
 
 import yaml
 
@@ -275,6 +276,37 @@ class RecoveryTests(ScenarioCase):
             self.assertEqual(harness.actor("agent").participant_id, events[-1]["receipt"]["actor"]["participant_id"])
             self.assertEqual(human.participant_id, events[-1]["receipt"]["recovered_by"]["participant_id"])
             run.effect("the receipt and the journal keep both actors: the agent as original actor, the human as the one who recovered")
+            self.assertEqual([], self.page_errors)
+
+    def test_scenario_i_a_listed_abandoned_operation_offers_repair_after_a_reload(self) -> None:
+        """An abandoned, unrepaired operation is listed in the Operations dialog with a Repair control, and Repair opens Proposals."""
+
+        with self.scenario("I-repair-listed-abandoned-operation"):
+            page = self.page
+            harness = self.harness
+            operation_id = "agent-interrupted-operation"
+            self.seed_interrupted_agent_operation(FEATURES_BY_ID["F-002"], operation_id)
+            human = harness.actor("human")
+            service = harness.service
+            review = service.operation(human, operation_id)["recovery_review_revision"]
+            failure = BoardError("checks_changed", "Current workflow checks no longer permit this action.", 409)
+            with patch.object(service, "_revalidate_recovery", side_effect=failure):
+                self.assertEqual("abandoned", service.recover(human, operation_id, review, True, abandon=True)["state"])
+            self.assertEqual([operation_id], [item["operation_id"] for item in service.discover(human)["abandoned_operations"]])
+            board = self.sign_in("human")
+            self.open_board(board)
+            expect(page.get_by_role("button", name="Review 0 pending and 1 abandoned board operations")).to_be_visible()
+            board.operations_button().click()
+            dialog = page.get_by_role("dialog", name="Review pending operations")
+            expect(dialog).to_be_visible()
+            expect(dialog.get_by_text("Abandoned operations open to repair · 1")).to_be_visible()
+            expect(dialog.get_by_text(operation_id)).to_be_visible()
+            repair = dialog.get_by_role("button", name="Repair operation")
+            expect(repair).to_be_enabled()
+            repair.click()
+            proposals = page.get_by_role("dialog", name="Proposals waiting for approval")
+            expect(proposals).to_be_visible()
+            expect(proposals).to_contain_text("operation-repair")
             self.assertEqual([], self.page_errors)
 
     def test_scenario_i_defect_operations_dialog_does_not_trap_focus(self) -> None:

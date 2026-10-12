@@ -6,7 +6,7 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ### Fixed
 
-- Abandoning an operation releases the evidence whose producing page write never landed, so the next `dev-done` or fix for that app is not refused with `evidence_generation_conflict`. A repair of the abandoned operation binds the released evidence to it again, and the conflict error names the producing operation and its state.
+- Abandoning an operation releases the evidence its pages are shown not to hold (a page that still holds the row, or cannot be read, keeps its binding), so the next `dev-done` or fix for that app is not refused with `evidence_generation_conflict`. A repair of the abandoned operation binds the released evidence to it again, and the conflict error names the producing operation and its state.
 - The Proposals dialog shows the exact `log.md` entry an approval writes, with the approver, their roles and the proposer.
 - A malformed `review_revision` answers `approval_review_required` (409) instead of an internal error.
 - `discover` and `list_proposals` walk the knowledge tree once per call and check staleness only for the proposals they return.
