@@ -2746,9 +2746,10 @@ function renderBoardSession() {
     const actor = state.boardActor;
     const pending = Array.isArray(state.boardPendingOperations) ? state.boardPendingOperations : [];
     const abandonedCount = Array.isArray(state.boardAbandonedOperations) ? state.boardAbandonedOperations.length : 0;
+    const operationsLabel = abandonedCount ? `Review ${pending.length} pending and ${abandonedCount} abandoned board operations` : `Review ${pending.length} pending board operations`;
     const actorText = `${boundedText(actor.name || actor.participant_id || "Human participant", 80)} · ${actor.kind === "human" ? "human" : "participant"}${actor.writable === true ? " · writable" : " · read only"}`;
     const proposalsButton = connectedHumanWriter() ? `<button type="button" data-board-proposals aria-label="Review the proposals that wait for approval">Proposals</button>` : "";
-    el.innerHTML = `<span class="actor" title="${escapeHtml(actorText)}">${escapeHtml(actorText)}</span>${proposalsButton}${pending.length || abandonedCount ? `<button type="button" data-board-operations aria-label="Review ${pending.length} pending and ${abandonedCount} abandoned board operations">Operations ${pending.length + abandonedCount}</button>` : ""}<button type="button" data-board-logout>Sign out</button>`;
+    el.innerHTML = `<span class="actor" title="${escapeHtml(actorText)}">${escapeHtml(actorText)}</span>${proposalsButton}${pending.length || abandonedCount ? `<button type="button" data-board-operations aria-label="${operationsLabel}">Operations ${pending.length + abandonedCount}</button>` : ""}<button type="button" data-board-logout>Sign out</button>`;
   } else if (state.boardConnection === "unauthenticated") {
     el.innerHTML = `<span>Board session expired</span><button type="button" data-board-retry>Reconnect</button>`;
   } else if (state.boardConnection === "error") {

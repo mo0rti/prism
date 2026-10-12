@@ -81,8 +81,12 @@ class AbandonedDevDoneTests(lifecycle.FlowTests):
         intent = json.loads(self.service.store.connection.execute("SELECT intent_json FROM operations WHERE state = 'applied' ORDER BY created_at DESC LIMIT 1").fetchone()[0])
         self.assertEqual("backend", intent["produces_evidence"][0]["app"])
         self.assertEqual([], self.service._unlanded_provenance(intent, [LIFECYCLE_FEATURE]), "the page landed: the row stays bound")
-        self.assertEqual(intent["produces_evidence"], self.service._unlanded_provenance(intent, []), "the page did not land: the row is released")
+        self.assertEqual([], self.service._unlanded_provenance(intent, []), "the page still holds the row, so it is not shown absent")
+        before = next(write["before"] for write in intent["writes"] if write["path"] == LIFECYCLE_FEATURE)
+        self.put_page(before)
+        self.assertEqual(intent["produces_evidence"], self.service._unlanded_provenance(intent, []), "the page does not hold the row: released")
         self.assertEqual(intent["produces_evidence"], self.service._unlanded_provenance(intent, ["knowledge/wiki/status-board.md"]))
+        self.assertEqual([], self.service._unlanded_provenance(intent, [LIFECYCLE_FEATURE]), "a landed write is kept whatever the page says")
         unrelated = {**intent, "writes": [write for write in intent["writes"] if write["path"] != LIFECYCLE_FEATURE]}
         self.assertEqual([], self.service._unlanded_provenance(unrelated, []), "a row that no write of the operation holds is not released")
 
@@ -113,6 +117,66 @@ class AbandonedDevDoneTests(lifecycle.FlowTests):
         self.assertIn("`dev-done-1`", error.message)
         self.assertIn("`pending`", error.message)
         self.assertEqual(("dev-done-1", "pending"), (error.details["operation_id"], error.details["operation_state"]))
+
+    def interrupt_after_the_page_write(self, operation: str) -> dict:
+        """Apply the `dev-done` and stop the process right after its feature page is written."""
+
+        preview = self.skill("dev-done", self.deliver("backend", "in-dev", "dev"))
+        revision = self.service.get_preview(self.human, preview["preview_id"])["approval"]["review_revision"]
+        original = self.service._apply_write
+        written = []
+
+        def stop_after_the_page(write, **kwargs):
+            if LIFECYCLE_FEATURE in written:
+                raise _Crash()
+            written.append(write["path"])
+            return original(write, **kwargs)
+
+        with patch.object(self.service, "_apply_write", side_effect=stop_after_the_page):
+            with self.assertRaises(_Crash):
+                self.service.apply(self.human, preview["preview_id"], operation, revision, True)
+        self.assertIn(LIFECYCLE_FEATURE, written)
+        return preview
+
+    def test_evidence_that_is_still_on_an_edited_page_stays_bound_and_separation_still_verifies(self) -> None:
+        self.walk_to_dev()
+        preview = self.interrupt_after_the_page_write("dev-done-1")
+        produced = preview["produces_evidence"][0]
+        # An unrelated note is appended by hand: the page is now a conflict, but its Delivery row is byte-identical.
+        self.put_page(self.read(LIFECYCLE_FEATURE) + "\nAn unrelated note added by hand.\n")
+        cells = read_feature_evidence(lifecycle._parse_markdown(self.read(LIFECYCLE_FEATURE))[1]).delivery[0].cells
+        self.assertEqual(produced["row_digest"], row_digest(cells))
+        self.abandon("dev-done-1")
+        self.assertEqual([("dev-done-1", "delivery", "F-001", "backend", 1)], self.provenance(), "the evidence exists, so its binding stays")
+        found = self.service._separation_lookup({"kind": "delivery", "item_id": "F-001", "app": "backend", "generation": 1, "row_digest": produced["row_digest"]})
+        self.assertEqual(("match", "dev-done-1", [self.human.participant_id]), (found["status"], found["operation_id"], found["excluded"]))
+        # A later verification by the approver of the evidence is still refused as separation requires.
+        self.assertEqual({self.human.participant_id}, self.service._excluded_approvers("dev-done-1"))
+
+    def test_evidence_edited_away_after_the_crash_is_released(self) -> None:
+        self.walk_to_dev()
+        self.interrupt_after_the_page_write("dev-done-1")
+        intent = json.loads(self.service.store.connection.execute("SELECT intent_json FROM operations WHERE operation_id = 'dev-done-1'").fetchone()[0])
+        before = next(write["before"] for write in intent["writes"] if write["path"] == LIFECYCLE_FEATURE)
+        self.put_page(before + "\nThe delivery row was removed by hand.\n")
+        self.abandon("dev-done-1")
+        self.assertEqual([], self.provenance())
+        second = self.skill("dev-done", self.deliver("backend", "in-dev", "dev"))
+        self.assertEqual("applied", apply_preview(self.service, self.agent, second, "dev-done-2", approver=self.human)["state"])
+        self.assertEqual([("dev-done-2", "delivery", "F-001", "backend", 1)], self.provenance())
+
+    def test_a_page_that_cannot_be_inspected_keeps_the_binding(self) -> None:
+        self.walk_to_dev()
+        self.interrupt_dev_done("dev-done-1")
+        intent = json.loads(self.service.store.connection.execute("SELECT intent_json FROM operations WHERE operation_id = 'dev-done-1'").fetchone()[0])
+        produced = intent["produces_evidence"]
+        self.assertEqual(produced, self.service._unlanded_provenance(intent, []), "the page is readable and has no row: released")
+        with patch.object(self.service, "_optional_text", side_effect=OSError("sharing violation")):
+            self.assertEqual([], self.service._unlanded_provenance(intent, []), "an unreadable page keeps the binding")
+        self.put_page("not a wiki page: the front matter is gone")
+        self.assertEqual([], self.service._unlanded_provenance(intent, []), "an unparseable page keeps the binding")
+        (self.root / LIFECYCLE_FEATURE).unlink()
+        self.assertEqual(produced, self.service._unlanded_provenance(intent, []), "a page that is missing holds no row")
 
     def put_page(self, content: str) -> None:
         (self.root / LIFECYCLE_FEATURE).write_bytes(content.encode("utf-8"))

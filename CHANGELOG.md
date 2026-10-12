@@ -29,7 +29,7 @@ Prism 0.7.1 fixes the defects found by the full Fable 5.1 and GPT-6 Astra review
 - HTML comment stripping in the wiki readers is one forward scan, so a page with many unterminated or repeated comments no longer slows lint and the board.
 - A release record approved on a later day than its preview applies and keeps the preview day, instead of failing with `record_date_invalid`.
 - `release-done` may replace a staging row with one for the same app and target, as `qa-pass` already could. `bug_release_requires_feature` says that an app the release does not deliver is left out.
-- Abandoning an operation releases the evidence whose producing page write never landed, so the next `dev-done` or fix for that app is not refused with `evidence_generation_conflict`. A repair of the abandoned operation binds the released evidence to it again, and the conflict error names the producing operation and its state.
+- Abandoning an operation releases the evidence its pages are shown not to hold (a page that still holds the row, or cannot be read, keeps its binding), so the next `dev-done` or fix for that app is not refused with `evidence_generation_conflict`. A repair of the abandoned operation binds the released evidence to it again, and the conflict error names the producing operation and its state.
 - The Proposals dialog shows the exact `log.md` entry an approval writes, with the approver, their roles and the proposer.
 - A malformed `review_revision` answers `approval_review_required` (409) instead of an internal error.
 - `discover` and `list_proposals` walk the knowledge tree once per call and check staleness only for the proposals they return.
