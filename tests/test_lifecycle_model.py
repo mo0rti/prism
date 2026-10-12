@@ -176,9 +176,20 @@ class ParserTests(unittest.TestCase):
             from prism_cli.wiki_model import section_text
 
             header = section_text(body, heading).strip()
-            body = _replace_body_section_text(body, heading, f"<!-- before -->\n{header}\n\n{header}\n<!-- after -->")
+            body = _replace_body_section_text(body, heading, f"<!-- before -->\n{header}\n<!-- after -->")
         evidence = read_feature_evidence(body)
         self.assertEqual(((), (), (), ()), (evidence.delivery, evidence.qa, evidence.release, evidence.problems))
+
+    def test_a_second_header_only_table_is_a_shape_problem(self) -> None:
+        from prism_cli.wiki_model import section_text
+
+        for heading in ("Delivery evidence", "QA verification", "Release"):
+            with self.subTest(heading=heading):
+                body = body_of([])
+                header = section_text(body, heading).strip()
+                evidence = read_feature_evidence(_replace_body_section_text(body, heading, f"{header}\n\n{header}"))
+                self.assertEqual(((), (), ()), (evidence.delivery, evidence.qa, evidence.release))
+                self.assertTrue(any("more than one table header" in problem.message for problem in evidence.problems), evidence.problems)
 
     def test_a_table_is_read_by_its_header_and_not_inside_fences_or_comments(self) -> None:
         # Case, bold and backticks of the header cells are ignored; another header is a problem and yields no rows.
@@ -676,6 +687,20 @@ class LintTests(_Workspace):
                     self.seed(status, owner, _replace_body_section_text(base, heading, populated))
                     self.assertIn("app-row-ahead-of-status", self.codes())
 
+    def test_a_separator_after_a_row_does_not_hide_the_row_from_lint(self) -> None:
+        for status, owner in (("raw", "po"), ("specified", "po"), ("in-design", "tech-lead")):
+            base = self.page(status, owner, self.BOTH, self.criteria())
+            for heading, header, row in (
+                ("Delivery evidence", DELIVERY_HEADER, delivery_row("backend")),
+                ("QA verification", QA_HEADER, qa_row("backend", [ref(1, self.BOTH, TEXT_ONE)], "`build:backend#1`")),
+                ("Release", RELEASE_HEADER, release_row("backend")),
+            ):
+                with self.subTest(status=status, heading=heading):
+                    populated = table(header, [row])
+                    separator = populated.splitlines()[1]
+                    self.seed(status, owner, _replace_body_section_text(base, heading, f"{populated}\n{separator}"))
+                    self.assertIn("app-row-ahead-of-status", self.codes())
+
     def delivered(self, apps: list[str] | None = None) -> list[str]:
         return [delivery_row(app) for app in apps or self.BOTH]
 
@@ -851,6 +876,21 @@ class FlowTests(_Workspace):
                 self.skill("po-specify", [{"path": FEATURE, "content": changed}])
                 changed = _replace_body_section_text(specified, heading, populated)
                 error = self.rejection("po-specify", [{"path": FEATURE, "content": changed}])
+                self.assertEqual("evidence_sections_not_empty", error.code)
+                self.assertEqual([heading], error.details["sections"])
+
+    def test_specification_preview_refuses_a_row_followed_by_a_separator(self) -> None:
+        specified = _set_feature_stage(self.read(FEATURE), "specified", "po", self.service)
+        self.skill("po-specify", [{"path": FEATURE, "content": specified}])
+        tables = {
+            "Delivery evidence": table(DELIVERY_HEADER, [delivery_row("backend")]),
+            "QA verification": table(QA_HEADER, [qa_row("backend", [ref(1, self.BOTH, TEXT_ONE)], "`build:backend#1`")]),
+            "Release": table(RELEASE_HEADER, [release_row("backend")]),
+        }
+        for heading, populated in tables.items():
+            with self.subTest(heading=heading):
+                hidden = f"{populated}\n{populated.splitlines()[1]}"
+                error = self.rejection("po-specify", [{"path": FEATURE, "content": _replace_body_section_text(specified, heading, hidden)}])
                 self.assertEqual("evidence_sections_not_empty", error.code)
                 self.assertEqual([heading], error.details["sections"])
 

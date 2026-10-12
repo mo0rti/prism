@@ -823,20 +823,51 @@ def has_section(body: str, heading: str) -> bool:
     return any(section.name.casefold() == wanted for section in markdown_sections(body))
 
 
-def section_is_empty(text: str) -> bool:
-    """Whether section text contains only whitespace, HTML comments or tables without data rows."""
+def remove_html_comments(text: str) -> str:
+    """The text without its terminated HTML comments, found in one forward pass.
 
-    lines = [line.strip() for line in re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL).splitlines() if line.strip()]
-    if len(lines) % 2:
+    Each `<!--` is removed up to and including the next `-->`. An unterminated `<!--` and everything after it stay: no
+    later `<!--` can be closed either, so the scan stops there instead of searching the rest of the text again.
+    """
+
+    parts: list[str] = []
+    position = 0
+    while True:
+        opening = text.find("<!--", position)
+        if opening < 0:
+            break
+        closing = text.find("-->", opening + 4)
+        if closing < 0:
+            break
+        parts.append(text[position:opening])
+        position = closing + 3
+    parts.append(text[position:])
+    return "".join(parts)
+
+
+def section_is_empty(text: str, columns: tuple[str, ...] | None = None) -> bool:
+    """Whether section text is blank, only HTML comments, or exactly the header-only table of `columns`.
+
+    The table is one header row whose cells (read as `parse_evidence_table` reads a header) are `columns`, then one
+    separator row with a delimiter cell per column, each line indented by at most three spaces. A data row, a second
+    table, a stray separator, text, another header, an indented code block or a fenced table is not empty, and neither
+    is an unterminated `<!--` with the text after it. `columns=None` accepts only blank text and comments.
+    """
+
+    lines = [line for line in remove_html_comments(text).splitlines() if line.strip()]
+    if not lines:
+        return True
+    if columns is None or len(lines) != 2:
         return False
-    for header, separator in zip(lines[::2], lines[1::2]):
-        if "|" not in header or "|" not in separator:
-            return False
-        cells = re.split(r"(?<!\\)\|", header.strip("|"))
-        delimiters = re.split(r"(?<!\\)\|", separator.strip("|"))
-        if len(cells) != len(delimiters) or not all(re.fullmatch(r":?-+:?", cell.strip()) for cell in delimiters):
-            return False
-    return True
+    header, separator = lines
+    if any(len(line) - len(line.lstrip(" ")) > 3 or line.lstrip(" ")[:1].isspace() for line in lines):
+        return False
+    if "|" not in header or "|" not in separator:
+        return False
+    if tuple(_plain_header(cell) for cell in _split_table_row(header)) != columns:
+        return False
+    delimiters = _split_table_row(separator)
+    return len(delimiters) == len(columns) and all(re.fullmatch(r":?-+:?", cell) for cell in delimiters)
 
 
 def body_without_sections(body: str, headings: Iterable[str]) -> str:
@@ -1092,14 +1123,13 @@ def parse_evidence_table(
 ) -> tuple[list[tuple[str, ...]], list[EvidenceProblem]]:
     """The data rows of the table under `## heading`, as cell tuples, and the problems with its shape.
 
-    Empty sections have no rows or shape problems. Text without a table has no parseable rows; rules that require
-    emptiness check it separately with `section_is_empty`. A populated table must start with the header `columns`
-    (case, bold and backticks are ignored) and every row must have one cell per column.
-    Lines inside code fences and HTML comments are not read.
+    A section with no text, or with text and no table, has no rows and no problem: an empty section is the state before
+    the evidence exists. A table must start with the header `columns` (case, bold and backticks are ignored) and every
+    row must have one cell per column. Lines inside code fences and HTML comments are not read.
     """
 
     section = section_text(body, heading)
-    if section_is_empty(section):
+    if not section.strip():
         return [], []
     lines = _visible_evidence_table_lines(section)
     if not lines:
@@ -2405,18 +2435,57 @@ def _visible_markdown_lines(text: str) -> list[str]:
                 line = line.split("-->", 1)[1].strip()
             else:
                 continue
-        while "<!--" in line:
-            before, remainder = line.split("<!--", 1)
-            if "-->" in remainder:
-                line = before + remainder.split("-->", 1)[1]
-            else:
-                line = before
-                in_comment = True
-                break
+        line, in_comment = _strip_line_comments(line)
         line = line.strip()
         if line:
             visible.append(line)
     return visible
+
+
+def _strip_line_comments(line: str) -> tuple[str, bool]:
+    """The line without its terminated HTML comments, and whether it ends in an unterminated `<!--` (which is dropped).
+
+    The first `<!--` is removed up to and including the next `-->`, and the scan starts again on what is left, so a
+    comment can also be closed by text on both sides of a removed one (`<!<!-- a -->--` leaves `<!--`). The scan keeps
+    the kept text as ranges of `line` and moves forward with `str.find`, so it reads each character a bounded number
+    of times however many comments the line holds.
+    """
+
+    kept: list[list[int]] = []
+    position = 0
+    while True:
+        # An opener can be completed by the end of the kept text and the first characters after the last comment.
+        tail = ""
+        for start, end in reversed(kept):
+            tail = line[max(start, end - (3 - len(tail))):end] + tail
+            if len(tail) >= 3:
+                break
+        joined = tail + line[position:position + 3]
+        straddle = next((index for index in range(len(tail)) if joined.startswith("<!--", index)), None)
+        if straddle is not None:
+            drop = len(tail) - straddle
+            while drop and kept:
+                start, end = kept[-1]
+                if end - start <= drop:
+                    drop -= end - start
+                    kept.pop()
+                else:
+                    kept[-1][1] = end - drop
+                    drop = 0
+            after_opener = position + 4 - (len(tail) - straddle)
+        else:
+            opening = line.find("<!--", position)
+            if opening < 0:
+                if position < len(line):
+                    kept.append([position, len(line)])
+                return "".join(line[start:end] for start, end in kept), False
+            if position < opening:
+                kept.append([position, opening])
+            after_opener = opening + 4
+        closing = line.find("-->", after_opener)
+        if closing < 0:
+            return "".join(line[start:end] for start, end in kept), True
+        position = closing + 3
 
 
 def _substantive_evidence_cell(value: str) -> bool:

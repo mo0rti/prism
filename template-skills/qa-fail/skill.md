@@ -49,7 +49,7 @@ linked bug. A linked bug is listed under `- Linked bugs:` of the history entry, 
 `open`, `in-fix` or `fixed`, and is not deferred. Record the failure first with `@@invoke:qa-verify@@`, or create the bug in
 this proposal (a new `open` + `dev` page under `knowledge/wiki/bugs/`, in the format of `bugs/_FORMAT.md`).
 A new bug has no rows in Fix, Verification or Release, and no text or entries in Evidence history.
-A table header and separator alone are fine: they count as empty (`bug_creation_invalid`).
+Keep each section's table header and separator exactly as `_FORMAT.md` shows them, written once: they alone count as empty (`bug_creation_invalid`).
 
 The proposal, in one write:
 
