@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date
 
 from prism_cli.wiki_releases import read_release_records, record_kinds, release_attempt_of
 from tests.qa_support import DELIVERY_HEADER, QA_HEADER, RELEASE_HEADER, append_history, history_entry, requirement_path
@@ -123,6 +124,13 @@ class RollbackTests(ReleaseTests):
         self.assertEqual(("released", "none"), self.status())
         self.assertEqual("rolled-back", self.record(2)[0]["outcome"])
         self.assertEqual("REL-001", self.record(2)[0]["rollback-of"])
+        self.assertEqual(set(), self.errors())
+
+    def test_a_rollback_approved_the_next_day_applies_and_keeps_the_preview_day(self) -> None:
+        self.release()
+        self.apply_next_day("release-done", [{"path": record_path(2), "content": self.rollback_page(2, 1)}])
+        self.assertEqual("rolled-back", self.record(2)[0]["outcome"])
+        self.assertEqual(date.today().isoformat(), str(self.record(2)[0]["date"]))
         self.assertEqual(set(), self.errors())
 
     def test_a_rollback_binds_to_the_current_delivery(self) -> None:

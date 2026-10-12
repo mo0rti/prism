@@ -79,9 +79,10 @@ The proposal:
   Release row and an Evidence cell (`release:`, `tag:`, `deployment:`, `store:` or `package:` and a URL or a path in the
   workspace; a commit or a pull request is not release evidence); and, for each delivered row that cites a contract, the
   verbatim contract page in `## Contracts` under `### F-XXX <app>`;
-- for each bug it ships, changes the bug page: a Release row for each app of the bug in the same column order, whose Version is
-  the bug's verification artifact, and `status: released` + `owner: none` when every app of the bug is released (otherwise the
-  bug stays `verified`, and a later `release-done` retries it);
+- for each bug it ships, changes the bug page: a Release row for each app of the bug that this release delivers, in the same
+  column order, whose Version is the bug's verification artifact, and `status: released` + `owner: none` when every app of the
+  bug is released (otherwise the bug stays `verified` until every one of its apps is released, and a later `release-done`
+  ships the rest);
 - for a bug that fixes an app of a feature that is already released, also updates the Release row of that app in the feature page:
   the same target, attempt and outcome, the bug's artifact as Version and the new record as Record.
 

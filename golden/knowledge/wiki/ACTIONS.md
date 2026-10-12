@@ -75,8 +75,8 @@ the agent never applies a gated preview (`approval_required`).
    schema 1, command facts name the requested action, transition capability
    is version 3 with the requested action in its per-action surfaces, transition
    version is 2, and the snapshot is consistent. Check the selected generated
-   Codex or Claude file for its matching `prism:<command>-contract:v2` marker; a
-   version string alone is insufficient. An older capability or generated
+   Codex or Claude file for its matching `prism:<command>-contract:v<n>` marker, the
+   version its own file states; a version string alone is insufficient. An older capability or generated
    instruction falls back to these direct-file rules after the instructions are refreshed.
 3. Verify the exact source pair, action-specific checks, advisory and question
    state, and affected app evidence. Show observed facts and the complete proposed

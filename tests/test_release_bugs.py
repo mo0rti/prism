@@ -143,6 +143,15 @@ class ReleaseBugTests(ReleaseTests):
         record = record_page(1, [delivery("BUG-001", "backend")], features=[], bugs=["BUG-001"], title="Hotfix of BUG-001", summary="BUG-001 is delivered to production.")
         self.assertEqual(("bug_release_requires_feature", 409), self.refusal([{"path": BUG, "content": bug}, {"path": record_path(1), "content": record}]))
 
+    def test_the_refusal_for_an_app_the_release_does_not_deliver_says_to_leave_it_out(self) -> None:
+        self.put(BUG, self.verified())
+        bug = self.released_bug([release_row("backend", 1)])
+        record = record_page(1, [delivery("BUG-001", "backend")], features=[], bugs=["BUG-001"], title="Hotfix of BUG-001", summary="BUG-001 is delivered to production.")
+        error = self.refused("release-done", [{"path": BUG, "content": bug}, {"path": record_path(1), "content": record}], approver=self.owner)
+        self.assertEqual("bug_release_requires_feature", error.code)
+        self.assertIn("An app of the bug that this release does not deliver is left out", error.message)
+        self.assertIn("stays `verified` until every one of its apps is released", error.message)
+
     # -- a fix of a released feature ---------------------------------------------------------------------------------------
 
     def test_a_bug_fix_updates_the_release_row_of_the_released_feature(self) -> None:

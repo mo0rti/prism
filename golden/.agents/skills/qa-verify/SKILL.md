@@ -45,8 +45,9 @@ condition.
 ## Evidence and confirmation
 
 Read `knowledge/wiki/SCHEMA.md`, `knowledge/wiki/LIFECYCLE.md`, `knowledge/wiki/ACTIONS.md`, `status-board.md`, the complete feature (its acceptance
-criteria with their `AC-n@v1:<hex>` revisions, its Delivery evidence and the QA rows already recorded), every bug page of the
-feature, `knowledge/wiki/SETTINGS.md` (the delivery targets name the environments an app can be tested in) and the
+criteria with their `AC-n@v1:<hex>` revisions, its Delivery evidence and the QA rows already recorded), every bug page in
+`knowledge/wiki/bugs/` (not only the feature's: a bug it creates is checked against all of them),
+`knowledge/wiki/SETTINGS.md` (the delivery targets name the environments an app can be tested in) and the
 workspace identity.
 
 Get from the tester the criteria covered, the method, the artifact tested, the environment, the result and where the

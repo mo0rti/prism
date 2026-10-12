@@ -310,5 +310,24 @@ class ConnectedPreviewConfirmationSkillsTests(unittest.TestCase):
                     self.assertIn(key, " ".join(read(*relative.split("/")).split()).lower().replace("**", ""))
 
 
+class QaSkillsReadEveryBugPageTests(unittest.TestCase):
+    """A proposal that creates a bug is checked against every bug page of the wiki, so the QA skills read all of them."""
+
+    SKILLS = ("qa-verify", "qa-pass", "qa-fail")
+
+    def test_each_qa_skill_reads_every_bug_page_in_every_layer(self) -> None:
+        asset = json.loads(read("prism_cli", "assets", "workflow-v1.json"))
+        by_path = {item["path"]: item["content"] for item in asset["files"]}
+        for name in self.SKILLS:
+            paths = (f"template-skills/{name}/skill.md", f"template/.agents/skills/{name}/SKILL.md.jinja", f"template/.claude/commands/{name}.md.jinja")
+            for relative in paths:
+                with self.subTest(file=relative):
+                    text = " ".join(read(*relative.split("/")).split())
+                    self.assertIn("every bug page in `knowledge/wiki/bugs/`", text)
+                    self.assertNotIn("every bug page of the feature", text)
+            with self.subTest(file=f"packaged {name}"):
+                self.assertIn("every bug page in `knowledge/wiki/bugs/`", " ".join(by_path[f".agents/skills/{name}/SKILL.md"].split()))
+
+
 if __name__ == "__main__":
     unittest.main()
