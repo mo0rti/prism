@@ -1,4 +1,4 @@
-"""The fixes from the 0.7.0 release-candidate review, each with the case that failed before it.
+"""The fixes from the 0.7.1 release-candidate review, each with the case that failed before it.
 
 1. One section parser for every write-scope check and every evidence reader.
 2. Separation holds through a chain of repairs and recoveries.

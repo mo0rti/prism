@@ -4,6 +4,16 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.7.1]
+
+Release date: 2026-10-12
+
+Prism 0.7.1 accepts a new bug page written exactly as its documented format shows.
+
+### Changed
+
+- The packaged skills and `AGENTS.md` require `prism-kit>=0.7.1`, because the bug guidance in `qa-verify` and `ingest` relies on the empty-section rule below.
+
 ### Fixed
 
 - A new bug with header-only Fix, Verification and Release tables is accepted as empty, as the documented format shows. Board previews and wiki lint share the empty-section rule, and a creation rejection names the sections that hold rows or text and says they must be empty.
