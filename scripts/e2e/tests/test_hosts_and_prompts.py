@@ -10,11 +10,15 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from prism_e2e import answers, config, hosts  # noqa: E402
-from prism_e2e.runner import load_prompt, render_apply_prompt  # noqa: E402
-from prism_e2e.workspace import PENDING_INPUTS, fixture_files, fixture_steps_through  # noqa: E402
+from prism_e2e.runner import INTAKE_FOLDER_PLACEHOLDER, build_preview_prompt, load_prompt, render_apply_prompt  # noqa: E402
+from prism_e2e.workspace import FIXTURE_INCIDENT_DAY, PENDING_INPUTS, fixture_files, fixture_steps_through  # noqa: E402
 
 def ws_pending(step_id):
     return PENDING_INPUTS[step_id]
+
+
+def ws_recorded_day():
+    return FIXTURE_INCIDENT_DAY
 
 
 def ws_fixture_files(step_id):
@@ -85,7 +89,7 @@ class PromptTests(unittest.TestCase):
                 self.assertIn("Stop at the preview: do not apply it.", text)
                 self.assertIn("preview ID", text)
                 self.assertIn("Prism MCP tools", text)
-                self.assertNotIn("{", text.replace(answers.PLACEHOLDER, ""), "preview prompts are fixed text; only a clarify prompt has the answers placeholder")
+                self.assertNotIn("{", text.replace(answers.PLACEHOLDER, "").replace(INTAKE_FOLDER_PLACEHOLDER, ""), "preview prompts are fixed text; only a clarify prompt has the answers placeholder and only the ingest prompt the folder placeholder")
                 self.assertFalse(re.search(r"[0-9a-f]{8}-[0-9a-f]{4}", text), "no ID is baked into a prompt")
 
     def test_prompts_do_not_name_a_host_or_a_model(self):
@@ -143,7 +147,8 @@ class PromptTests(unittest.TestCase):
 
     def test_the_ingest_incident_prompt_names_the_pending_folder_its_fixtures_place(self):
         folder, _name = ws_pending("ingest-incident")
-        self.assertIn(f"knowledge/intake/pending/{folder}", load_prompt("ingest-incident"))
+        self.assertIn("knowledge/intake/pending/{intake_folder}", load_prompt("ingest-incident"))
+        self.assertIn(f"knowledge/intake/pending/{folder}", build_preview_prompt("ingest-incident", None, None, ws_recorded_day()))
 
     def test_every_gated_prompt_stops_at_the_preview_so_the_human_approves_it(self):
         gated = [step.id for step in config.STEPS if step.gated]

@@ -53,10 +53,19 @@ def load_prompt(step_id: str, fixture_set: Path | None = None) -> str:
     return (config.PROMPTS_DIR / f"{step_id}.txt").read_text(encoding="utf-8")
 
 
-def build_preview_prompt(step_id: str, fixture_set: Path | None, feature: ws.FeatureState | None) -> str:
-    """The preview prompt. A clarify step's answers are filled in from the open questions its role owns on the live feature page."""
+INTAKE_FOLDER_PLACEHOLDER = "{intake_folder}"
+
+
+def build_preview_prompt(step_id: str, fixture_set: Path | None, feature: ws.FeatureState | None, day: str | None = None) -> str:
+    """The preview prompt.
+
+    A clarify step's answers are filled in from the open questions its role owns on the live feature page. The
+    ``{intake_folder}`` placeholder of an ingest step is the name of the pending folder for ``day`` (see ``ws.intake_day``).
+    """
 
     text = load_prompt(step_id, fixture_set)
+    if step_id in ws.PENDING_INPUTS:
+        text = text.replace(INTAKE_FOLDER_PLACEHOLDER, ws.intake_folder(step_id, day))
     role = answers.CLARIFY_ROLES.get(step_id)
     if role is None:
         return text
@@ -242,9 +251,16 @@ class Journey:
             result.not_applicable = True
             result.notes.append(f"nothing to do: no open {role}-owned question on the feature, so no host was launched")
             return
+        day = None
         if step.id in ws.PENDING_INPUTS:
             # The input of an ingest step is placed right before the step, so a seeded state never carries a half-processed folder.
-            ws.place_pending_input(self.env.workspace, step.id, self.options.fixtures)
+            # The incident report is dated on the day of REL-002, which the live run wrote with its own day.
+            try:
+                day = ws.intake_day(self.env.workspace, step.id)
+                ws.place_pending_input(self.env.workspace, step.id, self.options.fixtures, day)
+            except ws.SetupError as error:
+                result.fail(str(error))
+                return
         runs: list[HostRun] = []
 
         if role is not None and before is not None:
@@ -253,7 +269,7 @@ class Journey:
                 if answers.answer_for(role, question.text) == fallback:
                     result.notes.append(f'{step.id}: fallback answer for question {question.number} ("{question.text}"): {fallback}')
 
-        preview = self._launch(host, "preview", build_preview_prompt(step.id, self.options.fixtures, before), number, step, result, runs)
+        preview = self._launch(host, "preview", build_preview_prompt(step.id, self.options.fixtures, before, day), number, step, result, runs)
         transcript = preview.transcript
         preview_calls = transcript.preview_calls
         result.preview_attempts = len(preview_calls)
@@ -330,11 +346,12 @@ class Journey:
         assert step.approver is not None
         assert self.board is not None
         approver = self.approvers[step.approver]
-        files = ws.fixture_files([step.id], self.options.fixtures)
+        day = ws.intake_day(self.env.workspace, step.id) if step.id in ws.PENDING_INPUTS else None
+        files = ws.localize_paths(ws.fixture_files([step.id], self.options.fixtures), step.id, day)
         moves = []
         if step.id in ws.PENDING_INPUTS:
-            source = ws.pending_folder(step.id)
-            destination = source.replace("/pending/", "/processed/")
+            source = ws.pending_folder(step.id, day)
+            destination = ws.processed_folder(step.id, day)
             if any(path.startswith(destination + "/") for path in files):
                 moves.append({"source": source, "destination": destination})
         expected = {
@@ -666,8 +683,13 @@ class Journey:
             recorded = incident is not None and incident.front.get("status") == "open" and "REL-002" in incident.front_list("releases") and "backend" in incident.front_list("apps")
             check("incident_recorded", recorded, "INC-001 is open, names the backend app and REL-002" if recorded else "no open incident INC-001 for REL-002")
             check("incident_cause_unknown", incident is not None and incident.section("Cause").strip().startswith("**Unknown:**"), "the cause starts with Unknown")
-            processed = workspace / "knowledge/intake/processed" / ws.PENDING_INPUTS[step.id][0]
-            check("intake_moved", (processed / "MANIFEST.md").is_file() and not (workspace / ws.pending_folder(step.id)).exists(), "the pending folder moved to processed with a manifest")
+            try:
+                day = ws.intake_day(workspace, step.id)
+                moved = (workspace / ws.processed_folder(step.id, day) / "MANIFEST.md").is_file() and not (workspace / ws.pending_folder(step.id, day)).exists()
+                detail = f"the pending folder {ws.intake_folder(step.id, day)} moved to processed with a manifest"
+            except ws.SetupError as error:
+                moved, detail = False, str(error)
+            check("intake_moved", moved, detail)
             cells = ws.board_row_cells(workspace, "Operations", "backend")
             check("operations_lists_incident", bool(cells) and cells[-1] == ws.INCIDENT_ID, f"Operations row of backend: {cells}")
             bugs = list((workspace / "knowledge/wiki/bugs").glob("BUG-*.md"))
