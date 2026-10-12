@@ -4,29 +4,39 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
-### Fixed
-
-- Abandoning an operation releases the evidence whose producing page write never landed, so the next `dev-done` or fix for that app is not refused with `evidence_generation_conflict`. A repair of the abandoned operation binds the released evidence to it again, and the conflict error names the producing operation and its state.
-- The Proposals dialog shows the exact `log.md` entry an approval writes, with the approver, their roles and the proposer.
-- A malformed `review_revision` answers `approval_review_required` (409) instead of an internal error.
-- `discover` and `list_proposals` walk the knowledge tree once per call and check staleness only for the proposals they return.
-- An abandoned operation has a **Repair** control in the Operations dialog; the repair preview is approved from **Proposals**. The `preview_transition` tool text and the troubleshooting guide give the gated route.
-- `prism board state reset` removes the state folder with `rmdir` after the lock file, so a journal that a board server creates at that moment is never deleted under it.
-- A pending `operation-repair` is revalidated against the live files on a retry or recovery, as its first apply was, and a gated apply checks `proposer_revoked` before `operation_id_reused`.
-
 ## [0.7.1]
 
 Release date: 2026-10-12
 
-Prism 0.7.1 accepts a new bug page written exactly as its documented format shows.
+Prism 0.7.1 fixes the defects found by the full Fable 5.1 and GPT-6 Astra review of the 0.7 line and by real agents taking a feature from QA through release. It accepts a new bug page written exactly as its format shows, lets a consumer feature share another feature's API contract, applies a release approved on a later day, and makes an abandoned operation repairable from the browser.
+
+### Added
+
+- **Repair from the browser.** `discover` lists abandoned, unrepaired operations (`abandoned_operations`, at most 20) to a human who may repair them, and the Operations dialog has a **Repair operation** control for each; the repair preview is approved from **Proposals**. The `preview_transition` tool text and the troubleshooting guide give the gated route.
+- **`unused-api-contract`.** Lint warns about a feature's `draft` API contract that its API surface no longer declares, for example after a return to specification dropped the API work; such a contract no longer blocks `dev-start`.
 
 ### Changed
 
-- The packaged skills and `AGENTS.md` require `prism-kit>=0.7.1`, because the bug guidance in `qa-verify` and `ingest` relies on the empty-section rule below.
+- The packaged skills and `AGENTS.md` require `prism-kit>=0.7.1`, because their bug guidance relies on the empty-section rule below.
+- A feature changes and requires the status only of its own API contract. A return, `qa-fail` or reopen of a consumer feature no longer lowers the owner's contract, and a consumer's `dev-done` no longer waits for the owner's contract to be `implemented`; a linked contract of another feature is still checked for its binding and digest.
+- `AGENTS.md`, `ACTIONS.md` and the AI agents guide state the current preflight versions (capability 3, transition 2), that each command's contract marker carries the version its own file states, the full role lists for `ask` and `wiki-owner`, the `release-done` arguments, and design tracks instead of design exemptions.
+- The QA skills read every bug page in `knowledge/wiki/bugs/`, as the board requires when a proposal creates a bug. The `release-done` skill writes a bug's Release rows only for the apps the release delivers.
 
 ### Fixed
 
-- A new bug with header-only Fix, Verification and Release tables is accepted as empty, as the documented format shows. Board previews and wiki lint share the empty-section rule, and a creation rejection names the sections that hold rows or text and says they must be empty.
+- A new bug page written exactly as `bugs/_FORMAT.md` shows, with the header and separator of its Fix, Verification and Release tables and no rows, is accepted. Only that header-only table counts as empty: a data row, a second table, another header, an indented or fenced table or an unterminated comment is content, and the rejection names the sections that hold it. Evidence tables are read as in 0.7.0.
+- HTML comment stripping in the wiki readers is one forward scan, so a page with many unterminated or repeated comments no longer slows lint and the board.
+- A release record approved on a later day than its preview applies and keeps the preview day, instead of failing with `record_date_invalid`.
+- `release-done` may replace a staging row with one for the same app and target, as `qa-pass` already could. `bug_release_requires_feature` says that an app the release does not deliver is left out.
+- Abandoning an operation releases the evidence whose producing page write never landed, so the next `dev-done` or fix for that app is not refused with `evidence_generation_conflict`. A repair of the abandoned operation binds the released evidence to it again, and the conflict error names the producing operation and its state.
+- The Proposals dialog shows the exact `log.md` entry an approval writes, with the approver, their roles and the proposer.
+- A malformed `review_revision` answers `approval_review_required` (409) instead of an internal error.
+- `discover` and `list_proposals` walk the knowledge tree once per call and check staleness only for the proposals they return.
+- `prism board state reset` removes the state folder with `rmdir` after the lock file, so a journal that a board server creates at that moment is never deleted under it.
+- A pending `operation-repair` is revalidated against the live files on a retry or recovery, as its first apply was, and a gated apply checks `proposer_revoked` before `operation_id_reused`.
+- The Evidence history of a feature or a bug is compared by its entries, so trailing blank lines or a dropped placeholder sentence no longer refuse a valid append, and `history_not_append_only` names the entry that changed. Archived-row section names ignore letter case.
+- The criteria parser joins an indented sub-bullet to its criterion and reads `**Label**:` with the colon outside the bold; `- Affected apps:` may hold a nested list; an escaped pipe stays inside its table cell.
+- `prism wiki graph` resolves links to release records, bugs, incidents and technical design pages instead of listing them as dangling, and the board card offers `qa-fail` for an app at `ready-for-release` while its feature is `in-dev`.
 
 ## [0.7.0]
 
