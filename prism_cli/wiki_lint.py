@@ -938,6 +938,9 @@ def _api_contract_pages_for_feature(
             target = _reference_path(source.path, raw_target, wiki_root, "api-contracts")
             if target is not None and target in by_path and by_path[target] not in result:
                 result.append(by_path[target])
+    if not api_surface_declared(section_text(feature.page.body, "API surface")):
+        # A draft of the feature's own that a re-specification no longer needs is no obligation (`unused-api-contract`).
+        result = [page for page in result if not (page.frontmatter.get("status") == "draft" and _contract_feature_id(page) == feature_id)]
     return sorted(result, key=lambda page: page.path.as_posix())
 
 
@@ -1323,6 +1326,7 @@ def _lint_api_contract_blockers(
                             contract.path,
                             f"API contract `{contract_name}` is a draft of `{feature.feature_id}`, whose API surface declares no API work; delete the page, or declare the API work.",
                             feature.feature_id,
+                            gates=False,
                         )
                     )
                     continue
