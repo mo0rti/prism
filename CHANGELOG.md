@@ -4,6 +4,16 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+
+- Abandoning an operation releases the evidence whose producing page write never landed, so the next `dev-done` or fix for that app is not refused with `evidence_generation_conflict`. A repair of the abandoned operation binds the released evidence to it again, and the conflict error names the producing operation and its state.
+- The Proposals dialog shows the exact `log.md` entry an approval writes, with the approver, their roles and the proposer.
+- A malformed `review_revision` answers `approval_review_required` (409) instead of an internal error.
+- `discover` and `list_proposals` walk the knowledge tree once per call and check staleness only for the proposals they return.
+- An abandoned operation has a **Repair** control in the Operations dialog; the repair preview is approved from **Proposals**. The `preview_transition` tool text and the troubleshooting guide give the gated route.
+- `prism board state reset` removes the state folder with `rmdir` after the lock file, so a journal that a board server creates at that moment is never deleted under it.
+- A pending `operation-repair` is revalidated against the live files on a retry or recovery, as its first apply was, and a gated apply checks `proposer_revoked` before `operation_id_reused`.
+
 ## [0.7.1]
 
 Release date: 2026-10-12

@@ -59,7 +59,7 @@ from prism_cli.wiki_index import (
     remove_index_lines,
     render_index_lines,
 )
-from prism_cli.wiki_bugs import bug_listing_digest
+from prism_cli.wiki_bugs import bug_listing_digest, parse_fix_rows
 from prism_cli.wiki_releases import release_listing_digest
 from prism_cli.wiki_incidents import is_incident_path
 from prism_cli.wiki_log import VERIFY_OPERATION, append_log_entry, format_verification_entry
@@ -228,6 +228,8 @@ _LOG_APPEND_ATTEMPTS = 3
 _MANAGED_PATHS = frozenset({_INDEX_PATH, _STATUS_BOARD_PATH, _LOG_PATH})
 # The write roles whose merge is by key: a feature row of the status board, a page line of the index.
 _ROW_ROLES = frozenset({"index", "status-board"})
+# The shape of a review revision (`_sha256`); a value of another shape is refused before any comparison.
+_REVIEW_REVISION = re.compile(r"sha256:[0-9a-f]{64}")
 # The linked pages a lifecycle action may write beside its feature page: the track pages and the requirement pages.
 _LINKED_PAGE_PREFIXES = (
     "knowledge/wiki/design/",
@@ -556,6 +558,10 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 "SELECT operation_id, state, created_at, participant_id, intent_json FROM operations "
                 "WHERE state NOT IN ('applied', 'abandoned') ORDER BY created_at, operation_id"
             ).fetchall()
+            abandoned = db.execute(
+                "SELECT operation_id, participant_id, intent_json, receipt_json, updated_at FROM operations "
+                "WHERE state = 'abandoned' AND repaired_by IS NULL ORDER BY updated_at DESC, operation_id"
+            ).fetchall()
         visible = [row for row in pending if self._can_inspect_operation(actor, row[3], _loads(row[4]) or {})]
         skills = self._skill_summaries()
         try:
@@ -586,15 +592,41 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 "policy": policy_fact,
             },
             "participant": actor.to_dict(),
-            "pending_proposals": self._proposal_entries(actor)[:20],
+            "pending_proposals": self._proposal_entries(actor, limit=20),
             "pending_operations": [
                 {"operation_id": row[0], "state": row[1], "created_at": row[2], "requires_human_recovery_review": row[3] != actor.participant_id}
                 for row in visible
             ],
+            "abandoned_operations": self._abandoned_entries(actor, abandoned),
             "skills": skills,
             "skills_detail": "Call list_skills for write scopes and limitations, and get_skill(name) for instructions and the references index.",
             "compatibility": self.compatibility(),
         }
+
+    def _abandoned_entries(self, actor: Actor, rows: Iterable[Any]) -> list[dict[str, Any]]:
+        """The abandoned operations still open to an `operation-repair` that ``actor`` may inspect, newest first, at most 20.
+
+        An operation leaves the list once a repair of it is recorded (`repaired_by`), because a second repair is refused.
+        """
+
+        entries: list[dict[str, Any]] = []
+        for operation_id, participant_id, raw_intent, raw_receipt, updated_at in rows:
+            intent = _loads(raw_intent) or {}
+            if not self._can_inspect_operation(actor, participant_id, intent):
+                continue
+            receipt = _loads(raw_receipt) or {}
+            entries.append(
+                {
+                    "operation_id": operation_id,
+                    "action": intent.get("action") or intent.get("skill"),
+                    "subject": intent.get("feature_id"),
+                    "abandoned_at": receipt.get("abandoned_at") or updated_at,
+                    "required_roles": (intent.get("approval") or {}).get("required_roles"),
+                }
+            )
+            if len(entries) == 20:
+                break
+        return entries
 
     def _action_capabilities(self, actor: Actor) -> list[dict[str, Any]]:
         """One entry per registered action: its command, sources, target, role predicate, modes and availability."""
@@ -1524,6 +1556,9 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             block["state"] = "declined" if declined else "submitted" if consumed_by else _AWAITING_APPROVAL
             if not declined and not consumed_by and self._may_review(actor, payload):
                 block["review_revision"] = self._review_revision(actor, payload, payload_hash)
+                # A reviewer sees the `log.md` entry as the apply writes it: naming the approver, their roles and the proposer.
+                # The stored writes (and so the review revision) stay as the proposer's preview made them.
+                envelope["writes"] = self._attribute_writes(list(payload.get("writes", [])), actor, block.get("proposer") or {})
             envelope["approval"] = block
         return envelope
 
@@ -1661,12 +1696,99 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                     ),
                 )
             except sqlite3.IntegrityError:
-                raise BoardError(
-                    "evidence_generation_conflict",
-                    f"Another operation already produced the {produced['kind']} evidence of {produced['item_id']} for {produced['app']} in this generation; archive it first.",
-                    409,
-                    {"item_id": produced["item_id"], "app": produced["app"], "generation": int(produced["generation"])},
-                ) from None
+                raise self._generation_conflict(db, produced) from None
+
+    def _generation_conflict(self, db: Any, produced: Mapping[str, Any]) -> BoardError:
+        """`evidence_generation_conflict`, naming the operation the journal binds to the evidence and the state it is in."""
+
+        holder = db.execute(
+            "SELECT p.operation_id, o.state FROM provenance p LEFT JOIN operations o ON o.operation_id = p.operation_id "
+            "WHERE p.board_id = ? AND p.item_id = ? AND p.app = ? AND p.generation = ? AND p.kind = ?",
+            (self._board_id, produced["item_id"], produced["app"], int(produced["generation"]), produced["kind"]),
+        ).fetchone()
+        details: dict[str, Any] = {"item_id": produced["item_id"], "app": produced["app"], "generation": int(produced["generation"])}
+        who = "Another operation"
+        if holder is not None:
+            details.update({"operation_id": holder[0], "operation_state": holder[1]})
+            who = f"Operation `{holder[0]}` (state `{holder[1]}`)"
+        return BoardError(
+            "evidence_generation_conflict",
+            f"{who} already produced the {produced['kind']} evidence of {produced['item_id']} for {produced['app']} in this generation; archive it first.",
+            409,
+            details,
+        )
+
+    @staticmethod
+    def _evidence_row_digests(kind: str, app: str, text: str, relative: str) -> set[str]:
+        """The digests of the evidence rows of ``kind`` for ``app`` that a page holds; none for a page that does not parse."""
+
+        try:
+            body = _parse_markdown(text, relative)[1]
+            if kind == "delivery":
+                row = read_feature_evidence(body).delivery_row(app)
+                return {row_digest(row.cells)} if row is not None else set()
+            if kind == "fix":
+                return {row_digest(row.cells) for row in parse_fix_rows(body)[0] if row.app == app}
+        except (BoardError, ValueError):
+            pass
+        return set()
+
+    @staticmethod
+    def _provenance_root(intent: Mapping[str, Any]) -> Mapping[str, Any]:
+        """The operation the journal binds the evidence to: an `operation-repair` finishes the operation it repairs, a repair of a repair included."""
+
+        while intent.get("kind") == "repair" and isinstance(intent.get("repair_basis"), Mapping):
+            intent = intent["repair_basis"]
+        return intent
+
+    def _unlanded_provenance(self, intent: Mapping[str, Any], applied: Iterable[str]) -> list[Mapping[str, Any]]:
+        """The evidence an operation reserved whose producing page write did not land.
+
+        A row is kept when it cannot be tied to a write of the operation, or when that write is among ``applied``.
+        """
+
+        landed = set(applied)
+        released: list[Mapping[str, Any]] = []
+        for produced in intent.get("produces_evidence") or []:
+            digest = str(produced["row_digest"])
+            producing = [
+                write["path"]
+                for write in intent.get("writes", [])
+                if write.get("role") not in {*_ROW_ROLES, "log"}
+                and isinstance(write.get("after"), str)
+                and digest in self._evidence_row_digests(str(produced["kind"]), str(produced["app"]), write["after"], write["path"])
+            ]
+            if producing and not landed.intersection(producing):
+                released.append(produced)
+        return released
+
+    def _release_provenance(self, db: Any, operation_id: str, released: Iterable[Mapping[str, Any]]) -> None:
+        """Drop the journal's binding of evidence that an abandoned operation never wrote."""
+
+        for produced in released:
+            db.execute(
+                "DELETE FROM provenance WHERE board_id = ? AND item_id = ? AND app = ? AND generation = ? AND kind = ? AND operation_id = ?",
+                (self._board_id, produced["item_id"], produced["app"], int(produced["generation"]), produced["kind"], operation_id),
+            )
+
+    def _restore_repair_provenance(self, db: Any, basis: Mapping[str, Any], now: str) -> None:
+        """Bind again, to the operation a repair finishes, the evidence that abandoning it released.
+
+        Evidence the journal still binds to that operation is left alone; evidence another operation took meanwhile is a conflict.
+        """
+
+        basis = self._provenance_root(basis)
+        original = basis.get("operation_id")
+        if not isinstance(original, str):
+            return
+        for produced in basis.get("produces_evidence") or []:
+            found = db.execute(
+                "SELECT operation_id FROM provenance WHERE board_id = ? AND item_id = ? AND app = ? AND generation = ? AND kind = ?",
+                (self._board_id, produced["item_id"], produced["app"], int(produced["generation"]), produced["kind"]),
+            ).fetchone()
+            if found is not None and found[0] == original:
+                continue
+            self._record_provenance(db, {"produces_evidence": [produced]}, original, now)
 
     # -- Actions that an unlanded package owns ------------------------------------------------------------------------
 
@@ -1698,7 +1820,9 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
 
     # -- Proposals ----------------------------------------------------------------------------------------------------
 
-    def _proposal_entries(self, actor: Actor) -> list[dict[str, Any]]:
+    def _proposal_entries(self, actor: Actor, limit: int | None = None) -> list[dict[str, Any]]:
+        """The gated previews ``actor`` may see, oldest first; the tree is validated once and only the first ``limit`` are checked for staleness."""
+
         store = self._require_store()
         with store.read() as db:
             rows = db.execute(
@@ -1706,18 +1830,30 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 "JOIN grants g ON g.participant_id = p.participant_id "
                 "WHERE p.gated = 1 AND p.consumed_by IS NULL AND p.declined_at IS NULL AND g.active = 1 ORDER BY p.created_at, p.preview_id"
             ).fetchall()
-        entries: list[dict[str, Any]] = []
+        visible: list[tuple[str, Mapping[str, Any], str]] = []
         for preview_id, participant_id, raw, created_at in rows:
             payload = _loads(raw)
             if not isinstance(payload, Mapping) or not isinstance(payload.get("approval"), Mapping):
                 continue
             if participant_id != actor.participant_id and not self._may_review(actor, payload):
                 continue
+            visible.append((preview_id, payload, created_at))
+        returned = visible if limit is None else visible[:limit]
+        graph_readable = True
+        if returned:
             try:
-                self._assert_preview_fresh(payload)
-                stale = False
+                self.validate_graph_inputs()
             except (BoardError, OSError, ValueError):
-                stale = True
+                graph_readable = False
+        entries: list[dict[str, Any]] = []
+        for preview_id, payload, created_at in returned:
+            stale = True
+            if graph_readable:
+                try:
+                    self._assert_preview_fresh(payload, graph_validated=True)
+                    stale = False
+                except (BoardError, OSError, ValueError):
+                    pass
             entries.append(
                 {
                     "preview_id": preview_id,
@@ -1818,6 +1954,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         self._require_approver(actor, self._payload_predicate(payload))
         if existing is not None:
             if existing[0] != actor.participant_id or existing[1] != preview_id or existing[2] != payload_hash:
+                # `proposer_revoked` precedes `operation_id_reused` (CONTRACTS 1.4); a rightful retry never checks the proposer.
+                self._require_proposer_active(payload)
                 raise BoardError("operation_id_reused", "That operation ID is already bound to a different participant or payload.", 409)
             if existing[3] in _TERMINAL_OPERATION_STATES:
                 return _loads(existing[4])
@@ -1827,7 +1965,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             raise BoardError("proposal_declined", "This proposal was declined; ask for a new one.", 409)
         if preview_row[3] is not None:
             raise BoardError("preview_already_submitted", f"This preview was already submitted as operation `{preview_row[3]}`; retrieve that receipt.", 409)
-        if not isinstance(review_revision, str) or not review_revision or acknowledged is not True:
+        if not isinstance(review_revision, str) or not _REVIEW_REVISION.fullmatch(review_revision) or acknowledged is not True:
             raise BoardError(
                 "approval_review_required",
                 "Read the preview with get_preview, then apply with its `approval.review_revision` and `semantic_review_acknowledged: true`.",
@@ -1945,6 +2083,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 if linked != 1:
                     raise BoardError("repair_invalid", "The operation to repair is no longer an abandoned, unrepaired operation.", 409)
             self._record_provenance(db, payload, operation_id, now)
+            if repair_of:
+                self._restore_repair_provenance(db, payload.get("repair_basis") or {}, now)
         # This call has just revalidated the whole operation against the live files and rechecked the preview's sources, both
         # under this lock, so the roll-forward does not evaluate the same files a second time. Every write still checks the
         # recorded before-state first, and a recovery of this operation (after a crash, or an apply that finds it pending)
@@ -7157,8 +7297,9 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 except OSError as exc:
                     raise BoardError("candidate_copy_failed", "A candidate wiki/intake tree cannot be copied safely.", 409) from exc
 
-    def _assert_preview_fresh(self, payload: Mapping[str, Any]) -> None:
-        self.validate_graph_inputs()
+    def _assert_preview_fresh(self, payload: Mapping[str, Any], *, graph_validated: bool = False) -> None:
+        if not graph_validated:
+            self.validate_graph_inputs()
         if payload.get("participant_id") is None:
             raise BoardError("invalid_preview", "The stored preview has no participant binding.", 409)
         for relative, expected in payload.get("source_map", {}).items():
@@ -7573,12 +7714,23 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 "moved_folders": moved,
                 "unmoved_folders": unmoved,
             }
+            # The journal binds only evidence that exists: a row whose producing page write did not land is released.
+            root = self._provenance_root(intent)
+            if root is intent:
+                landed = applied
+            else:
+                try:
+                    landed = [item["path"] for item in self._operation_file_states(root) if item["state"] == "applied"]
+                except (BoardError, OSError):
+                    landed = []
+            released = self._unlanded_provenance(root, landed)
             with store.transaction() as db:
                 self._require_actor(actor, write=True, kind="human")
                 db.execute(
                     "UPDATE operations SET state = 'abandoned', receipt_json = ?, updated_at = ? WHERE operation_id = ? AND state IN ('pending', 'conflict')",
                     (_json(receipt), now, operation_id),
                 )
+                self._release_provenance(db, str(root.get("operation_id") or operation_id), released)
                 db.execute(
                     "INSERT INTO events(operation_id, participant_id, event_json, created_at) VALUES (?, ?, ?, ?)",
                     (operation_id, actor.participant_id, _json(event), now),
@@ -7698,6 +7850,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         service passes them in. A repair rebuilds the before-state of the operation it repairs.
         """
         if intent.get("kind") == "repair":
+            # The repair was reviewed against the live files, as its first apply was; a replay is too.
+            reviewed = True
             # The pages the repair leaves behind must lint clean against the files as they are now, on every replay.
             self._assert_repair_lint(intent["repair_basis"], intent.get("writes", []))
         intent = intent.get("repair_basis") or intent

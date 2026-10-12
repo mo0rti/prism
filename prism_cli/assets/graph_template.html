@@ -663,6 +663,7 @@ const state = {
   boardDiscover: null,
   boardCapability: null,
   boardPendingOperations: [],
+  boardAbandonedOperations: [],
   boardOperation: null,
   boardViewStale: false,
   pendingAppliedStage: null,
@@ -2224,6 +2225,7 @@ function openBoardOperations(returnFocus) {
     kind: "operations",
     returnFocus: returnFocus || document.activeElement,
     operations: Array.isArray(state.boardPendingOperations) ? state.boardPendingOperations.slice() : [],
+    abandoned: Array.isArray(state.boardAbandonedOperations) ? state.boardAbandonedOperations.slice() : [],
     selectedOperation: null,
     inspectedOperationId: null,
     recoveryAcknowledged: false,
@@ -2247,6 +2249,8 @@ function renderBoardOperationsDialog(focus) {
     const canRecover = connectedHumanWriter() && stateName !== "applied" && preview.inspectedOperationId === id && preview.selectedOperation && preview.selectedOperation.operation_id === id && preview.recoveryAcknowledged === true && !preview.loading;
     return `<div class="connected-review"><div class="transition-grid">${transitionFact("Operation", id)}${transitionFact("Recorded state", stateName)}${transitionFact("Created", item.created_at || "not supplied")}</div><div class="transition-actions" style="padding:8px 0 0;border:0"><button type="button" class="copy-btn" data-operation-inspect="${escapeHtml(id)}"${preview.loading ? " disabled" : ""}>Inspect</button><button type="button" class="copy-btn" data-operation-recover="${escapeHtml(id)}"${canRecover ? "" : " disabled"}>Recover without an agent</button></div></div>`;
   }).join("") : '<div class="transition-check pass"><span class="check-status">clear</span><span class="check-copy">No pending board operations.</span></div>';
+  const abandonedEntries = Array.isArray(preview.abandoned) ? preview.abandoned : [];
+  const abandonedHtml = abandonedEntries.length ? `<div class="transition-section"><h4>Abandoned operations open to repair · ${abandonedEntries.length}</h4>${abandonedEntries.map(item => { const record = abandonedOperationRecord(item); return `<div class="connected-review"><div class="transition-grid">${transitionFact("Operation", record.operation_id)}${transitionFact("Action", record.action || "not recorded")}${transitionFact("Subject", record.subject || "not recorded")}${transitionFact("Abandoned", record.abandoned_at || "not supplied")}</div>${operationRepairHtml(record, preview.loading)}</div>`; }).join("")}</div>` : "";
   const selected = preview.selectedOperation && preview.inspectedOperationId === preview.selectedOperation.operation_id && !boardOperationRecordError(preview.selectedOperation, preview.inspectedOperationId) ? preview.selectedOperation : null;
   let selectedHtml = "";
   if (selected) {
@@ -2257,11 +2261,11 @@ function renderBoardOperationsDialog(focus) {
     const unapplied = selected.state === "abandoned" && Array.isArray(receipt.unapplied_paths) ? receipt.unapplied_paths : [];
     const reviewHtml = !closed ? `${connectedOperationRecordHtml(selected)}<div class="connected-review"><label><input type="checkbox" data-operation-recovery-ack${preview.recoveryAcknowledged ? " checked" : ""}${preview.loading ? " disabled" : ""}><span>I inspected the original actor, remaining exact file changes, and folder moves and approve recovery.</span></label></div><p class="operation-abandon-note">Abandon closes an operation that can no longer be rolled forward. Files already written and folders already moved stay as they are; the receipt lists which writes were applied and which were not. It needs the same inspection and approval.</p>` : `${operationReceiptActorsHtml(receipt, selected.actor)}${paths.map(path => `<div class="transition-check pass"><span class="check-status">written</span><span class="check-copy">${escapeHtml(path)}</span></div>`).join("")}${unapplied.map(path => `<div class="transition-check blocked"><span class="check-status">not written</span><span class="check-copy">${escapeHtml(path)}</span></div>`).join("")}`;
     const recoverReady = !closed && connectedHumanWriter() && preview.inspectedOperationId === selected.operation_id && preview.recoveryAcknowledged === true && !preview.loading;
-    selectedHtml = `<div class="transition-section"><h4>Operation record · ${escapeHtml(selected.state || "pending")}</h4>${transitionFact("Operation ID", selected.operation_id)}${reviewHtml}${conflicts.map(item => `<div class="transition-check blocked"><span class="check-status">conflict</span><span class="check-copy">${escapeHtml(item.path || "workspace")} · ${escapeHtml(item.reason || "Current source differs from the recorded operation.")}</span></div>`).join("")}${!closed && selected.operation_id ? `<button type="button" class="copy-btn" data-operation-recover="${escapeHtml(selected.operation_id)}"${recoverReady ? "" : " disabled"}>Recover recorded operation</button><button type="button" class="copy-btn" data-operation-abandon="${escapeHtml(selected.operation_id)}"${recoverReady ? "" : " disabled"}>Abandon operation</button>` : ""}</div>`;
+    selectedHtml = `<div class="transition-section"><h4>Operation record · ${escapeHtml(selected.state || "pending")}</h4>${transitionFact("Operation ID", selected.operation_id)}${reviewHtml}${conflicts.map(item => `<div class="transition-check blocked"><span class="check-status">conflict</span><span class="check-copy">${escapeHtml(item.path || "workspace")} · ${escapeHtml(item.reason || "Current source differs from the recorded operation.")}</span></div>`).join("")}${!closed && selected.operation_id ? `<button type="button" class="copy-btn" data-operation-recover="${escapeHtml(selected.operation_id)}"${recoverReady ? "" : " disabled"}>Recover recorded operation</button><button type="button" class="copy-btn" data-operation-abandon="${escapeHtml(selected.operation_id)}"${recoverReady ? "" : " disabled"}>Abandon operation</button>` : ""}${selected.state === "abandoned" && selected.operation_id && !abandonedEntries.some(item => item.operation_id === selected.operation_id) ? operationRepairHtml(selected, preview.loading) : ""}</div>`;
   }
   wrap.innerHTML = `<div class="transition-dialog" role="dialog" aria-modal="true" aria-labelledby="transition-dialog-title" aria-describedby="transition-dialog-description" tabindex="-1">
     <div class="transition-head"><div class="eyebrow">CONNECTED BOARD · OPERATION RECOVERY</div><h2 id="transition-dialog-title" tabindex="-1">Review pending operations</h2><p id="transition-dialog-description">Operation state is separate from feature lifecycle. Inspect the recorded result, then recover directly through the service if needed; no agent is involved.</p></div>
-    <div class="transition-body">${preview.error ? `<div class="transition-stale" role="alert">${escapeHtml(preview.error)}</div>` : ""}${preview.operationMessage ? `<div class="transition-check ${preview.operationState === "applied" ? "pass" : "review"}"><span class="check-status">${escapeHtml(preview.operationState || "status")}</span><span class="check-copy">${escapeHtml(preview.operationMessage)}</span></div>` : ""}<div class="transition-section"><h4>Pending service operations · ${operations.length}</h4>${listHtml}</div>${selectedHtml}</div>
+    <div class="transition-body">${preview.error ? `<div class="transition-stale" role="alert">${escapeHtml(preview.error)}</div>` : ""}${preview.operationMessage ? `<div class="transition-check ${preview.operationState === "applied" ? "pass" : "review"}"><span class="check-status">${escapeHtml(preview.operationState || "status")}</span><span class="check-copy">${escapeHtml(preview.operationMessage)}</span></div>` : ""}<div class="transition-section"><h4>Pending service operations · ${operations.length}</h4>${listHtml}</div>${abandonedHtml}${selectedHtml}</div>
     <div class="transition-actions"><button type="button" class="cancel-btn" data-transition-cancel>Close</button></div>
   </div>`;
   wrap.hidden = false;
@@ -2283,6 +2287,7 @@ function renderBoardOperationsDialog(focus) {
   });
   wrap.querySelectorAll("[data-operation-recover]").forEach(button => button.addEventListener("click", () => recoverBoardOperation(preview, button.dataset.operationRecover)));
   wrap.querySelectorAll("[data-operation-abandon]").forEach(button => button.addEventListener("click", () => recoverBoardOperation(preview, button.dataset.operationAbandon, true)));
+  wrap.querySelectorAll("[data-operation-repair]").forEach(button => button.addEventListener("click", () => repairBoardOperation(preview, button.dataset.operationRepair)));
   const dialog = wrap.querySelector(".transition-dialog");
   bindDialogKeyboard(dialog, "Operation review closed.");
   // A re-render that is not a fresh open keeps the control the person was on.
@@ -2291,6 +2296,49 @@ function renderBoardOperationsDialog(focus) {
     if (heading && heading.focus) heading.focus();
     else if (dialog && dialog.focus) dialog.focus();
   }
+}
+// An abandoned operation is repaired by a human who holds the roles of the original action (any writable human for an ungated
+// one). The control starts the `operation-repair` preview; that gated preview is then approved from Proposals, like any other.
+function operationRepairAllowed(record) {
+  if (!connectedHumanWriter() || !record || record.state !== "abandoned") return false;
+  const required = record.approval ? record.approval.required_roles : record.required_roles;
+  if (!required) return true;
+  const held = Array.isArray(state.boardActor.roles) ? state.boardActor.roles : [];
+  const all = Array.isArray(required.all_of) ? required.all_of : [], any = Array.isArray(required.any_of) ? required.any_of : [];
+  return all.every(role => held.includes(role)) && (!any.length || any.some(role => held.includes(role)));
+}
+// A listed entry of `discover.abandoned_operations` as the record the repair control reads.
+function abandonedOperationRecord(item) {
+  return Object.assign({ state: "abandoned" }, item);
+}
+function operationRepairRecord(preview, operationId) {
+  if (preview && preview.selectedOperation && preview.selectedOperation.operation_id === operationId) return preview.selectedOperation;
+  const listed = preview && Array.isArray(preview.abandoned) ? preview.abandoned.find(item => item.operation_id === operationId) : null;
+  return listed ? abandonedOperationRecord(listed) : null;
+}
+function operationRepairHtml(record, loading) {
+  if (!connectedHumanWriter()) return "";
+  const allowed = operationRepairAllowed(record);
+  return `<p class="operation-abandon-note">Repair adopts the writes this operation already made and finishes the rest. It is a gated action: it opens a preview that a person who holds the original action's roles approves from Proposals.</p><button type="button" class="copy-btn" data-operation-repair="${escapeHtml(String(record.operation_id))}"${allowed && !loading ? "" : " disabled"}>Repair operation</button>${allowed ? "" : '<p class="operation-abandon-note">Repair needs the roles the original action needed.</p>'}`;
+}
+function repairBoardOperation(preview, operationId) {
+  const record = operationRepairRecord(preview, operationId);
+  if (!preview || state.transitionPreview !== preview || !operationId || preview.loading || !record || !operationRepairAllowed(record)) return;
+  preview.loading = true; preview.error = ""; preview.operationMessage = "Previewing the repair; nothing is written until a person approves it from Proposals."; renderTransitionDialog(false);
+  boardJsonRequest("/api/board/v1/previews/transition", "POST", { action: "operation-repair", operation_id: operationId, inputs: { semantic_review_acknowledged: true } }).then(() => {
+    if (state.transitionPreview !== preview) return;
+    preview.loading = false;
+    const returnFocus = preview.returnFocus;
+    closeTransitionPreview("Repair prepared. Approve it from Proposals.");
+    openBoardProposals(returnFocus);
+  }).catch(error => {
+    if (state.transitionPreview !== preview) return;
+    preview.loading = false;
+    preview.error = error && error.message || "The repair could not be previewed.";
+    preview.operationMessage = "";
+    if (error && error.status === 401) renderAll(false);
+    else renderTransitionDialog(false);
+  });
 }
 function inspectBoardOperation(preview, operationId) {
   if (!preview || state.transitionPreview !== preview || !operationId) return;
@@ -2325,8 +2373,12 @@ function refreshBoardDiscovery() {
     state.boardDiscover = discovery;
     state.boardCapability = discovery.capability || null;
     state.boardPendingOperations = Array.isArray(discovery.pending_operations) ? discovery.pending_operations : [];
+    state.boardAbandonedOperations = Array.isArray(discovery.abandoned_operations) ? discovery.abandoned_operations : [];
     state.boardConnection = "connected";
-    if (state.transitionPreview && state.transitionPreview.kind === "operations") state.transitionPreview.operations = state.boardPendingOperations.slice();
+    if (state.transitionPreview && state.transitionPreview.kind === "operations") {
+      state.transitionPreview.operations = state.boardPendingOperations.slice();
+      state.transitionPreview.abandoned = state.boardAbandonedOperations.slice();
+    }
     renderAll(false);
     return discovery;
   });
@@ -2335,6 +2387,7 @@ function recoverBoardOperation(preview, operationId, abandon) {
   if (!preview || state.transitionPreview !== preview || !operationId || !connectedHumanWriter() || !preview.selectedOperation || preview.selectedOperation.operation_id !== operationId ||
       preview.inspectedOperationId !== operationId || preview.recoveryAcknowledged !== true || ["applied", "abandoned"].includes(preview.selectedOperation.state) || boardOperationRecordError(preview.selectedOperation, operationId)) return;
   const reviewRevision = preview.selectedOperation.recovery_review_revision;
+  const recordedApproval = preview.selectedOperation.approval || null;
   const abandoning = abandon === true;
   preview.selectedOperation = null;
   preview.inspectedOperationId = null;
@@ -2359,6 +2412,7 @@ function recoverBoardOperation(preview, operationId, abandon) {
         state: preview.operationState,
         actor: receipt.actor,
         receipt,
+        approval: recordedApproval,
       };
       preview.inspectedOperationId = operationId;
     }
@@ -2691,9 +2745,10 @@ function renderBoardSession() {
   if (state.boardConnection === "connected" && state.boardActor) {
     const actor = state.boardActor;
     const pending = Array.isArray(state.boardPendingOperations) ? state.boardPendingOperations : [];
+    const abandonedCount = Array.isArray(state.boardAbandonedOperations) ? state.boardAbandonedOperations.length : 0;
     const actorText = `${boundedText(actor.name || actor.participant_id || "Human participant", 80)} · ${actor.kind === "human" ? "human" : "participant"}${actor.writable === true ? " · writable" : " · read only"}`;
     const proposalsButton = connectedHumanWriter() ? `<button type="button" data-board-proposals aria-label="Review the proposals that wait for approval">Proposals</button>` : "";
-    el.innerHTML = `<span class="actor" title="${escapeHtml(actorText)}">${escapeHtml(actorText)}</span>${proposalsButton}${pending.length ? `<button type="button" data-board-operations aria-label="Review ${pending.length} pending board operations">Operations ${pending.length}</button>` : ""}<button type="button" data-board-logout>Sign out</button>`;
+    el.innerHTML = `<span class="actor" title="${escapeHtml(actorText)}">${escapeHtml(actorText)}</span>${proposalsButton}${pending.length || abandonedCount ? `<button type="button" data-board-operations aria-label="Review ${pending.length} pending and ${abandonedCount} abandoned board operations">Operations ${pending.length + abandonedCount}</button>` : ""}<button type="button" data-board-logout>Sign out</button>`;
   } else if (state.boardConnection === "unauthenticated") {
     el.innerHTML = `<span>Board session expired</span><button type="button" data-board-retry>Reconnect</button>`;
   } else if (state.boardConnection === "error") {
@@ -2847,6 +2902,7 @@ function invalidateBoardSession() {
   state.boardCapability = null;
   state.boardDiscover = null;
   state.boardPendingOperations = [];
+  state.boardAbandonedOperations = [];
   state.boardConnection = "unauthenticated";
   renderAll(false);
 }
@@ -2873,6 +2929,7 @@ function initBoardService() {
     state.boardDiscover = discovery;
     state.boardCapability = discovery.capability || null;
     state.boardPendingOperations = Array.isArray(discovery.pending_operations) ? discovery.pending_operations : [];
+    state.boardAbandonedOperations = Array.isArray(discovery.abandoned_operations) ? discovery.abandoned_operations : [];
     state.boardConnection = "connected";
     renderAll(false);
   }).catch(error => {
@@ -2883,6 +2940,7 @@ function initBoardService() {
     state.boardCapability = null;
     state.boardDiscover = null;
     state.boardPendingOperations = [];
+    state.boardAbandonedOperations = [];
     if (error && error.status === 404) state.boardConnection = "unsupported";
     else state.boardConnection = "error";
     renderAll(false);
@@ -2890,7 +2948,7 @@ function initBoardService() {
 }
 function logoutBoardSession() {
   boardJsonRequest("/api/board/v1/auth/logout", "POST").then(() => {
-    state.boardActor = null; state.boardCsrf = null; state.boardCapability = null; state.boardDiscover = null; state.boardPendingOperations = []; state.boardConnection = "unauthenticated";
+    state.boardActor = null; state.boardCsrf = null; state.boardCapability = null; state.boardDiscover = null; state.boardPendingOperations = []; state.boardAbandonedOperations = []; state.boardConnection = "unauthenticated";
     if (window.location && typeof window.location.reload === "function") window.location.reload();
     else renderAll(false);
   }).catch(error => {
