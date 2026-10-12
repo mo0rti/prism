@@ -310,7 +310,7 @@ def create_mcp_server(service: Any) -> Any:
     async def get_skill_reference(name: str, path: str, ctx: Context, cursor: str | None = None) -> ToolReply:
         return reply("get_skill_reference", await call(ctx, "get_skill_reference", name, path, cursor))
 
-    @server.tool(name="preview_transition", description="Prism board: calculate an exact preview of a supported human lifecycle action on a feature (po-handoff, design-start, dev-start), or of operation-repair for an abandoned operation (pass operation_id). Only a human participant may call it. Follow next_cursor with get_preview, then apply it with apply.", annotations=preview_annotations, structured_output=True)
+    @server.tool(name="preview_transition", description="Prism board: calculate an exact preview of a supported human lifecycle action on a feature (po-handoff, design-start, dev-start), or of operation-repair for an abandoned operation (pass operation_id). Only a human participant may call it. Follow next_cursor with get_preview. A gated preview is approved by a human in the board (Proposals), not applied with apply.", annotations=preview_annotations, structured_output=True)
     async def preview_transition(
         ctx: Context,
         action: str,

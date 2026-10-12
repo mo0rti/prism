@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-import shutil
 import sqlite3
 import stat
 import threading
@@ -437,7 +436,8 @@ def reset_board_state(root: Path, out: Path | None = None) -> dict[str, Any]:
     """Write an audit export, then remove ``.prism/state/``; refused while any operation is unresolved.
 
     The process lock is held across the check, the export and the removal of the journal, so no board server runs
-    against the state that is being removed.
+    against the state that is being removed. The folder itself goes with `rmdir` after the lock file, so a file that
+    appears in it (a board server that starts at that moment) stops the removal instead of being deleted under that server.
     """
 
     root = Path(root)
@@ -465,7 +465,23 @@ def reset_board_state(root: Path, out: Path | None = None) -> dict[str, Any]:
             if path.exists():
                 _require_plain_file(path)
                 path.unlink()
-    shutil.rmtree(state_dir)
+        if os.name != "nt":
+            # A held lock file can be unlinked here; Windows refuses that, so it goes after the release below.
+            _require_plain_file(lock_path)
+            lock_path.unlink(missing_ok=True)
+    try:
+        if os.name == "nt":
+            _require_plain_file(lock_path)
+            lock_path.unlink(missing_ok=True)
+        # `rmdir` fails when anything else is in the folder, such as the journal of a board server that started after the
+        # release, so a folder that changed is never removed under that server.
+        os.rmdir(state_dir)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise ValueError(
+            f"The board state was exported and its journal removed, but `{state_dir}` was not removed because it changed during the reset: {exc.strerror or exc}."
+        ) from exc
     return {"schema_version": 1, "reset": True, "audit_export": str(exported)}
 
 
