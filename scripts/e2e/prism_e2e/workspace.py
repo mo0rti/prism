@@ -43,12 +43,19 @@ JOURNEY_FOLDERS = (
 KEEP_NAMES = {"_FORMAT.md", ".gitkeep"}
 PENDING_INTAKE = "knowledge/intake/pending/2026-09-30-review-summary"
 PROCESSED_BRIEF = "knowledge/intake/processed/2026-09-30-review-summary/brief.md"
+FIXTURE_INCIDENT_DAY = "2026-10-09"
+INCIDENT_FOLDER = "{day}-release-incident"
 # The steps that process a pending intake folder: the folder, and the file the step finds in it. The fixtures hold the
 # file under the processed path the step leaves it at; the runner copies it back to the pending folder before the step runs.
+# The incident report's folder is named for the day of REL-002, which a live run writes with its own day; this table holds the
+# folder as the fixtures record it, and ``intake_folder`` gives the folder of a run.
 PENDING_INPUTS: dict[str, tuple[str, str]] = {
     "po-intake": ("2026-09-30-review-summary", "brief.md"),
-    "ingest-incident": ("2026-10-09-release-incident", "report.md"),
+    "ingest-incident": (INCIDENT_FOLDER.format(day=FIXTURE_INCIDENT_DAY), "report.md"),
 }
+_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+_INCIDENT_FOLDER_NAME = re.compile(INCIDENT_FOLDER.format(day=r"\d{4}-\d{2}-\d{2}"))
+_REPORTED_ON = re.compile(r"(Reported by support on )\d{4}-\d{2}-\d{2}(\.)")
 
 
 class SetupError(RuntimeError):
@@ -202,23 +209,74 @@ class Board:
 # --- journey files and fixtures ----------------------------------------------------------
 
 
-def pending_folder(step_id: str) -> str:
+def release_day(workspace: Path) -> str:
+    """The ``date`` of ``REL-002`` in the workspace: the day the incident report is dated, because support reports it forty minutes after the release."""
+
+    record = read_page(workspace, "releases", "REL-002")
+    if record is None:
+        raise SetupError("The incident report follows the date of REL-002, and the workspace holds no record REL-002.")
+    day = record.front.get("date", "")
+    if not _DAY.fullmatch(day):
+        raise SetupError(f"The incident report follows the date of REL-002, which is {day or 'missing'} instead of a YYYY-MM-DD day.")
+    return day
+
+
+def intake_day(workspace: Path, step_id: str) -> str | None:
+    """The day an ingest step's intake folder is named for: the date of REL-002 for ``ingest-incident``, none for a step whose folder has a fixed name."""
+
+    return release_day(workspace) if step_id == "ingest-incident" else None
+
+
+def intake_folder(step_id: str, day: str | None = None) -> str:
+    """The name of the intake folder a step processes: the recorded name, or for ``ingest-incident`` the name for ``day``."""
+
+    if step_id == "ingest-incident" and day is not None:
+        return INCIDENT_FOLDER.format(day=day)
+    return PENDING_INPUTS[step_id][0]
+
+
+def pending_folder(step_id: str, day: str | None = None) -> str:
     """The pending intake folder (relative to the workspace) that a step processes."""
 
-    return f"knowledge/intake/pending/{PENDING_INPUTS[step_id][0]}"
+    return f"knowledge/intake/pending/{intake_folder(step_id, day)}"
 
 
-def place_pending_input(workspace: Path, step_id: str, fixture_set: Path | None = None) -> Path:
-    """The input of an ingest step, in the pending intake folder: the file its fixtures hold under the processed path."""
+def processed_folder(step_id: str, day: str | None = None) -> str:
+    """The processed intake folder (relative to the workspace) that a step leaves."""
 
-    folder, name = PENDING_INPUTS[step_id]
-    processed = f"knowledge/intake/processed/{folder}/{name}"
+    return f"knowledge/intake/processed/{intake_folder(step_id, day)}"
+
+
+def localize_paths(paths, step_id: str, day: str | None = None) -> list[str]:
+    """Fixture paths with the processed intake folder of ``step_id`` named for ``day``; the paths of a step without an intake folder are unchanged."""
+
+    if step_id not in PENDING_INPUTS:
+        return list(paths)
+    recorded =f"{processed_folder(step_id)}/"
+    folder = f"{processed_folder(step_id, day)}/"
+    return [folder + path[len(recorded):] if path.startswith(recorded) else path for path in paths]
+
+
+def place_pending_input(workspace: Path, step_id: str, fixture_set: Path | None = None, day: str | None = None) -> Path:
+    """The input of an ingest step, in the pending intake folder: the file its fixtures hold under the processed path.
+
+    ``day`` names the folder of ``ingest-incident`` and is the day its report says support reported it; without it the report is as recorded.
+    """
+
+    name = PENDING_INPUTS[step_id][1]
+    processed = f"{processed_folder(step_id)}/{name}"
     source = config.FIXTURES_DIR / step_id / processed
     if fixture_set is not None and (fixture_set / step_id / processed).is_file():
         source = fixture_set / step_id / processed
-    target = workspace / pending_folder(step_id) / name
+    target = workspace / pending_folder(step_id, day) / name
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, target)
+    if step_id != "ingest-incident" or day is None:
+        shutil.copyfile(source, target)
+        return target
+    text, replaced = _REPORTED_ON.subn(rf"\g<1>{day}\g<2>", source.read_bytes().decode("utf-8"))
+    if not replaced and day != FIXTURE_INCIDENT_DAY:
+        raise SetupError(f"{source} has no 'Reported by support on <day>.' line to date {day}.")
+    target.write_bytes(text.encode("utf-8"))
     return target
 
 
@@ -244,10 +302,11 @@ def reset_journey_files(workspace: Path) -> None:
         for path in processed.iterdir():
             if path.name not in KEEP_NAMES:
                 shutil.rmtree(path) if path.is_dir() else path.unlink()
-    for step_id in PENDING_INPUTS:
-        pending = workspace / pending_folder(step_id)
-        if pending.exists():
-            shutil.rmtree(pending)
+    pending_root = workspace / "knowledge/intake/pending"
+    for path in pending_root.iterdir() if pending_root.is_dir() else []:
+        # The incident folder is named for the date of a REL-002 that the reset has just removed, so it is found by its name.
+        if path.name == PENDING_INPUTS["po-intake"][0] or _INCIDENT_FOLDER_NAME.fullmatch(path.name):
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
 
 
 def fixture_steps_through(step: str | None) -> list[str]:

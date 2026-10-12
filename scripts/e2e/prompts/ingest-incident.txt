@@ -1,4 +1,4 @@
-Use Prism's ingest skill to process the pending intake folder `knowledge/intake/pending/2026-10-09-release-incident`. It is an incident report about the released review summary export. Work only through your Prism MCP tools and follow the board's guidance.
+Use Prism's ingest skill to process the pending intake folder `knowledge/intake/pending/{intake_folder}`. It is an incident report about the released review summary export. Work only through your Prism MCP tools and follow the board's guidance.
 
 I confirm your interpretation in advance: when the skill asks you to show it and wait, include it in your final message and go on to the preview, as one new incident record that is open, with severity high, app backend and release REL-002. The cause is not known yet, so start the cause with **Unknown:**. Create no feature, bug or other page. A conflict with existing wiki content is the exception: then follow the skill's conflict step and stop.
 
