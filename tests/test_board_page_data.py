@@ -15,7 +15,11 @@ from pathlib import Path
 import yaml
 from jsonschema import Draft202012Validator
 
+from prism_cli import standard_files
+from prism_cli.board_reads import read_annotations
 from prism_cli.board_server import _LiveGraph
+from prism_cli.app_model import normalize_manifest
+from prism_cli.manifest_update import ManifestUpdateError, validate_manifest_shape
 from prism_cli.status import build_status
 from prism_cli.wiki_bugs import BugPage, parse_fix_rows, parse_verification_rows, read_bug_pages
 from prism_cli.wiki_incidents import IncidentPage, read_incident_pages
@@ -26,9 +30,16 @@ from prism_cli.wiki_graph_html import render_html
 from prism_cli.wiki_model import (
     DESIGN_OWNERS,
     FEATURE_STATUS_ORDER,
+    bounded_int,
+    YamlRangeError,
     bounded_number,
+    check_integers_in_range,
+    contract_page_citation,
+    contract_version,
     number_order,
     oversized_number,
+    parse_delivery_rows,
+    parse_markdown_text,
     parse_release_rows,
     section_text,
     status_rank,
@@ -50,7 +61,7 @@ from tests.browser.harness import EXTRA_FEATURES, build_workspace
 from tests.qa_pages import bug_page, history_entry, verification_row
 from tests.release_pages import delivery as record_delivery
 from tests.release_pages import record_page
-from tests.test_lifecycle_model import TEXT_ONE, TEXT_TWO, delivery_row, qa_row, ref, release_row
+from tests.test_lifecycle_model import DELIVERY_HEADER, TEXT_ONE, TEXT_TWO, delivery_row, qa_row, ref, release_row, table
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 TEMPLATE = REPOSITORY / "prism_cli" / "assets" / "graph_template.html"
@@ -1074,6 +1085,96 @@ class RecordFactsTests(TwoAppWorkspace):
         # Listed after every number within the bound, the invalid one last.
         self.assertEqual([f"BUG-{edge}", f"BUG-{huge}"], [bug["id"] for bug in facts["bugs"]][-2:])
 
+    def test_a_bug_incident_or_feature_id_with_other_unicode_digits_is_invalid_and_an_ascii_id_is_unchanged(self) -> None:
+        self.seed_records()
+        nineteen, single = "٩" * 19, "٩"  # ARABIC-INDIC DIGIT NINE
+        for number in (nineteen, single):
+            self.write_wiki_page(f"bugs/BUG-{number}-other-digits.md", bug_page(f"BUG-{number}", apps=["backend"], feature="none"))
+            self.write_wiki_page(
+                f"incidents/INC-{number}-other-digits.md",
+                self.incident_page(
+                    f"INC-{number}", title="An incident", status="open", apps=["backend"], releases=[], follow_ups=[], impact="Exports failed.",
+                    timeline=["- 2026-10-10 12:00: It began."], cause="**Unknown:** Not known.",
+                ),
+            )
+        feature = (self.root / "knowledge" / "wiki" / "features" / "F-001-document-review.md").read_text(encoding="utf-8")
+        for index, number in enumerate((nineteen, single)):
+            self.write_wiki_page(f"features/F-00{index + 2}-other-digits.md", feature.replace("id: F-001", f"id: F-{number}", 1))
+        self.write_wiki_page("bugs/BUG-020-ascii-digits.md", bug_page("BUG-020", apps=["backend"], feature="none"))
+        self.write_status_board()
+        by_name: dict[str, set[str]] = {}
+        for item in lint_wiki(self.root).diagnostics:
+            by_name.setdefault(Path(item.path).name, set()).add(item.code)
+        for number in (nineteen, single):
+            with self.subTest(number=number):
+                self.assertIn("bug-page-invalid", by_name[f"BUG-{number}-other-digits.md"])
+                self.assertIn("incident-record-invalid", by_name[f"INC-{number}-other-digits.md"])
+        self.assertIn("invalid-feature-id", by_name["F-002-other-digits.md"])
+        self.assertIn("invalid-feature-id", by_name["F-003-other-digits.md"])
+        self.assertNotIn("bug-page-invalid", by_name.get("BUG-020-ascii-digits.md", set()))
+        facts = self.facts()
+        bugs = {bug["id"]: bug for bug in facts["bugs"]}
+        incidents = {incident["id"]: incident for incident in facts["incidents"]}
+        for number in (nineteen, single):
+            self.assertFalse(bugs.get(f"BUG-{number}", {"valid": False})["valid"])
+            self.assertFalse(incidents.get(f"INC-{number}", {"valid": False})["valid"])
+        self.assertTrue(bugs["BUG-020"]["valid"])
+        self.assertEqual(
+            ["F-001"],
+            [node["id"] for node in facts["nodes"] if node["id"].startswith("F-") and all(character.isascii() for character in node["id"]) and node["id"] == "F-001"],
+        )
+
+    def test_a_page_whose_front_matter_holds_an_integer_outside_the_range_is_a_diagnostic_in_every_reader(self) -> None:
+        self.seed_records()
+        huge = "0x" + "f" * 5000
+        pages = {
+            "bug": ("bugs/BUG-001-reserve-button-does-nothing.md", "id: BUG-001"),
+            "incident": ("incidents/INC-001-reservations-fail-after-the-catalog-fix.md", "id: INC-001"),
+            "feature": ("features/F-001-document-review.md", "id: F-001"),
+        }
+        for kind, (relative, line) in pages.items():
+            with self.subTest(kind=kind):
+                path = self.wiki() / relative
+                original = path.read_text(encoding="utf-8")
+                self.assertIn(line, original)
+                path.write_text(original.replace(line, f"id: {huge}", 1), encoding="utf-8")
+                try:
+                    messages = [item.message for item in lint_wiki(self.root).diagnostics if Path(item.path).name == path.name]
+                    self.assertTrue(any("front matter holds an integer outside the supported range" in message for message in messages), messages)
+                    self.assertTrue(all(len(message) < 300 for message in messages))
+                    self.facts()
+                    self.assertIsNone(read_annotations(self.relative(path), path.read_text(encoding="utf-8")))
+                    self.write_status_board()
+                finally:
+                    path.write_text(original, encoding="utf-8")
+
+    def test_an_integer_inside_the_range_is_unchanged_wherever_front_matter_holds_it(self) -> None:
+        check_integers_in_range({"a": 0, "b": [10**18 - 1, True, -5], "c": {"d": {"e": [7]}}, 3: "key"})
+        for value in (10**18, 0xFF << 5000, -(10**18), -(0xFF << 5000)):
+            with self.subTest(value=type(value).__name__):
+                for shape in (lambda item: item, lambda item: [item], lambda item: {"k": item}, lambda item: {item: "key"}, lambda item: {"a": [{"b": (item,)}]}):
+                    with self.assertRaises(YamlRangeError):
+                        check_integers_in_range(shape(value))
+        page = parse_markdown_text(Path("page.md"), "---\nid: F-001\ncriteria-high-water: 999999999999999999\nlist: [1, 2, [3]]\n---\nBody\n")
+        self.assertEqual([], page.parse_errors)
+        self.assertEqual(10**18 - 1, page.frontmatter["criteria-high-water"])
+
+    def test_the_integer_check_walks_a_value_with_deep_nesting_or_shared_containers_without_recursing(self) -> None:
+        deep: list = []
+        node = deep
+        for _ in range(100_000):
+            child: list = []
+            node.append(child)
+            node = child
+        check_integers_in_range(deep)
+        node.append(0xFF << 5000)
+        with self.assertRaises(YamlRangeError):
+            check_integers_in_range(deep)
+        cyclic = parse_markdown_text(Path("page.md"), "---\na: &x [*x, 1]\nb: &y {k: *y}\n---\n").frontmatter
+        check_integers_in_range(cyclic)
+        shared = parse_markdown_text(Path("page.md"), "---\na: &a [0, 0]\nb: &b [*a, *a]\nc: &c [*b, *b]\nd: &d [*c, *c]\ne: [*d, *d]\n---\n").frontmatter
+        check_integers_in_range(shared)
+
     def test_an_open_bug_with_an_id_of_another_kind_is_listed_by_the_apps_view_under_its_own_id(self) -> None:
         self.seed_records()
         self.write_wiki_page("bugs/BUG-097-declares-a-feature-id.md", bug_page("F-001", apps=["backend"], feature="none", title="Bug page that declares a feature ID"))
@@ -1180,6 +1281,173 @@ class RecordFactsTests(TwoAppWorkspace):
         long_timeline = json.loads(json.dumps(graph))
         long_timeline["facts"]["incidents"][0]["timeline"] = [{"when": None, "text": "x"}] * 21
         self.assertFalse(validator.is_valid(long_timeline))
+
+
+class FrontMatterNumberTests(TwoAppWorkspace):
+    """An integer from front matter is checked by value and never printed, and an ID takes ASCII digits only."""
+
+    CONTRACT = "api-contracts/F-001.md"
+    HUGE_HEXADECIMAL = "0x" + "f" * 5000
+    HUGE_OCTAL = "0" + "7" * 5000  # YAML 1.1: a leading zero makes an octal integer
+    ARABIC_INDIC_NINE = "٩"
+
+    def contract_text(self, version: str, status: str = "agreed") -> str:
+        return (
+            f"---\nfeature-id: F-001\nversion: {version}\nstatus: {status}\n---\n\n"
+            "## Endpoints\n- `GET /api/v1/reviews/:reviewId/summary` returns the summary.\n\n"
+            "## Data models\n```\nReviewSummary\n```\n\n## Authentication requirements\nBearer token.\n\n## Notes\nNone.\n"
+        )
+
+    def facts(self) -> dict:
+        graph = build_graph(self.root)
+        Draft202012Validator(json.loads(SCHEMA.read_text(encoding="utf-8"))).validate(graph)
+        return graph["facts"]
+
+    def lint_codes(self) -> set[str]:
+        return {item.code for item in lint_wiki(self.root).diagnostics}
+
+    def seed_with_contract(self, version: str, contract: str = "none") -> str:
+        """F-001 in development with `backend` delivered (citing `contract`) and a contract at `version`; returns the contract text."""
+
+        page = self.page("in-dev", "dev", BOTH, self.criteria(), delivery=[delivery_row("backend", contract=contract)])
+        self.seed("in-dev", "dev", page)
+        text = self.contract_text(version)
+        self.write_wiki_page(self.CONTRACT, text)
+        return text
+
+    def assert_contract_is_refused_everywhere(self, version: str) -> None:
+        text = self.seed_with_contract(version)
+        relative = "knowledge/wiki/api-contracts/F-001.md"
+        # The page's front matter is refused where it is parsed, so the contract is reported at its own path.
+        diagnostics = [item for item in lint_wiki(self.root).diagnostics if Path(item.path).as_posix().endswith("api-contracts/F-001.md")]
+        self.assertTrue(any("outside the supported range" in item.message for item in diagnostics), [item.code for item in diagnostics])
+        self.facts()
+        self.assertIsNone(read_annotations(relative, text))
+        page = parse_markdown_text(Path(self.CONTRACT), text)
+        self.assertIsNone(contract_page_citation(page.frontmatter, page.body))
+
+    def test_a_contract_version_written_as_a_hexadecimal_number_of_thousands_of_digits_is_a_diagnostic_not_an_exception(self) -> None:
+        self.assert_contract_is_refused_everywhere(self.HUGE_HEXADECIMAL)
+
+    def test_a_contract_version_written_as_an_octal_number_of_thousands_of_digits_is_a_diagnostic_not_an_exception(self) -> None:
+        self.assert_contract_is_refused_everywhere(self.HUGE_OCTAL)
+
+    def test_a_contract_version_of_nineteen_digits_has_a_contract_diagnostic_and_no_citation_for_a_delivery_row_to_cite(self) -> None:
+        version = str(10**18)
+        self.assertEqual(19, len(version))
+        self.assert_contract_is_refused_everywhere(version)
+        digest = "c1:" + "0" * 64
+        row = parse_delivery_rows("## Delivery evidence\n" + table(DELIVERY_HEADER, [delivery_row("backend", contract=f"F-001@v{version}:{digest}")]))[0][0]
+        self.assertIsNone(row.contract_binding)
+
+    def test_a_contract_version_that_is_not_a_positive_integer_has_the_contract_version_diagnostic(self) -> None:
+        for literal in ("0", "-3", '"7"', "true", "1.5"):
+            with self.subTest(version=literal):
+                text = self.seed_with_contract(literal)
+                self.assertIn("invalid-api-contract-version", self.lint_codes())
+                self.assertIsNone(read_annotations("knowledge/wiki/api-contracts/F-001.md", text))
+
+    def test_a_contract_version_of_eighteen_digits_is_valid_from_the_contract_to_the_citation_to_the_delivery_row(self) -> None:
+        version = str(10**18 - 1)
+        self.assertEqual(18, len(version))
+        text = self.seed_with_contract(version)
+        page = parse_markdown_text(Path(self.CONTRACT), text)
+        citation = contract_page_citation(page.frontmatter, page.body)
+        self.assertTrue(citation.startswith(f"F-001@v{version}:c1:"), citation)
+        relative = "knowledge/wiki/api-contracts/F-001.md"
+        self.assertEqual({"version": 10**18 - 1, "digest": citation.split(":", 1)[1], "citation": citation}, read_annotations(relative, text)["contract"])
+        # A Delivery row that cites it binds to the same version and digest, and lint finds the row current.
+        self.seed_with_contract(version, contract=citation)
+        row = parse_delivery_rows("## Delivery evidence\n" + table(DELIVERY_HEADER, [delivery_row("backend", contract=citation)]))[0][0]
+        self.assertEqual(("F-001", 10**18 - 1, citation.split(":", 1)[1]), row.contract_binding)
+        codes = self.lint_codes()
+        self.assertFalse({"invalid-api-contract-version", "stale-delivery-evidence", "invalid-evidence-row"} & codes, codes)
+        self.facts()
+
+    def test_a_criteria_high_water_mark_written_as_a_huge_hexadecimal_or_octal_number_is_a_diagnostic_not_an_exception(self) -> None:
+        for literal in (self.HUGE_HEXADECIMAL, self.HUGE_OCTAL, str(10**18)):
+            with self.subTest(literal=literal[:24]):
+                page = self.page("in-qa", "qa", BOTH, self.criteria(), delivery=[delivery_row(app) for app in BOTH], qa=self.covering_qa())
+                self.seed("in-qa", "qa", page.replace("criteria-high-water: 2", f"criteria-high-water: {literal}"))
+                self.assertTrue(any("outside the supported range" in item.message for item in lint_wiki(self.root).diagnostics))
+                self.facts()
+
+    def test_a_schema_version_written_as_a_huge_hexadecimal_or_octal_number_is_a_diagnostic_not_an_exception(self) -> None:
+        self.seed_in_dev()
+        name = standard_files.names("versioned")[0]
+        path = self.root / "knowledge" / "wiki" / name
+        original = path.read_text(encoding="utf-8")
+        self.assertIn("schema-version: 1", original)
+        for literal in (self.HUGE_HEXADECIMAL, self.HUGE_OCTAL, str(10**18)):
+            with self.subTest(literal=literal[:24]):
+                path.write_text(original.replace("schema-version: 1", f"schema-version: {literal}", 1), encoding="utf-8")
+                self.assertIn("missing-schema-version", self.lint_codes())
+                self.facts()
+
+    def test_a_stale_after_setting_written_as_a_huge_hexadecimal_or_octal_number_falls_back_with_a_diagnostic(self) -> None:
+        self.seed_in_dev()
+        settings = self.root / "knowledge" / "wiki" / "SETTINGS.md"
+        original = settings.read_text(encoding="utf-8")
+        self.assertIn("wiki-stale-after-days: 365", original)
+        for literal in (self.HUGE_HEXADECIMAL, self.HUGE_OCTAL, str(10**18)):
+            with self.subTest(literal=literal[:24]):
+                settings.write_text(original.replace("wiki-stale-after-days: 365", f"wiki-stale-after-days: {literal}"), encoding="utf-8")
+                self.assertTrue(any("outside the supported range" in item.message for item in lint_wiki(self.root).diagnostics if item.code == "invalid-wiki-settings"))
+                self.facts()
+
+    def test_a_manifest_schema_version_written_as_a_huge_hexadecimal_number_is_an_unsupported_version_not_an_exception(self) -> None:
+        self.seed_in_dev()
+        manifest_path = self.root / "prism.workspace.yml"
+        original = manifest_path.read_text(encoding="utf-8")
+        self.assertIn("schema_version: 2", original)
+        for literal in (self.HUGE_HEXADECIMAL, self.HUGE_OCTAL, str(10**18)):
+            with self.subTest(literal=literal[:24]):
+                manifest_path.write_text(original.replace("schema_version: 2", f"schema_version: {literal}", 1), encoding="utf-8")
+                messages = [item.message for item in inspect_workspace(self.root).contract_diagnostics if item.code == "invalid-workspace-manifest-yaml"]
+                self.assertEqual(1, len(messages), messages)
+                self.assertIn("outside the supported range", messages[0])
+                lint_wiki(self.root)
+                build_graph(self.root)
+        # A caller that holds a manifest as a value, not as text, still prints no integer it cannot print.
+        with self.assertRaisesRegex(ManifestUpdateError, "outside the supported range"):
+            validate_manifest_shape({"schema_version": int(self.HUGE_HEXADECIMAL, 16)}, "installed")
+        self.assertIn("outside the supported range", normalize_manifest({"schema_version": int(self.HUGE_HEXADECIMAL, 16)}, path=manifest_path)[1][0].message)
+
+    def test_a_manifest_that_holds_an_integer_outside_the_range_is_a_diagnostic_whatever_the_field(self) -> None:
+        self.seed_in_dev()
+        manifest_path = self.root / "prism.workspace.yml"
+        original = manifest_path.read_text(encoding="utf-8")
+        for name, edited in (
+            ("a project field", original.replace("  slug: document-review", f"  slug: document-review\n  count: {self.HUGE_HEXADECIMAL}", 1)),
+            ("a field of an app", original.replace("  path: backend", f"  path: backend\n  port: {self.HUGE_HEXADECIMAL}", 1)),
+        ):
+            with self.subTest(name):
+                self.assertNotEqual(original, edited)
+                manifest_path.write_text(edited, encoding="utf-8")
+                codes = {item.code for item in inspect_workspace(self.root).contract_diagnostics}
+                self.assertIn("invalid-workspace-manifest-yaml", codes)
+                lint_wiki(self.root)
+                build_graph(self.root)
+        manifest_path.write_text(original, encoding="utf-8")
+
+    def test_an_integer_from_front_matter_is_in_range_by_its_value_and_never_by_its_text(self) -> None:
+        self.assertEqual(0, bounded_int(0))
+        self.assertEqual(10**18 - 1, bounded_int(10**18 - 1))
+        for value in (10**18, 0xFF << 5000, -1, True, False, "7", 7.0, None, [7]):
+            with self.subTest(value=type(value).__name__):
+                self.assertIsNone(bounded_int(value))
+        self.assertEqual(1, contract_version(1))
+        self.assertEqual(10**18 - 1, contract_version(10**18 - 1))
+        for value in (0, 10**18, 0xFF << 5000, True):
+            with self.subTest(contract=type(value).__name__):
+                self.assertIsNone(contract_version(value))
+
+    def test_digits_read_from_a_page_are_ascii_decimal_digits_only(self) -> None:
+        self.assertEqual(9, bounded_number("9"))
+        for text in (self.ARABIC_INDIC_NINE, self.ARABIC_INDIC_NINE * 19, "1_0", "+5", "-5", " 5", "5 ", "²"):
+            with self.subTest(text=text):
+                self.assertIsNone(bounded_number(text))
+        self.assertFalse(oversized_number("BUG-" + self.ARABIC_INDIC_NINE * 19), "such an ID is not an ID at all, so it is invalid for its kind before any bound")
 
 
 class DesignTracksEnvelopeTests(unittest.TestCase):

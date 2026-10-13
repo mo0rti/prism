@@ -43,9 +43,9 @@ from prism_cli.wiki_model import (
 )
 
 BUG_DIRECTORY = "bugs"
-BUG_ID_PATTERN = re.compile(r"^BUG-(\d+)$")
-BUG_FILE_PATTERN = re.compile(r"^(BUG-\d+)-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
-FEATURE_ID_PATTERN = re.compile(r"^F-\d+$")
+BUG_ID_PATTERN = re.compile(r"^BUG-([0-9]+)$")
+BUG_FILE_PATTERN = re.compile(r"^(BUG-[0-9]+)-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+FEATURE_ID_PATTERN = re.compile(r"^F-[0-9]+$")
 
 BUG_STATUS_ORDER = ("open", "in-fix", "fixed", "verified", "released", "closed")
 BUG_OWNER_BY_STATUS = {"open": "dev", "in-fix": "dev", "fixed": "qa", "verified": "release", "released": "none", "closed": "none"}
@@ -177,7 +177,7 @@ class BugPage:
         value = self._text("id")
         if value is not None:
             return value
-        match = re.match(r"^(BUG-\d+)(?:-|$)", self.page.path.stem)
+        match = re.match(r"^(BUG-[0-9]+)(?:-|$)", self.page.path.stem)
         return match.group(1) if match else self.page.path.stem
 
     @property

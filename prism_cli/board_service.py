@@ -87,8 +87,10 @@ from prism_cli.wiki_model import (
     EVIDENCE_SECTIONS,
     MAX_RECORD_NUMBER_DIGITS,
     bounded_number,
+    contract_version,
     number_order,
     oversized_number,
+    safe_yaml_load,
     SINGLE_FEATURE_SECTIONS,
     FEATURE_REVALIDATION_DOMAINS,
     DesignTracks,
@@ -257,9 +259,9 @@ _CONTRACT_CONSUMER_STATUSES = frozenset({"ready-for-dev", "in-dev", "ready-for-q
 # The page folders where an ingest only creates pages and never rewrites one; a decision changes only by supersession.
 _INGEST_CREATE_ONLY = ("features", "personas", "business-rules", "decisions", "bugs")
 _ADR_FIELDS = {"id", "title", "date", "status", "supersedes", "superseded-by"}
-_ADR_ID = re.compile(r"^ADR-\d+$")
+_ADR_ID = re.compile(r"^ADR-[0-9]+$")
 _STATUS_ROW = re.compile(
-    r"^\|\s*(F-\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$",
+    r"^\|\s*(F-[0-9]+)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$",
     re.IGNORECASE,
 )
 # The header is exact, as `parse_status_board_rows` reads it: a board whose header differs in case is not a canonical board for either.
@@ -337,6 +339,8 @@ def _error_details(details: Mapping[str, Any] | None) -> dict[str, Any] | None:
 def _clip(value: Any, limit: int) -> str:
     """Collapse whitespace and truncate to at most `limit` characters."""
 
+    if isinstance(value, int) and not isinstance(value, bool) and not -(10**MAX_RECORD_NUMBER_DIGITS) < value < 10**MAX_RECORD_NUMBER_DIGITS:
+        value = "an out-of-range integer"  # a front matter integer can have any size; it is never turned into text
     text = re.sub(r"\s+", " ", str(value)).strip()
     return text if len(text) <= limit else text[: max(limit - 3, 0)].rstrip() + "..."
 
@@ -2373,7 +2377,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             self._read_only_reason = "The workspace manifest is missing; connected workflow writes are unavailable."
             return
         try:
-            data = yaml.safe_load(self._read_text(manifest_path)) or {}
+            data = safe_yaml_load(self._read_text(manifest_path), "the manifest") or {}
         except (OSError, UnicodeError, yaml.YAMLError, ValueError) as exc:
             self._read_only_reason = f"The workspace manifest cannot be read safely: {type(exc).__name__}."
             return
@@ -2982,7 +2986,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
 
     def _resolve_feature(self, feature_id: str) -> dict[str, Any]:
         self.validate_graph_inputs()
-        if not isinstance(feature_id, str) or not re.fullmatch(r"F-\d+", feature_id.strip(), flags=re.IGNORECASE):
+        if not isinstance(feature_id, str) or not re.fullmatch(r"F-[0-9]+", feature_id.strip(), flags=re.IGNORECASE):
             raise BoardError("invalid_feature_id", "Feature ID must use the canonical F-number form.", 400)
         from prism_cli.wiki_model import read_feature_pages, normalize_feature_id
 
@@ -4269,13 +4273,13 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             )
         self._assert_frontmatter_fields(frontmatter, set(FEATURE_FRONTMATTER_FIELDS), relative)
         feature_id = frontmatter.get("id")
-        if not isinstance(feature_id, str) or not re.fullmatch(r"F-\d+", feature_id) or oversized_number(feature_id):
+        if not isinstance(feature_id, str) or not re.fullmatch(r"F-[0-9]+", feature_id) or oversized_number(feature_id):
             raise BoardError(
                 "invalid_feature_output",
                 f"Feature output `{relative}` must have a canonical F-number id with a number of at most {MAX_RECORD_NUMBER_DIGITS} digits.",
                 409,
             )
-        match = re.match(r"^(F-\d+)", PurePosixPath(relative).stem, re.IGNORECASE)
+        match = re.match(r"^(F-[0-9]+)", PurePosixPath(relative).stem, re.IGNORECASE)
         if not match or match.group(1).lower() != feature_id.lower():
             raise BoardError("feature_path_mismatch", f"Feature output `{relative}` does not match its frontmatter id.", 409)
         if not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip():
@@ -5821,7 +5825,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                     409,
                     {"path": relative, "feature_id": feature_id},
                 )
-            old_version, new_version = old_fm.get("version"), new_fm.get("version")
+            old_raw, new_raw = old_fm.get("version"), new_fm.get("version")
+            old_version, new_version = contract_version(old_raw), contract_version(new_raw)
             other_fields = sorted(key for key in set(old_fm) | set(new_fm) if key not in {"version", "status"} and old_fm.get(key) != new_fm.get(key))
             if other_fields:
                 raise BoardError(
@@ -5831,12 +5836,12 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                     {"path": relative, "fields": other_fields},
                 )
             if old_body != new_body:
-                if not isinstance(old_version, int) or not isinstance(new_version, int) or new_version != old_version + 1:
+                if old_version is None or new_version is None or new_version != old_version + 1:
                     raise BoardError(
                         "contract_revision_required",
-                        f"The body of `{relative}` changes, so its `version` rises from {old_version} to {old_version + 1 if isinstance(old_version, int) else 'the next number'}; it is {new_version}.",
+                        f"The body of `{relative}` changes, so its `version` rises from {_clip(old_raw, 20)} to {old_version + 1 if old_version is not None else 'the next number'}; it is {_clip(new_raw, 20)}.",
                         409,
-                        {"path": relative, "version": new_version, "expected": old_version + 1 if isinstance(old_version, int) else None},
+                        {"path": relative, "version": new_version if new_version is not None else _clip(new_raw, 40), "expected": old_version + 1 if old_version is not None else None},
                     )
                 if new_fm.get("status") != "agreed":
                     raise BoardError(
@@ -5858,10 +5863,10 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 if error is not None:
                     raise error
                 return
-            if new_version != old_version:
+            if new_raw != old_raw:
                 raise BoardError(
                     "contract_revision_required",
-                    f"`version` of `{relative}` changes from {old_version} to {new_version} with no change to the body; a revision changes both.",
+                    f"`version` of `{relative}` changes from {_clip(old_raw, 20)} to {_clip(new_raw, 20)} with no change to the body; a revision changes both.",
                     409,
                     {"path": relative},
                 )
@@ -7227,7 +7232,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
     def _validate_persona(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"id", "name", "sources"}, relative)
-        if not isinstance(frontmatter.get("id"), str) or not re.fullmatch(r"P-\d+", frontmatter["id"]):
+        if not isinstance(frontmatter.get("id"), str) or not re.fullmatch(r"P-[0-9]+", frontmatter["id"]):
             raise BoardError("invalid_persona", f"Persona `{relative}` requires a P-number id.", 409)
         if not isinstance(frontmatter.get("name"), str) or not frontmatter["name"].strip():
             raise BoardError("invalid_persona", f"Persona `{relative}` requires a nonblank name.", 409)
@@ -7240,7 +7245,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
     def _validate_business_rule(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"id", "title", "source"}, relative)
-        if not isinstance(frontmatter.get("id"), str) or not re.fullmatch(r"BR-\d+", frontmatter["id"]):
+        if not isinstance(frontmatter.get("id"), str) or not re.fullmatch(r"BR-[0-9]+", frontmatter["id"]):
             raise BoardError("invalid_business_rule", f"Business rule `{relative}` requires a BR-number id.", 409)
         if not isinstance(frontmatter.get("title"), str) or not frontmatter["title"].strip() or not isinstance(frontmatter.get("source"), str) or not frontmatter["source"].strip():
             raise BoardError("invalid_business_rule", f"Business rule `{relative}` requires title and source.", 409)
@@ -7316,8 +7321,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
     def _validate_api_contract(self, relative: str, content: str) -> None:
         frontmatter, body = _parse_markdown(content, relative)
         self._assert_frontmatter_fields(frontmatter, {"feature-id", "version", "status"}, relative)
-        version = frontmatter.get("version")
-        if isinstance(version, bool) or not isinstance(version, int) or version < 1 or frontmatter.get("status") not in {"draft", "agreed", "implemented"}:
+        if contract_version(frontmatter.get("version")) is None or frontmatter.get("status") not in {"draft", "agreed", "implemented"}:
             raise BoardError("invalid_api_contract", f"API contract `{relative}` has an invalid version or status.", 409)
         _require_headings(body, ("Endpoints", "Data models", "Authentication requirements", "Notes"), relative)
         _validate_no_placeholders(body, relative)
@@ -8208,7 +8212,7 @@ def BoardServiceIdentity(root: Path) -> tuple[Any, ...] | None:
             BoardService._reject_reparse(workspace_root / relative, include_leaf=True)
         if not all((workspace_root / "knowledge/wiki" / name).is_file() for name in required):
             return None
-        data = yaml.safe_load(manifest_path.read_text(encoding="utf-8-sig")) or {}
+        data = safe_yaml_load(manifest_path.read_text(encoding="utf-8-sig"), "the manifest") or {}
         workflow = data.get("workflow") if isinstance(data, dict) else None
         if not isinstance(data, dict) or not isinstance(workflow, dict):
             return None
@@ -8368,7 +8372,7 @@ def _parse_markdown(content: str, path: str | None = None) -> tuple[dict[str, An
             {**base, "problem": "missing opening or closing `---` frontmatter delimiter"},
         )
     try:
-        loaded = yaml.safe_load(match.group(1)) or {}
+        loaded = safe_yaml_load(match.group(1)) or {}
     except (yaml.YAMLError, ValueError, TypeError) as exc:
         text = getattr(exc, "problem", None) or (str(exc).splitlines() or [type(exc).__name__])[0]
         problem = _clip(text, 120)
@@ -8696,7 +8700,7 @@ def _app_sort_key(app_id: str) -> str:
 def _id_number_order(identifier: str) -> tuple[int, int, str, str]:
     """A sort key by the first number in an ID, comparing its digits so a number of any length sorts without a conversion."""
 
-    match = re.search(r"\d+", identifier)
+    match = re.search(r"[0-9]+", identifier)
     return number_order(match.group(0) if match else "", identifier)
 
 
@@ -8904,7 +8908,7 @@ def _page_feature_id(content: str, filename: str) -> str | None:
     value = frontmatter.get("feature-id")
     if isinstance(value, str) and value.strip():
         return value.strip()
-    match = re.match(r"^(F-\d+)", filename, re.IGNORECASE)
+    match = re.match(r"^(F-[0-9]+)", filename, re.IGNORECASE)
     return match.group(1) if match else None
 
 

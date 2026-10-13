@@ -34,8 +34,8 @@ from prism_cli.wiki_releases import RELEASE_ID_PATTERN
 
 INCIDENT_DIRECTORY = "incidents"
 INCIDENT_DIRECTORY_PREFIX = "knowledge/wiki/incidents/"
-INCIDENT_ID_PATTERN = re.compile(r"^INC-(\d+)$")
-INCIDENT_FILE_PATTERN = re.compile(r"^(INC-\d+)-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+INCIDENT_ID_PATTERN = re.compile(r"^INC-([0-9]+)$")
+INCIDENT_FILE_PATTERN = re.compile(r"^(INC-[0-9]+)-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 INCIDENT_STATUSES = ("open", "mitigated", "resolved")
 # The statuses of an incident that is not over: the status board lists it as open.
 OPEN_INCIDENT_STATUSES = ("open", "mitigated")
@@ -147,7 +147,7 @@ class IncidentPage:
         value = self._text("id")
         if value is not None:
             return value
-        match = re.match(r"^(INC-\d+)(?:-|$)", self.page.path.stem)
+        match = re.match(r"^(INC-[0-9]+)(?:-|$)", self.page.path.stem)
         return match.group(1) if match else self.page.path.stem
 
     @property

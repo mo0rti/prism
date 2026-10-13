@@ -416,12 +416,15 @@ def normalize_manifest(data: Mapping[str, Any], *, path: Path) -> tuple[Workspac
             _diag("invalid-workspace-manifest-schema", "error", path, "prism.workspace.yml schema_version must be an integer.")
         ]
     if version != MANIFEST_SCHEMA_VERSION:
-        return WorkspaceModel(schema_version=version), [
+        from prism_cli.wiki_model import bounded_int  # a manifest integer can have any size; it is never turned into text
+
+        shown = version if bounded_int(version) is not None else "outside the supported range"
+        return WorkspaceModel(schema_version=0 if bounded_int(version) is None else version), [
             _diag(
                 "unsupported-workspace-manifest-schema",
                 "error",
                 path,
-                f"prism.workspace.yml schema_version is {version}; this CLI supports only {MANIFEST_SCHEMA_VERSION}. Recreate or reinstall this workspace with this CLI.",
+                f"prism.workspace.yml schema_version is {shown}; this CLI supports only {MANIFEST_SCHEMA_VERSION}. Recreate or reinstall this workspace with this CLI.",
             )
         ]
     return _normalize_manifest(data, path)
@@ -983,7 +986,9 @@ def _read_local_entries(local_path: Path, diagnostics: list[WorkspaceDiagnostic]
         )
         return {}
     try:
-        loaded = yaml.safe_load(local_path.read_text(encoding="utf-8-sig")) or {}
+        from prism_cli.wiki_model import safe_yaml_load  # wiki_model imports this module
+
+        loaded = safe_yaml_load(local_path.read_text(encoding="utf-8-sig"), "the file") or {}
     except (OSError, UnicodeError, yaml.YAMLError, ValueError, OverflowError) as exc:
         diagnostics.append(_diag("unreadable-local-repositories", "warning", local_path, f"Unable to read {LOCAL_OVERRIDE_FILE}: {exc}"))
         return {}

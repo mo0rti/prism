@@ -31,7 +31,7 @@ from prism_cli.app_model import (
     repository_entries,
     resolve_local_repositories,
 )
-from prism_cli.wiki_model import bounded_number, request_fact
+from prism_cli.wiki_model import bounded_int, bounded_number, request_fact, safe_yaml_load
 from prism_cli.wiki_paths import REPARSE, RefusedPath, Resolution, read_confined_bytes
 
 
@@ -49,7 +49,7 @@ GENERATION_ANSWER_FIELDS = (
 )
 
 # Each numeric part has at most 18 digits (`MAX_RECORD_NUMBER_DIGITS`), so every part converts to an integer.
-_VERSION_PATTERN = re.compile(r"^\d{1,18}(?:\.\d{1,18}){0,2}(?:[-+][0-9A-Za-z.-]+)?$")
+_VERSION_PATTERN = re.compile(r"^[0-9]{1,18}(?:\.[0-9]{1,18}){0,2}(?:[-+][0-9A-Za-z.-]+)?$")
 
 
 @dataclass(frozen=True)
@@ -271,7 +271,7 @@ def _load_workspace(workspace_root: Path) -> WorkspaceLoadResult:
         )
 
     try:
-        data = yaml.safe_load(manifest_path.read_text(encoding="utf-8-sig")) or {}
+        data = safe_yaml_load(manifest_path.read_text(encoding="utf-8-sig"), "the manifest") or {}
     except (OSError, UnicodeError) as exc:
         return WorkspaceLoadResult(
             root=workspace_root,
@@ -327,12 +327,13 @@ def _load_workspace(workspace_root: Path) -> WorkspaceLoadResult:
             manifest_exists=True,
         )
     elif schema_version != MANIFEST_SCHEMA_VERSION:
+        shown = schema_version if bounded_int(schema_version) is not None else "outside the supported range"  # an integer of any size is never turned into text
         diagnostics.append(
             _diag(
                 "unsupported-workspace-manifest-schema",
                 "error",
                 manifest_path,
-                f"{MANIFEST_FILE} schema_version is {schema_version}; this CLI supports only {MANIFEST_SCHEMA_VERSION}. Recreate or reinstall this workspace with this CLI.",
+                f"{MANIFEST_FILE} schema_version is {shown}; this CLI supports only {MANIFEST_SCHEMA_VERSION}. Recreate or reinstall this workspace with this CLI.",
             )
         )
         # Do not interpret fields from a schema this CLI does not understand.
@@ -341,7 +342,7 @@ def _load_workspace(workspace_root: Path) -> WorkspaceLoadResult:
             manifest=None,
             diagnostics=diagnostics,
             manifest_exists=True,
-            manifest_schema_version=schema_version,
+            manifest_schema_version=bounded_int(schema_version),
         )
 
     diagnostics.extend(_validate_manifest_shape(data, manifest_path))
@@ -458,7 +459,7 @@ def write_workspace_manifest(
     data: dict[str, Any] = {}
     if manifest_path.exists():
         try:
-            loaded = yaml.safe_load(manifest_path.read_text(encoding="utf-8-sig")) or {}
+            loaded = safe_yaml_load(manifest_path.read_text(encoding="utf-8-sig"), "the manifest") or {}
         except (OSError, UnicodeError) as exc:
             raise ValueError(f"Unable to read existing {MANIFEST_FILE}: {exc}") from exc
         except (yaml.YAMLError, ValueError, OverflowError) as exc:
@@ -593,7 +594,7 @@ def _read_answers(path: Path) -> tuple[dict[str, Any], bool, list[WorkspaceDiagn
     if raw is None:
         return {}, False, []
     try:
-        data = yaml.safe_load(raw.decode("utf-8-sig")) or {}
+        data = safe_yaml_load(raw.decode("utf-8-sig"), "the answers file") or {}
     except (OSError, UnicodeError) as exc:
         return {}, True, [_diag("unreadable-copier-answers", "error", path, f"Unable to read {COPIER_ANSWERS_FILE}: {exc}")]
     except (yaml.YAMLError, ValueError, OverflowError) as exc:
@@ -807,7 +808,7 @@ def _comparison_value(value: Any) -> Any:
 def _version_tuple(value: str) -> tuple[int, int, int]:
     numbers: list[int] = []
     for part in value.strip().split(".")[:3]:
-        match = re.match(r"\d+", part)
+        match = re.match(r"[0-9]+", part)
         numbers.append((bounded_number(match.group(0)) if match else 0) or 0)
     while len(numbers) < 3:
         numbers.append(0)

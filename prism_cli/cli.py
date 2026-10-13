@@ -91,7 +91,7 @@ from prism_cli.workspace import (
     read_answers_bytes,
     write_workspace_manifest,
 )
-from prism_cli.wiki_model import VALID_FEATURE_OWNERS
+from prism_cli.wiki_model import VALID_FEATURE_OWNERS, safe_yaml_load
 from prism_cli.wiki_graph import build_graph, render_mermaid
 from prism_cli.wiki_query import wiki_app, wiki_blockers, wiki_owner, wiki_search, wiki_show
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, lint_wiki
@@ -2474,7 +2474,7 @@ def manifest_apps_snapshot(project_path: Path) -> tuple[list[dict[str, Any]] | N
     """The apps and repositories a workspace's manifest declares, as written, or ``None`` when it cannot be read."""
 
     try:
-        data = yaml.safe_load((project_path / MANIFEST_FILE).read_text(encoding="utf-8-sig")) or {}
+        data = safe_yaml_load((project_path / MANIFEST_FILE).read_text(encoding="utf-8-sig"), "the manifest") or {}
     except (OSError, UnicodeError, yaml.YAMLError, ValueError, OverflowError):
         return None, None
     if not isinstance(data, dict):

@@ -52,8 +52,10 @@ from prism_cli.wiki_model import (
     app_stages,
     app_stages_text,
     candidate_relative_markdown_link as _candidate_relative_link,
+    bounded_int,
     clean_cell,
     contract_page_citation,
+    contract_version,
     criteria_high_water,
     expected_owner,
     extract_markdown_links,
@@ -146,8 +148,8 @@ WIKI_BLOCKER_CODES = {
     "open-bug-blocks-qa",
 }
 
-_FEATURE_ID_PATTERN = re.compile(r"\bF-\d+\b")
-_FEATURE_FILE_PATTERN = re.compile(r"\bF-\d+(?:-[A-Za-z0-9][A-Za-z0-9_-]*)?\.md\b")
+_FEATURE_ID_PATTERN = re.compile(r"\bF-[0-9]+\b")
+_FEATURE_FILE_PATTERN = re.compile(r"\bF-[0-9]+(?:-[A-Za-z0-9][A-Za-z0-9_-]*)?\.md\b")
 _MARKDOWN_LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]*\]\([^)]*\)")
 _WIKI_PATH_PATTERN = r"(?P<path>(?:(?:knowledge/)?wiki/)?(?:\.\.?/)*(?:{directory})/[A-Za-z0-9][A-Za-z0-9_-]*\.md\b)"
 _EXTERNAL_URL_PATTERN = re.compile(r"(?i)(?:(?:https?|ftp):|//)[^\s<>()]+")
@@ -173,7 +175,7 @@ _CLAIM_EVIDENCE_LINK = re.compile(r"\[[^\]]+\]\(\s*<?[^)\s>]+|https?://\S+")
 _CURRENT_STATE_DIRECTORIES = CURRENT_STATE_DIRECTORIES
 # Freshness asks for a review and never gates a lifecycle action or changes a status.
 FRESHNESS_CODES = frozenset({"stale-page", "never-verified"})
-_ADR_ID_PATTERN = re.compile(r"^ADR-\d+$", re.IGNORECASE)
+_ADR_ID_PATTERN = re.compile(r"^ADR-[0-9]+$", re.IGNORECASE)
 _FRONTMATTER_PAGE_DIRECTORIES = {
     "api-contracts",
     "bugs",
@@ -1615,7 +1617,7 @@ def _lint_schema_versions(pages: list[MarkdownPage], wiki_root: Path) -> list[Wi
         if page is None:
             continue  # a missing file is reported as missing-required-wiki-file
         value = page.frontmatter.get("schema-version")
-        if isinstance(value, bool) or value != SUPPORTED_SCHEMA_VERSION:
+        if bounded_int(value) != SUPPORTED_SCHEMA_VERSION:
             diagnostics.append(
                 _diag(
                     "missing-schema-version",
@@ -2564,9 +2566,16 @@ def _lint_aux_required_string(page: MarkdownPage, field_name: str, kind: str, fe
 def _lint_aux_required_int(page: MarkdownPage, field_name: str, kind: str, feature_id: str | None) -> list[WikiDiagnostic]:
     if field_name not in page.frontmatter:
         return [_diag(f"missing-{kind}-frontmatter", "error", page.path, f"Required frontmatter field `{field_name}` is missing.", feature_id)]
-    value = page.frontmatter[field_name]
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        return [_diag(f"invalid-{kind}-{field_name}", "error", page.path, f"`{field_name}` must be an integer.", feature_id)]
+    if contract_version(page.frontmatter[field_name]) is None:
+        return [
+            _diag(
+                f"invalid-{kind}-{field_name}",
+                "error",
+                page.path,
+                f"`{field_name}` must be an integer from 1 to {'9' * MAX_RECORD_NUMBER_DIGITS}.",
+                feature_id,
+            )
+        ]
     return []
 
 
@@ -2634,7 +2643,7 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel, participation: Re
 
     if "id" in frontmatter:
         value = frontmatter["id"]
-        if not isinstance(value, str) or not re.fullmatch(r"F-\d+", value.strip()):
+        if not isinstance(value, str) or not re.fullmatch(r"F-[0-9]+", value.strip()):
             diagnostics.append(_diag("invalid-feature-id", "error", path, "`id` must be a feature ID such as `F-001`.", feature_id))
         elif oversized_number(value):
             diagnostics.append(
