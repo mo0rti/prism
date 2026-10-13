@@ -4,9 +4,14 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.7.3]
+
+Release date: 2026-10-13
+
+Prism 0.7.3 makes the board confirm an applied action only when it shows that operation's result, keeps app-stage lines readable on narrow cards, and requires the release participation wherever a released feature's scope is derived.
+
 ### Changed
 
-- **The journey's smoke tier runs Claude Haiku 5.5** (`claude-haiku-5-5`) at medium effort, like the other hosts: `claude.exe` lists the effort capability for it, with medium as its default. The report still accepts a dated build of the model.
 - **`app_stages_text` takes the release participation as a required argument**, with `_status_row` of the board service. A caller can no longer judge a released feature's retired apps from the feature page alone by leaving it out; every caller already passed it.
 
 ### Fixed
