@@ -358,7 +358,10 @@ main { position: relative; flex: 1; overflow: hidden; }
 .badge.broken { color: var(--muted); border: 1px dashed var(--muted); }
 .app-stages, .design-tracks { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font: 10px/1.35 ui-monospace, Consolas, monospace; color: var(--ink-2); }
 .design-track { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
-/* An app ID and a stage each stay on one line: the row wraps only between the app and its stage, and a value wider than the row is cut with an ellipsis (its full value is in the title). */
+/* In the panel a design track shows its whole track and state: the row wraps at the separator first, and a long word breaks anywhere. */
+.design-track.full { flex-wrap: wrap; align-items: baseline; column-gap: 6px; row-gap: 0; }
+.design-track.full > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+/* On a card, an app ID and a stage each stay on one line: the row wraps only between the app and its stage, and a value wider than the row is cut with an ellipsis (its full value is in the title). */
 .app-stage { display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; min-width: 0; }
 .app-stage i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .app-stage .as-head { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
@@ -366,6 +369,11 @@ main { position: relative; flex: 1; overflow: hidden; }
 .app-stage .sep { flex: none; }
 .app-stage .sep, .design-track .sep { color: var(--muted); }
 .app-stage.retired { color: var(--muted); }
+/* In the panel an app ID and a stage show in full: the row wraps at the separator first, and a long word breaks anywhere. */
+.app-stage.full { align-items: baseline; }
+.app-stage.full i { align-self: center; }
+.app-stage.full .as-head { align-items: baseline; }
+.app-stage.full .as-name, .app-stage.full .as-stage { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .card.intake { --stage-color: var(--muted); }
 .card.intake.quarantined { --stage-color: var(--critical); }
 
@@ -3686,27 +3694,41 @@ function featureAppRows(node) {
     .map(item => ({ app: item.app, stage: "", retired: true }));
   return rows.concat(retired);
 }
-function appStageHtml(row) {
-  const head = `<span class="as-head"><span class="as-name" title="${escapeHtml(row.app)}">${escapeHtml(boundedText(row.app, 80))}</span><span class="sep">·</span></span>`;
-  if (row.retired && !row.stage) return `<div class="app-stage retired">${head}<span class="as-stage">retired</span></div>`;
+// A card row cuts a long app ID and stage (the full value is in the title); a panel row (`full`) shows both whole and wraps them.
+function appStageHtml(row, full) {
+  const name = full
+    ? `<span class="as-name">${escapeHtml(row.app)}</span>`
+    : `<span class="as-name" title="${escapeHtml(row.app)}">${escapeHtml(boundedText(row.app, 80))}</span>`;
+  const head = `<span class="as-head">${name}<span class="sep">·</span></span>`;
+  const rowClass = `app-stage${row.retired ? " retired" : ""}${full ? " full" : ""}`;
+  if (row.retired && !row.stage) return `<div class="${rowClass}">${head}<span class="as-stage">retired</span></div>`;
   const color = C[STAGE_PHASE[row.stage]] || C.muted;
   const retiredMark = row.retired ? '<span class="sep">·</span><span class="as-stage">retired</span>' : "";
-  return `<div class="app-stage${row.retired ? " retired" : ""}"><i style="background:${color}"></i>${head}<span class="as-stage" title="${escapeHtml(row.stage)}">${escapeHtml(boundedText(row.stage, 40))}</span>${retiredMark}</div>`;
+  const stage = full
+    ? `<span class="as-stage">${escapeHtml(row.stage)}</span>`
+    : `<span class="as-stage" title="${escapeHtml(row.stage)}">${escapeHtml(boundedText(row.stage, 40))}</span>`;
+  return `<div class="${rowClass}"><i style="background:${color}"></i>${head}${stage}${retiredMark}</div>`;
 }
 // A card lists the apps that carry a stage in a feature in development or later; the panel adds the retired apps without one.
 function cardAppStagesHtml(node) {
   const rows = featureAppRows(node).filter(row => row.stage);
-  return rows.length ? `<div class="app-stages" data-app-stages="${escapeHtml(node.id)}">${rows.map(appStageHtml).join("")}</div>` : "";
+  return rows.length ? `<div class="app-stages" data-app-stages="${escapeHtml(node.id)}">${rows.map(row => appStageHtml(row, false)).join("")}</div>` : "";
 }
 function designTrackStates(node) {
   const tracks = node && node.design_tracks;
   if (!tracks || typeof tracks !== "object") return [];
   return ["ui", "technical"].filter(track => typeof tracks[track] === "string").map(track => ({ track, state: tracks[track] }));
 }
-function designTracksHtml(node) {
+// A card cuts a long design state (the full value is in the title); the panel (`full`) shows the track and state whole and wraps them.
+function designTrackHtml(item, full) {
+  const shown = full ? item.state : boundedText(item.state, 40);
+  const title = shown !== item.state ? ` title="${escapeHtml(item.state)}"` : "";
+  return `<div class="design-track${full ? " full" : ""}"><span>${escapeHtml(item.track)}</span><span class="sep">·</span><span${title}>${escapeHtml(shown)}</span></div>`;
+}
+function designTracksHtml(node, full) {
   const tracks = designTrackStates(node);
   return tracks.length
-    ? `<div class="design-tracks" data-design-tracks="${escapeHtml(node.id)}">${tracks.map(item => `<div class="design-track"><span>${escapeHtml(item.track)}</span><span class="sep">·</span><span>${escapeHtml(boundedText(item.state, 40))}</span></div>`).join("")}</div>`
+    ? `<div class="design-tracks" data-design-tracks="${escapeHtml(node.id)}">${tracks.map(item => designTrackHtml(item, full === true)).join("")}</div>`
     : "";
 }
 function appOperationsRow(appId) {
@@ -4312,10 +4334,10 @@ function renderPanel(node) {
 
   const appRows = node.type === "feature" ? featureAppRows(node) : [];
   const appStagesPanelHtml = appRows.length
-    ? `<div class="section" data-panel-app-stages><h4>App stages - ${appRows.length}</h4><div class="app-stages">${appRows.map(appStageHtml).join("")}</div></div>`
+    ? `<div class="section" data-panel-app-stages><h4>App stages - ${appRows.length}</h4><div class="app-stages">${appRows.map(row => appStageHtml(row, true)).join("")}</div></div>`
     : "";
   const trackPanelHtml = designTrackStates(node).length && DESIGN_STATUSES.has(node.status)
-    ? `<div class="section" data-panel-design-tracks><h4>Design tracks</h4>${designTracksHtml(node)}</div>`
+    ? `<div class="section" data-panel-design-tracks><h4>Design tracks</h4>${designTracksHtml(node, true)}</div>`
     : "";
 
   const blockers = blockersByFeature[node.id] || [];

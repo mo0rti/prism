@@ -9,8 +9,9 @@ function makeTempDir(prefix = 'prism-launcher-test-') {
   return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
 }
 
+// Windows can hold a file for a moment after the process that used it has exited, so the removal retries.
 function removeDir(directory) {
-  fs.rmSync(directory, { recursive: true, force: true });
+  fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
 function tarHeader({ name, size, type = '0', prefix = '' }) {

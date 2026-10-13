@@ -984,6 +984,10 @@ def create_app(root: Path, *, port: int, service: Any | None = None, should_stop
             if callable(start):
                 await asyncio.to_thread(start)
                 started = True
+            # The snapshot was built when the app was constructed, possibly while another server held the workspace and
+            # wrote to it. Now this app holds the workspace, so make the snapshot current before the first request: an
+            # unchanged workspace costs one fingerprint read, and a failed refresh leaves the graph unavailable.
+            await asyncio.to_thread(graph.refresh_now)
             graph.start()
             async with mcp_server.session_manager.run():
                 yield

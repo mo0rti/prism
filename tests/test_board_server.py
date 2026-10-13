@@ -437,6 +437,56 @@ class BoardServerTests(unittest.TestCase):
                 other = client.post("/api/board/v1/query", json={"kind": "owner", "value": "dev", "cursor": query_body["cursor"]}, headers=headers)
                 self.assertEqual(("invalid_cursor", 400), (other.json()["error"]["code"], other.status_code))
 
+    def _workspace_with_a_feature(self, temporary: str) -> tuple[Path, Path]:
+        root = Path(temporary)
+        apply_install(root, plan_install(root, name="Document review", apps=["backend"]))
+        source = root / "knowledge/intake/processed/2026-10-06-document-review-brief/brief.md"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"# Document review\nRecord a summary and outcome.\n")
+        feature = root / "knowledge/wiki/features/F-001-document-review.md"
+        feature.write_bytes(_feature_page().encode("utf-8"))
+        _write_index(root, "raw", "po")
+        return root, feature
+
+    def test_a_snapshot_built_before_the_service_started_is_refreshed_before_the_first_read(self) -> None:
+        # Another writer changes a wiki page after the app was constructed and before it holds the workspace.
+        with TemporaryDirectory() as temporary, patch("prism_cli.board_server.GRAPH_POLL_SECONDS", 3600.0):
+            root, feature = self._workspace_with_a_feature(temporary)
+            service = BoardService(root)
+            self.addCleanup(service.close)
+            grant = service.create_participant("Startup test client", "agent")
+            app = create_app(root, port=8768, service=service)
+            feature.write_bytes(feature.read_bytes().replace(b"title: Document review", b"title: Document review after the other writer"))
+            with TestClient(app, base_url="http://127.0.0.1:8768") as client:
+                response = client.get("/data.json", headers={"Authorization": f"Bearer {grant['token']}"})
+                self.assertEqual(200, response.status_code, response.text)
+                payload = response.json()
+                node = next(item for item in payload["envelope"]["facts"]["nodes"] if item["id"] == "F-001")
+                self.assertEqual("Document review after the other writer", node["title"])
+                self.assertEqual(2, payload["version"])
+
+    def test_an_unchanged_workspace_keeps_version_one_and_builds_no_graph_at_startup(self) -> None:
+        from prism_cli.wiki_graph import build_graph as real_build_graph
+
+        builds: list[int] = []
+
+        def counted(path: Path) -> dict[str, Any]:
+            builds.append(1)
+            return real_build_graph(path)
+
+        with TemporaryDirectory() as temporary, patch("prism_cli.board_server.GRAPH_POLL_SECONDS", 3600.0), patch("prism_cli.wiki_graph.build_graph", counted):
+            root, _feature = self._workspace_with_a_feature(temporary)
+            service = BoardService(root)
+            self.addCleanup(service.close)
+            grant = service.create_participant("Startup test client", "agent")
+            app = create_app(root, port=8769, service=service)
+            self.assertEqual(1, len(builds), "The app builds its first snapshot once, when it is constructed.")
+            with TestClient(app, base_url="http://127.0.0.1:8769") as client:
+                response = client.get("/data.json", headers={"Authorization": f"Bearer {grant['token']}"})
+                self.assertEqual(200, response.status_code, response.text)
+                self.assertEqual(1, response.json()["version"])
+                self.assertEqual(1, len(builds), "An unchanged workspace is not rebuilt when the app starts.")
+
     def test_apply_refreshes_the_graph_snapshot_before_the_response_returns(self) -> None:
         # A one-hour poll interval keeps the background poller out of the way,
         # so only the write path can make the snapshot current.
