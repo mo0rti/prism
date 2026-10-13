@@ -16,12 +16,14 @@ from prism_cli.qa_rules import (
     bug_gate_problems,
     coverage_problems,
     qa_fail_support,
+    qa_return_problem,
 )
 from prism_cli.wiki_bugs import read_bug_pages
 from prism_cli.wiki_model import (
     FeaturePage,
     WorkspaceModel,
     active_scope,
+    app_stage,
     app_stages,
     parse_app_revalidation,
     parse_criteria,
@@ -105,6 +107,30 @@ def qa_pass_checks(feature: FeaturePage, model: WorkspaceModel, named: Sequence[
         else:
             checks.append(_check("app-revalidation-gate", "pass", "No pending implementation or tests revalidation blocks the apps it passes.", path))
     return checks
+
+
+def qa_return_checks(action: str, feature: FeaturePage, model: WorkspaceModel, *, proposal: bool = False) -> list[dict[str, Any]]:
+    """`qa-return-spec` and `qa-return-design`: the app stages the board accepts a return from QA in (CONTRACTS 2.3).
+
+    The board service judges the return by the same rule, `qa_return_problem`, against the page before the write. A proposal's
+    candidate page has already archived every row, so a preview leaves the eligibility to the service; the proposal-specific
+    checks (the history entry, the archive) stay with the preview.
+    """
+
+    path = feature.page.path
+    if proposal:
+        return [_check("return-stage", "pass", "The board service judges the app stages against the page before the write.", path)]
+    evidence = read_feature_evidence(feature.page.body)
+    problem = qa_return_problem(
+        action,
+        feature.feature_id,
+        feature.status,
+        {app: app_stage(app, evidence) for app in feature.apps},
+        app_stages(active_scope(feature.apps, model), evidence),
+    )
+    if problem is not None:
+        return [_check(problem.code.replace("_", "-"), "blocked", problem.message, path)]
+    return [_check("return-stage", "pass", "An app has reached QA and none is released; the return archives every evidence row.", path)]
 
 
 def qa_fail_checks(feature: FeaturePage, model: WorkspaceModel, named: Sequence[str] | None) -> list[dict[str, Any]]:

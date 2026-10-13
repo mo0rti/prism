@@ -385,7 +385,7 @@ def _collect_nodes(
                 (row["number"], row["question"], row["owner"], row["status"]) for row in question_rows
             ),
             app_stages=(
-                tuple(app_stages(stage_scope(feature.status, feature.apps, model), read_feature_evidence(feature.page.body)).items())
+                tuple(app_stages(stage_scope(feature.status, feature.apps, model, evidence := read_feature_evidence(feature.page.body)), evidence).items())
                 if status_rank(feature.status) >= status_rank("in-dev")
                 else None
             ),

@@ -67,6 +67,7 @@ METRICS = (
 # A transition also fingerprints ACTIONS.md with the rest of its context, which `apply` reads on each of its snapshots.
 # The release actions add the releases folder and its format page, and the generated instruction files of the release actions and the reopen
 # routes that the copy-only preflight lists. No slope changed.
+# The actions that share a skill (the returns and the reopens of `feature-reopen`) read its two generated files once per evaluation.
 # The graph also derives the status board's Operations rows for the board page, which adds two folder listings to `build_graph` and to the
 # `apply` that rebuilds it. No slope changed.
 CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
@@ -90,7 +91,7 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
     },
     "build_graph": {
         "page_parses": (1, 12),
-        "file_opens": (4, 227),
+        "file_opens": (4, 217),
         "workspace_fingerprint": (0, 3),
         "validate_graph_inputs": (0, 0),
         "lint_wiki": (0, 1),
@@ -113,7 +114,7 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
     # snapshots of a fixed cost each; no slope changed.
     "apply": {
         "page_parses": (1, 15),
-        "file_opens": (4, 433),
+        "file_opens": (4, 423),
         "workspace_fingerprint": (0, 4),
         "validate_graph_inputs": (0, 16),
         "lint_wiki": (0, 2),

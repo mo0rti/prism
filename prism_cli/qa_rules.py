@@ -507,3 +507,33 @@ def released_apps(scope: Sequence[str], evidence: FeatureEvidence, model: Any) -
 
     stages = app_stages(active_scope(scope, model), evidence)
     return [app for app, stage in stages.items() if stage == "released"]
+
+
+def qa_return_problem(
+    action: str,
+    feature_id: str,
+    status: Any,
+    scope_stages: Mapping[str, str],
+    active_stages: Mapping[str, str],
+) -> Problem | None:
+    """Why `qa-return-spec` or `qa-return-design` does not apply to a feature in its app stages (CONTRACTS 2.3), or ``None``.
+
+    `scope_stages` are the stages of every app of the scope, a retired one included, and `active_stages` those of the active
+    apps. A feature of which any app is released goes back through a new feature; one in development goes back from QA only
+    once an app has reached QA. The board service and the transition preflight both judge a route by this function.
+    """
+
+    released = [app for app, stage in scope_stages.items() if stage == "released"]
+    if released:
+        return Problem(
+            "partial_release_requires_new_feature",
+            f"{feature_id} has released app(s) {_quoted(released)}. A changed requirement or contract goes in a new feature, and an implementation defect in a bug; "
+            "this feature cannot go back to specification or design.",
+            {"apps": released},
+        )
+    if status == "in-dev" and not any(stage in QA_FAIL_STAGES for stage in active_stages.values()):
+        return Problem(
+            "app_stage_mismatch",
+            f"{feature_id} is in development and no app has reached QA, so it returns with dev-return-* rather than {action}.",
+        )
+    return None

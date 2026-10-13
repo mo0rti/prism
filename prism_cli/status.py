@@ -692,13 +692,14 @@ def _wiki_counts(root: Path) -> tuple[dict[str, int], dict[str, int], dict[str, 
 
 
 def _feature_app_stages(root: Path, model: Any) -> dict[str, dict[str, str]]:
-    """The stage of each app of every feature at `in-dev` or later, from its evidence tables: the active apps, or a released feature's whole scope."""
+    """The stage of each app of every feature at `in-dev` or later, from its evidence tables: the active apps, and for a released feature also a retired app with evidence rows."""
 
     stages: dict[str, dict[str, str]] = {}
     for feature in read_feature_pages(root / "knowledge" / "wiki"):
         if status_rank(feature.status) < status_rank("in-dev"):
             continue
-        stages[feature.feature_id] = app_stages(stage_scope(feature.status, feature.apps, model), read_feature_evidence(feature.page.body))
+        evidence = read_feature_evidence(feature.page.body)
+        stages[feature.feature_id] = app_stages(stage_scope(feature.status, feature.apps, model, evidence), evidence)
     return dict(sorted(stages.items()))
 
 

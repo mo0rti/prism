@@ -15,13 +15,23 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 from prism_cli.status import build_status
+from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_graph import action_registry, build_graph
 from prism_cli.wiki_model import DESIGN_OWNERS, FEATURE_STATUS_ORDER, status_rank
 from prism_cli.wiki_operations import OPERATION_ROW_KEYS, read_board_views
-from prism_cli.wiki_transitions import ACTION_SPECS, DESIGN_OWNER, MINIMUM, MODE_AGENT_PROPOSED, MODE_HUMAN_DIRECT, UNCHANGED
+from prism_cli.wiki_transitions import (
+    ACTION_SPECS,
+    DESIGN_OWNER,
+    MINIMUM,
+    MODE_AGENT_PROPOSED,
+    MODE_HUMAN_DIRECT,
+    UNCHANGED,
+    build_board_transition_preflight,
+)
 from tests import real_temp  # noqa: F401
 from tests.board_page_fixture import BOTH, TwoAppWorkspace
 from tests.browser.harness import EXTRA_FEATURES, build_workspace
+from tests.test_lifecycle_model import delivery_row, release_row
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 TEMPLATE = REPOSITORY / "prism_cli" / "assets" / "graph_template.html"
@@ -277,6 +287,144 @@ class BoardPageEnvelopeTests(TwoAppWorkspace):
         offered = {record["action"] for record in node["transitions"]}
         self.assertTrue({"dev-return-spec", "dev-return-design"} <= offered)
         self.assertFalse({"qa-return-spec", "qa-return-design"} & offered)
+
+
+class ReleasedScopeLintTests(TwoAppWorkspace):
+    """Lint judges a released feature over the scope the status board, the graph and `prism status` show."""
+
+    def errors(self) -> dict[str, str]:
+        """The error codes of F-001, without the requirement pages these fixtures leave out."""
+
+        return {
+            item.code: item.message
+            for item in lint_wiki(self.root).diagnostics
+            if item.severity == "error" and item.feature_id in {None, "F-001"} and item.code != "done-app-requirement"
+        }
+
+    def seed_released_without_worker_release(self) -> None:
+        """F-001 is `released` and `worker` has delivery and QA evidence but no Release row."""
+
+        page = self.page(
+            "released",
+            "none",
+            BOTH,
+            self.criteria(),
+            delivery=[delivery_row(app) for app in BOTH],
+            qa=self.covering_qa(),
+            release=[release_row("backend", "released")],
+        )
+        self.seed("released", "none", page)
+
+    def test_a_released_feature_with_an_app_retired_after_its_release_stays_clean(self) -> None:
+        self.seed_released()
+        self.retire("worker")
+        self.write_status_board()
+        self.assertEqual({}, self.errors())
+
+    def test_a_released_feature_needs_release_evidence_for_an_app_retired_after_the_release(self) -> None:
+        self.seed_released_without_worker_release()
+        self.retire("worker")
+        self.write_status_board()
+        errors = self.errors()
+        self.assertIn("feature-status-not-minimum", errors)
+        self.assertIn("lowest app stage is `in-qa`", errors["feature-status-not-minimum"])
+        self.assertIn("worker: in-qa", errors["feature-status-not-minimum"])
+        self.assertIn("app-row-missing", errors)
+        # `prism status` shows the stages lint judges.
+        self.assertEqual({"F-001": {"backend": "released", "worker": "in-qa"}}, build_status(self.root).feature_app_stages)
+
+    def test_an_app_retired_before_any_evidence_leaves_the_released_scope_on_every_surface(self) -> None:
+        page = self.page(
+            "released",
+            "none",
+            BOTH,
+            self.criteria(),
+            delivery=[delivery_row("backend")],
+            qa=self.covering_qa()[:1],
+            release=[release_row("backend", "released")],
+        )
+        self.seed("released", "none", page)
+        self.retire("worker")
+        self.write_status_board()
+        self.assertEqual({}, self.errors())
+        graph = build_graph(self.root)
+        node = next(item for item in graph["facts"]["nodes"] if item["id"] == "F-001")
+        self.assertEqual([{"app": "backend", "stage": "released"}], node["app_stages"])
+        self.assertEqual({"F-001": {"backend": "released"}}, build_status(self.root).feature_app_stages)
+        board = (self.root / "knowledge" / "wiki" / "status-board.md").read_text(encoding="utf-8")
+        row = next(line for line in board.splitlines() if line.startswith("| F-001 "))
+        self.assertIn("| backend: released |", row)
+        self.assertNotIn("worker:", row)
+
+    def test_the_same_gap_in_a_released_feature_is_reported_while_the_app_is_active(self) -> None:
+        self.seed_released_without_worker_release()
+        self.write_status_board()
+        self.assertIn("feature-status-not-minimum", self.errors())
+
+    def test_a_feature_that_is_not_released_keeps_the_active_scope_rule(self) -> None:
+        # `worker` has no evidence and is retired: the lowest stage over the whole scope would be `in-dev`, over the active apps it is `in-qa`.
+        page = self.page("in-qa", "qa", BOTH, self.criteria(), delivery=[delivery_row("backend")], qa=self.covering_qa()[:1])
+        self.seed("in-qa", "qa", page)
+        self.retire("worker")
+        self.write_status_board()
+        errors = self.errors()
+        self.assertNotIn("feature-status-not-minimum", errors)
+        self.assertNotIn("app-row-missing", errors)
+        self.assertEqual({"F-001": {"backend": "in-qa"}}, build_status(self.root).feature_app_stages)
+
+
+class QaReturnPreflightTests(TwoAppWorkspace):
+    """`qa-return-spec` and `qa-return-design` are ready only where the board service accepts the route on eligibility."""
+
+    ACTIONS = ("qa-return-spec", "qa-return-design")
+
+    def transition(self, action: str) -> dict:
+        return build_board_transition_preflight(self.root, "F-001", action)
+
+    def offered(self) -> dict[str, dict]:
+        node = next(item for item in build_graph(self.root)["facts"]["nodes"] if item["id"] == "F-001")
+        return {record["action"]: record for record in node["transitions"]}
+
+    def test_a_partial_release_blocks_both_returns_with_the_servers_reason(self) -> None:
+        self.seed_released_and_in_qa()
+        self.write_status_board()
+        offered = self.offered()
+        for action in self.ACTIONS:
+            with self.subTest(action=action):
+                transition = self.transition(action)
+                self.assertEqual("blocked", transition["classification"])
+                blocked = [check for check in transition["checks"] if check["status"] == "blocked"]
+                self.assertEqual(["partial-release-requires-new-feature"], [check["code"] for check in blocked])
+                self.assertIn("has released app(s) `backend`", blocked[0]["message"])
+                self.assertIn("this feature cannot go back to specification or design", blocked[0]["message"])
+                # The card carries the request as blocked, which the page does not open.
+                self.assertEqual("blocked", offered[action]["classification"])
+
+    def test_a_feature_with_every_app_in_development_blocks_both_returns(self) -> None:
+        self.seed("in-dev", "dev", self.page("in-dev", "dev", BOTH, self.criteria()))
+        for action in self.ACTIONS:
+            with self.subTest(action=action):
+                transition = self.transition(action)
+                self.assertEqual("blocked", transition["classification"])
+                blocked = [check for check in transition["checks"] if check["status"] == "blocked"]
+                self.assertEqual(["app-stage-mismatch"], [check["code"] for check in blocked])
+                self.assertIn(f"no app has reached QA, so it returns with dev-return-* rather than {action}", blocked[0]["message"])
+
+    def test_an_app_in_qa_and_none_released_leaves_both_returns_ready(self) -> None:
+        self.seed_in_qa()
+        self.write_status_board()
+        offered = self.offered()
+        for action in self.ACTIONS:
+            with self.subTest(action=action):
+                transition = self.transition(action)
+                self.assertEqual(("ready", True), (transition["classification"], transition["supported"]))
+                self.assertEqual("ready", offered[action]["classification"])
+
+    def test_a_feature_in_development_with_an_app_in_qa_leaves_both_returns_ready(self) -> None:
+        self.seed_in_dev()
+        for action in self.ACTIONS:
+            with self.subTest(action=action):
+                self.assertEqual("ready", self.transition(action)["classification"])
 
 
 class DesignTracksEnvelopeTests(unittest.TestCase):

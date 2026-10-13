@@ -83,6 +83,7 @@ from prism_cli.wiki_model import (
     read_wiki_settings,
     read_wiki_pages,
     section_text,
+    stage_scope,
     stale_qa_rows,
     status_rank,
     technical_design_problems,
@@ -2869,7 +2870,9 @@ def _lint_feature_evidence(feature: FeaturePage, model: WorkspaceModel) -> list[
             )
         )
         return diagnostics
-    stages = app_stages(active, evidence)
+    # The stages and the status minimum are judged over the scope the status board, the graph and `prism status` show: a released
+    # feature keeps the apps retired after its release.
+    stages = app_stages(stage_scope(status, feature.apps, model, evidence), evidence)
     minimum = minimum_stage(stages.values())
     if minimum is not None and status in APP_STAGE_ORDER and minimum != status:
         diagnostics.append(
