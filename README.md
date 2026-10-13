@@ -106,9 +106,11 @@ It prints the board URL, the MCP endpoint (`http://127.0.0.1:8765/mcp`) and a hi
 
 If a step fails, [docs/troubleshooting.md](https://github.com/mo0rti/prism/blob/main/docs/troubleshooting.md) lists the symptom, cause and fix for the common cases. The [shared board guide](https://github.com/mo0rti/prism/blob/main/docs/shared-board.md) covers every command, the MCP tools and recovery of interrupted operations, and [SECURITY.md](https://github.com/mo0rti/prism/blob/main/SECURITY.md) describes what the local service protects.
 
-![Prism wiki visualization Graph view](https://raw.githubusercontent.com/mo0rti/prism/main/docs/media/wiki-dashboard-graph.png)
+![Prism board view: features in their lifecycle columns, each with its apps' stages](https://raw.githubusercontent.com/mo0rti/prism/main/docs/media/wiki-dashboard-board.png)
 
-_Graph view from the synthetic local TreasuryFlow fixture._
+![Prism graph view: features linked to their apps and design pages](https://raw.githubusercontent.com/mo0rti/prism/main/docs/media/wiki-dashboard-graph.png)
+
+_Board and Graph views from the synthetic local TreasuryFlow fixture._
 
 To explore a populated example first, follow the [local wiki visualization guide](https://github.com/mo0rti/prism/blob/main/docs/wiki-visualization.md). It builds a synthetic TreasuryFlow fixture that is safe to regenerate.
 
