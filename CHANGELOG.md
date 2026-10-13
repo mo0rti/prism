@@ -4,6 +4,10 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- **The graph envelope carries the bug, release and incident records.** `facts.bugs`, `facts.releases` and `facts.incidents` list every bug page, release record and incident, each sorted by its record number, for the board's record views. A bug entry has its status, owner, severity, blocking flag, apps, feature, where it was found, its disposition if closed, a summary and its Fix, Verification and Release rows. A release entry has its date, kind (`release`, `retry`, `rollback` or `redeploy`, from the chronological release validator that lint and the status board use), outcome, features and bugs, the record it retries or rolls back, a summary, its Delivery rows and whether it is the current delivery of an app and target. An incident entry has its date, status, severity, apps, releases, follow-ups, an impact summary, whether the cause is known and its Timeline (the last 20 lines when it is longer, with `timeline_truncated`). Text is plain and bounded: a summary or impact is its first paragraph cut to 240 characters at a word boundary, a timeline line to 200. A record that lint marks invalid is still listed, with `valid: false`. The values come from the readers lint and the status board use, and the graph reads each page once for these lists and for the Operations rows. The graph schema describes the three lists, and `docs/wiki-visualization.md` lists the facts.
+
 ## [0.7.3]
 
 Release date: 2026-10-13

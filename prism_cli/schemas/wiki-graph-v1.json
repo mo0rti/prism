@@ -155,6 +155,21 @@
           "type": "array",
           "description": "The status board's Operations rows: one per app that has released features, a release record, open bugs or open incidents.",
           "items": { "$ref": "#/$defs/app_operation" }
+        },
+        "bugs": {
+          "type": "array",
+          "description": "One entry per bug page, by bug number. An entry that lint marks invalid is listed with valid false; a value the page lacks or states outside its vocabulary is null.",
+          "items": { "$ref": "#/$defs/bug_record" }
+        },
+        "releases": {
+          "type": "array",
+          "description": "One entry per release record, by record number. An entry that lint marks invalid is listed with valid false.",
+          "items": { "$ref": "#/$defs/release_record" }
+        },
+        "incidents": {
+          "type": "array",
+          "description": "One entry per incident page, by incident number. An entry that lint marks invalid is listed with valid false.",
+          "items": { "$ref": "#/$defs/incident_record" }
         }
       },
       "additionalProperties": true
@@ -203,6 +218,142 @@
         "latest_outcome": { "type": "string" },
         "open_bugs": { "type": "string" },
         "open_incidents": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "nullable_string": { "type": ["string", "null"] },
+    "bug_record": {
+      "type": "object",
+      "required": [
+        "id", "title", "path", "status", "owner", "severity", "blocking", "apps", "feature", "found_in", "environment",
+        "deferred", "close_reason", "duplicate_of", "promoted_to", "regression_of", "summary", "fix", "verification", "release", "valid"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "path": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["open", "in-fix", "fixed", "verified", "released", "closed", null] },
+        "owner": { "enum": ["dev", "qa", "release", "none", null] },
+        "severity": { "enum": ["critical", "high", "medium", "low", null] },
+        "blocking": { "type": ["boolean", "null"] },
+        "apps": { "type": "array", "items": { "type": "string" } },
+        "feature": { "$ref": "#/$defs/nullable_string" },
+        "found_in": { "$ref": "#/$defs/nullable_string" },
+        "environment": { "$ref": "#/$defs/nullable_string" },
+        "deferred": { "type": "boolean" },
+        "close_reason": { "enum": ["wont-fix", "duplicate", "promoted", null] },
+        "duplicate_of": { "$ref": "#/$defs/nullable_string" },
+        "promoted_to": { "$ref": "#/$defs/nullable_string" },
+        "regression_of": { "$ref": "#/$defs/nullable_string" },
+        "summary": { "type": ["string", "null"], "maxLength": 240 },
+        "fix": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["app", "artifact"],
+            "properties": { "app": { "type": "string" }, "artifact": { "$ref": "#/$defs/nullable_string" } },
+            "additionalProperties": false
+          }
+        },
+        "verification": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["app", "attempt", "result"],
+            "properties": {
+              "app": { "type": "string" },
+              "attempt": { "$ref": "#/$defs/nullable_string" },
+              "result": { "enum": ["pass", "fail", "blocked", null] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "release": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["app", "target", "outcome", "record"],
+            "properties": {
+              "app": { "type": "string" },
+              "target": { "$ref": "#/$defs/nullable_string" },
+              "outcome": { "enum": ["released", "failed", "pending", null] },
+              "record": { "$ref": "#/$defs/nullable_string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "valid": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "release_record": {
+      "type": "object",
+      "required": [
+        "id", "title", "path", "date", "kind", "outcome", "features", "bugs", "retry_of", "rollback_of", "summary", "deliveries", "current", "valid"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "path": { "type": "string", "minLength": 1 },
+        "date": { "$ref": "#/$defs/nullable_string" },
+        "kind": { "enum": ["release", "retry", "rollback", "redeploy"] },
+        "outcome": { "enum": ["released", "failed", "partial", "rolled-back", null] },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "bugs": { "type": "array", "items": { "type": "string" } },
+        "retry_of": { "$ref": "#/$defs/nullable_string" },
+        "rollback_of": { "$ref": "#/$defs/nullable_string" },
+        "summary": { "type": ["string", "null"], "maxLength": 240 },
+        "deliveries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["item", "app", "target", "version", "attempt", "outcome"],
+            "properties": {
+              "item": { "type": "string" },
+              "app": { "type": "string" },
+              "target": { "type": "string" },
+              "version": { "type": "string" },
+              "attempt": { "$ref": "#/$defs/nullable_string" },
+              "outcome": { "enum": ["released", "failed", "rolled-back", null] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "current": { "type": "boolean" },
+        "valid": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "incident_record": {
+      "type": "object",
+      "required": [
+        "id", "title", "path", "date", "status", "severity", "apps", "releases", "follow_ups", "impact", "cause_known", "timeline",
+        "timeline_truncated", "valid"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "path": { "type": "string", "minLength": 1 },
+        "date": { "$ref": "#/$defs/nullable_string" },
+        "status": { "enum": ["open", "mitigated", "resolved", null] },
+        "severity": { "enum": ["critical", "high", "medium", "low", null] },
+        "apps": { "type": "array", "items": { "type": "string" } },
+        "releases": { "type": "array", "items": { "type": "string" } },
+        "follow_ups": { "type": "array", "items": { "type": "string" } },
+        "impact": { "type": ["string", "null"], "maxLength": 240 },
+        "cause_known": { "type": "boolean" },
+        "timeline": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": ["when", "text"],
+            "properties": { "when": { "$ref": "#/$defs/nullable_string" }, "text": { "type": "string", "maxLength": 200 } },
+            "additionalProperties": false
+          }
+        },
+        "timeline_truncated": { "type": "boolean" },
+        "valid": { "type": "boolean" }
       },
       "additionalProperties": false
     },

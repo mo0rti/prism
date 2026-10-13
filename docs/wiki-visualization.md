@@ -62,6 +62,40 @@ The dashboard separates workflow blockers from page integrity. A pending
 review or open question is a workflow obligation. A malformed page is a source
 health diagnostic; advisory warnings are not called malformed pages.
 
+## The facts the views read
+
+`prism wiki graph <workspace> --json`, the live server's `/data.json`, its stream and the static export carry one envelope.
+Its `facts` hold the graph and what the views derive from the pages:
+
+| Fact | Content |
+|------|---------|
+| `nodes`, `edges`, `dangling_references` | The graph: pages as nodes, evidence-carrying edges, and the links that resolve to no page. |
+| `setup_state`, `intake` | The setup state and the pending and quarantined intake items. |
+| `transition_capability`, `action_registry` | What the copy-only requests may offer, and the feature actions of the transition registry. |
+| `app_operations` | The status board's Operations rows, one per app that has something to show. |
+| `bugs` | One entry per bug page: its status, owner, severity, blocking flag, apps, feature, where it was found, its disposition if closed, a summary, and its Fix, Verification and Release rows. |
+| `releases` | One entry per release record: its date, kind, outcome, features and bugs, the record it retries or rolls back, a summary, its Delivery rows, and whether it is the current delivery of an app and target. |
+| `incidents` | One entry per incident: its date, status, severity, apps, releases and follow-ups, an impact summary, whether the cause is known, and its Timeline. |
+
+The three record lists are read by the code that lint and the status board use, so a value cannot differ between the page, the
+status board and `prism wiki lint`. Each list is sorted by the record number, and a missing optional value is `null`:
+
+- A bug's `status` and `owner` are the page's. A page that lint marks invalid (`bug-page-invalid`, `invalid-bug-status-owner`)
+  stays in the list with `valid: false`, and a value it lacks or states outside its vocabulary is `null`.
+- A release's `kind` is `release`, `retry` (a release that names the failed release it retries in `retry-of`), `rollback` or
+  `redeploy`. The chronological release validator that lint and the board use decides it; a title never does. `current` is true
+  when the record holds the current delivery of at least one app and target, by the rule the Operations row uses. A record
+  that lint marks invalid (`release-record-invalid`) is listed with `valid: false`.
+- An incident's `cause_known` is false while its Cause is empty or starts with `**Unknown:**`. A page that lint marks invalid
+  (`incident-record-invalid`) is listed with `valid: false`.
+- Text is plain, never HTML. A bug's or record's `summary` and an incident's `impact` are the first paragraph of the section,
+  cut to 240 characters at a word boundary with an ellipsis. An incident's `timeline` lists its Timeline lines in page order,
+  each cut to 200 characters; a long timeline keeps its last 20 lines and sets `timeline_truncated`.
+- A path is relative to the workspace root and uses `/`.
+
+The envelope carries every record. It is read by the data endpoint, the live stream and the static export, never by an MCP
+tool, so the MCP result limit does not apply. `prism_cli/schemas/wiki-graph-v1.json` describes every fact.
+
 ## Transition requests are copy-only
 
 The dashboard's transition controls prepare a source-valid request for

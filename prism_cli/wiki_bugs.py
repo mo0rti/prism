@@ -211,6 +211,14 @@ class BugPage:
         return None if value is None or value.lower() == "none" else value
 
     @property
+    def found_in(self) -> str | None:
+        return self._text("found-in")
+
+    @property
+    def environment(self) -> str | None:
+        return self._text("environment")
+
+    @property
     def deferred(self) -> bool:
         return self._text("deferred-reason") is not None
 
@@ -232,6 +240,10 @@ class BugPage:
     @property
     def promoted_to(self) -> str | None:
         return self._text("promoted-to")
+
+    @property
+    def regression_of(self) -> str | None:
+        return self._text("regression-of")
 
     @property
     def fix_rows(self) -> list[FixRow]:
