@@ -43,9 +43,9 @@ OPERATION_ROW_KEYS = ("app", "delivery_target", "released_features", "latest_rel
 OPERATION_COMPARED_KEYS = tuple(key for key in OPERATION_ROW_KEYS if key != "delivery_target")
 # The keys of a board row in the merge: `F-001` for a feature, `BUG-001` for a bug and `app:<id>` for an app.
 APP_KEY_PREFIX = "app:"
-_FEATURE_KEY = re.compile(r"^F-\d+$", re.IGNORECASE)
-_BUG_KEY = re.compile(r"^BUG-\d+$")
-_ID_NUMBER = re.compile(r"(\d+)$")
+_FEATURE_KEY = re.compile(r"^F-[0-9]+$", re.IGNORECASE)
+_BUG_KEY = re.compile(r"^BUG-[0-9]+$")
+_ID_NUMBER = re.compile(r"([0-9]+)$")
 
 
 def row_kind(key: str) -> str:

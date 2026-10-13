@@ -766,6 +766,46 @@ class HandoffApiContractTests(_BoardWorkspace):
         revised = existing.replace("version: 1", "version: 2").replace("Errors: 401, 404.", "Errors: 401.")
         self.assertEqual("ready", self.preview("design-handoff", self.handoff(revised))["classification"])
 
+    def test_a_proposed_contract_version_outside_the_supported_range_is_refused_whatever_its_size(self) -> None:
+        for version, code in (("0x" + "f" * 5000, "invalid_frontmatter"), ("0" + "7" * 5000, "invalid_frontmatter"), (str(10**18), "invalid_frontmatter"), ("0", "invalid_api_contract")):
+            with self.subTest(version=version[:24]):
+                error = self.rejection("design-handoff", self.handoff(self.contract().replace("version: 1", f"version: {version}", 1)))
+                self.assertEqual((code, 409), (error.code, error.status))
+        self.assertFalse((self.root / self.CONTRACT).exists())
+        # The largest supported version is a version; it is not the first one, so a new contract cannot start there.
+        error = self.rejection("design-handoff", self.handoff(self.contract().replace("version: 1", f"version: {10**18 - 1}", 1)))
+        self.assertEqual(("api_contract_initial_status", 409), (error.code, error.status))
+
+    def test_a_revision_of_a_contract_whose_version_is_outside_the_supported_range_names_no_number_it_cannot_print(self) -> None:
+        huge = "0x" + "f" * 5000
+        existing = self.contract(status="agreed").replace("version: 1", f"version: {huge}", 1)
+        self.write(self.CONTRACT, existing)
+        revised = self.contract(status="agreed").replace("version: 1", "version: 2", 1).replace("Errors: 401, 404.", "Errors: 401.")
+        error = self.rejection("design-handoff", self.handoff(revised))
+        self.assertEqual(("invalid_frontmatter", 409), (error.code, error.status))
+        self.assertIn("outside the supported range", error.message)
+        # A page that keeps an unsupported version is refused the same way, and the committed page is not touched.
+        error = self.rejection("design-handoff", self.handoff(existing.replace(huge, "0x" + "e" * 5000, 1)))
+        self.assertEqual(("invalid_frontmatter", 409), (error.code, error.status))
+        self.assertEqual(existing, self.read(self.CONTRACT))
+
+    def test_a_proposed_page_or_a_manifest_that_holds_an_integer_outside_the_range_is_refused_whatever_the_field(self) -> None:
+        huge = "0x" + "f" * 5000
+        changes = self.handoff(None)
+        feature = next(item for item in changes if item["path"] == FEATURE)
+        self.assertIn("id: F-001", feature["content"])
+        feature["content"] = feature["content"].replace("id: F-001", f"id: {huge}", 1)
+        error = self.rejection("design-handoff", changes)
+        self.assertEqual(("invalid_frontmatter", 409), (error.code, error.status))
+        self.assertIn("outside the supported range", error.message)
+        # A manifest that holds such an integer leaves the board read-only with a reason, and raises nothing.
+        manifest = self.root / "prism.workspace.yml"
+        manifest.write_text(manifest.read_text(encoding="utf-8") + f"extra: {huge}\n", encoding="utf-8")
+        with self.assertRaises(BoardError) as caught:
+            BoardService(self.root).start()
+        self.assertEqual("workspace_read_only", caught.exception.code)
+        self.assertIn("cannot be read safely", caught.exception.message)
+
     def test_a_linked_shared_contract_covers_the_feature(self) -> None:
         self.write("knowledge/wiki/api-contracts/SHARED.md", self.contract())
         feature = _replace_body_section(self.service, self.read(FEATURE), "API surface", "See [the shared contract](../api-contracts/SHARED.md) for the export endpoint.")

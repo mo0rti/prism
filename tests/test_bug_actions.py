@@ -88,6 +88,14 @@ class BugCreationTests(BugBoard):
                 changes = [{"path": FEATURE, "content": self.qa_table([app_row("worker", result="fail")])}, {"path": path, "content": bug_page(f"BUG-{number}")}]
                 self.assertEqual("invalid_bug", self.refused("qa-verify", changes).code)
 
+    def test_a_bug_page_that_holds_an_integer_outside_the_range_is_refused_not_raised(self) -> None:
+        self.plant()
+        huge = "0x" + "f" * 5000
+        error = self.refuse(self.bug().replace("id: BUG-001", f"id: {huge}", 1))
+        self.assertEqual("invalid_frontmatter", error.code)
+        error = self.refuse(self.bug().replace("severity: high", f"severity: {huge}", 1))
+        self.assertEqual("invalid_frontmatter", error.code)
+
     def test_a_defect_report_is_ingested_as_a_bug(self) -> None:
         folder = "2026-10-08-defect-report"
         pending = self.root / "knowledge" / "intake" / "pending" / folder

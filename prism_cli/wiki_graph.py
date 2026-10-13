@@ -222,7 +222,7 @@ INCIDENT_INVALID_CODES = frozenset({"incident-record-invalid"})
 KIND_RETRY = "retry"
 
 _BUG_OWNERS = tuple(dict.fromkeys(BUG_OWNER_BY_STATUS.values()))
-_RECORD_NUMBER = re.compile(r"(\d+)$")
+_RECORD_NUMBER = re.compile(r"([0-9]+)$")
 _BLANK_LINE = re.compile(r"\r?\n[ \t]*\r?\n")
 
 
@@ -454,7 +454,7 @@ _PATH_ID_DIRECTORIES = {
     "advisory-review": ("advisory", "review"),
 }
 
-FEATURE_ID_PATTERN = re.compile(r"\bF-\d+\b")
+FEATURE_ID_PATTERN = re.compile(r"\bF-[0-9]+\b")
 
 
 @dataclass(frozen=True)

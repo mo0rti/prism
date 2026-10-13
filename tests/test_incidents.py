@@ -6,6 +6,7 @@ its Cause while it is not `resolved`. The Operations table of the status board l
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from unittest.mock import patch
@@ -265,6 +266,17 @@ class IncidentIngestTests(IncidentCase):
             with self.subTest(digits=len(number)):
                 path = f"incidents/INC-{number}-reservation-outage.md"
                 self.assertEqual("invalid_incident", self.reject("2026-10-09-over-the-bound", {path: incident(id=f"INC-{number}")}).code)
+
+    def test_an_incident_page_that_holds_an_integer_outside_the_range_is_refused_not_raised(self) -> None:
+        huge = "0x" + "f" * 5000
+        for field in ("id", "title", "severity"):
+            with self.subTest(field=field):
+                # The manifest helper reads the ID with its own parser, so the ID is changed after the proposal is built.
+                changes, moves = self.proposal("2026-10-09-outside-the-range", {INC: incident()})
+                page = next(item for item in changes if item["path"].endswith(INC))
+                self.assertIn(f"{field}: ", page["content"])
+                page["content"] = re.sub(rf"(?m)^{field}: .*$", f"{field}: {huge}", page["content"], count=1)
+                self.assertEqual("invalid_frontmatter", self.rejected("ingest", changes, moves).code)
 
     def test_an_incident_id_is_taken_once(self) -> None:
         self.open_incident()

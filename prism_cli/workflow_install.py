@@ -25,7 +25,7 @@ from prism_cli.app_model import (
 )
 from prism_cli.workspace import MANIFEST_FILE
 from prism_cli.wiki_index import INDEX_FILE, index_line, is_page_path, parse_index_entries, render_index_lines
-from prism_cli.wiki_model import parse_markdown_text
+from prism_cli.wiki_model import parse_markdown_text, safe_yaml_load
 from prism_cli.workflow_assets import asset_digest, bootstrap_files, guidance_pointer, previous_digests
 from prism_cli.board_store import BoardLockError, unresolved_board_operations, workspace_process_lock
 from prism_cli.fs_safety import CLOUD_SYNC_MESSAGE, reparse_kind
@@ -563,7 +563,7 @@ def _parse_manifest(raw: bytes | None) -> tuple[dict[str, Any], bool]:
     if raw is None:
         return {}, False
     text = raw.decode("utf-8-sig")
-    value = yaml.safe_load(text)
+    value = safe_yaml_load(text, "the manifest")
     if value is None:
         return {}, raw.startswith(b"\xef\xbb\xbf")
     if not isinstance(value, dict):

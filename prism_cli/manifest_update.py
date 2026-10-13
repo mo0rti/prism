@@ -14,6 +14,7 @@ import yaml
 from prism_cli import __version__
 from prism_cli.app_model import MANIFEST_SCHEMA_VERSION, normalize_manifest
 from prism_cli.packs import WORKSPACE_LAYER
+from prism_cli.wiki_model import bounded_int, safe_yaml_load
 from prism_cli.workspace import COPIER_ANSWERS_FILE, MANIFEST_FILE, _VERSION_PATTERN, AnswersRefused, read_answers_bytes
 
 
@@ -163,7 +164,7 @@ def read_workspace_manifest(path: Path, label: str) -> tuple[dict[str, Any], byt
         raise ManifestUpdateError(f"{path.name} contains unresolved conflict markers; repair it before updating.")
 
     try:
-        manifest = yaml.safe_load(source)
+        manifest = safe_yaml_load(source, "the manifest")
     except (yaml.YAMLError, ValueError, OverflowError) as exc:
         raise ManifestUpdateError(f"{path.name} contains invalid YAML: {exc}") from exc
 
@@ -183,8 +184,9 @@ def validate_manifest_shape(manifest: Any, label: str) -> None:
         raise ManifestUpdateError(f"The {label} {MANIFEST_FILE} must be a mapping.")
     schema_version = manifest.get("schema_version")
     if type(schema_version) is not int or schema_version != MANIFEST_SCHEMA_VERSION:
+        shown = "an integer outside the supported range" if type(schema_version) is int and bounded_int(schema_version) is None else repr(schema_version)
         raise ManifestUpdateError(
-            f"The {label} {MANIFEST_FILE} uses unsupported schema_version {schema_version!r}; "
+            f"The {label} {MANIFEST_FILE} uses unsupported schema_version {shown}; "
             f"this CLI supports schema_version {MANIFEST_SCHEMA_VERSION}."
         )
     validate_string_mapping_keys(manifest, label, ())
@@ -229,7 +231,7 @@ def render_template_manifest(worker: Any) -> dict[str, Any]:
     except Exception as exc:
         raise ManifestUpdateError(f"Unable to render {MANIFEST_FILE} from the template: {exc}") from exc
     try:
-        manifest = yaml.safe_load(rendered)
+        manifest = safe_yaml_load(rendered, "the manifest")
     except (yaml.YAMLError, ValueError, OverflowError) as exc:
         raise ManifestUpdateError(f"The template rendered invalid YAML in {MANIFEST_FILE}: {exc}") from exc
     validate_manifest_shape(manifest, "template")

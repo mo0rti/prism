@@ -278,7 +278,7 @@ class FeaturePage:
         value = self.page.frontmatter.get("id")
         if isinstance(value, str) and value.strip():
             return value
-        match = re.match(r"^(F-\d+)(?:-|$)", self.page.path.stem)
+        match = re.match(r"^(F-[0-9]+)(?:-|$)", self.page.path.stem)
         return match.group(1) if match else self.page.path.stem
 
     @property
@@ -351,7 +351,7 @@ FRONTMATTER_PATTERN = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTA
 MARKDOWN_LINK_PATTERN = re.compile(
     r"(?<!!)\[[^\]]*\]\(\s*(?:<([^>]+)>|([^\s)]+))",
 )
-FEATURE_ID_PATTERN = re.compile(r"\bF-\d+\b")
+FEATURE_ID_PATTERN = re.compile(r"\bF-[0-9]+\b")
 
 
 def read_markdown_page(path: Path) -> MarkdownPage:
@@ -379,7 +379,7 @@ def parse_markdown_text(path: Path, text: str) -> MarkdownPage:
     raw_frontmatter, body = match.groups()
     offset = text.count("\n", 0, match.start(2))
     try:
-        loaded = yaml.safe_load(raw_frontmatter) or {}
+        loaded = safe_yaml_load(raw_frontmatter) or {}
     except (yaml.YAMLError, TypeError, ValueError, OverflowError) as exc:
         return MarkdownPage(path=path, frontmatter={}, body=body, parse_errors=[f"Invalid YAML frontmatter: {exc}"], body_offset=offset)
 
@@ -623,9 +623,9 @@ def read_wiki_settings(wiki_root: Path, model: "WorkspaceModel | None" = None) -
 
     value = page.frontmatter["wiki-stale-after-days"]
     parsed: int | None = None
-    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-        parsed = value
-    elif isinstance(value, str) and re.fullmatch(r"\d+", value.strip()):
+    if isinstance(value, int) and not isinstance(value, bool):
+        parsed = bounded_int(value)
+    elif isinstance(value, str) and re.fullmatch(r"[0-9]+", value.strip()):
         parsed = bounded_number(value.strip())
     if parsed is None:
         return WikiSettings(
@@ -832,19 +832,80 @@ def number_order(digits: str | None, identifier: str) -> tuple[int, int, str, st
 
 
 def bounded_number(digits: str) -> int | None:
-    """The integer value of digits read from a page, or ``None`` when they have more than `MAX_RECORD_NUMBER_DIGITS` digits or are not decimal digits.
+    """The integer value of digits read from a page, or ``None`` when they have more than `MAX_RECORD_NUMBER_DIGITS` digits or are not the digits 0 to 9.
 
     Every conversion of page text to an integer goes through this function, so no page can make a conversion raise; a caller
     reports ``None`` with the diagnostic it already has for a malformed value.
     """
 
+    if re.fullmatch(r"[0-9]*", digits) is None:
+        return None
     stripped = digits.lstrip("0")
     if len(stripped) > MAX_RECORD_NUMBER_DIGITS:
         return None
-    try:
-        return int(stripped or "0")
-    except ValueError:
+    return int(stripped or "0")
+
+
+def bounded_int(value: Any) -> int | None:
+    """The integer a front matter value holds when it is a real integer from 0 to 10^`MAX_RECORD_NUMBER_DIGITS` - 1, otherwise ``None``.
+
+    YAML reads hexadecimal and octal integers of any length, so a front matter integer can be far larger than a decimal
+    number of the same text. The check compares the value numerically and never turns it into text, so no page can make it
+    raise; a caller reports ``None`` with the diagnostic it already has for a malformed value. A ``bool`` is not an integer.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int):
         return None
+    return value if 0 <= value < 10**MAX_RECORD_NUMBER_DIGITS else None
+
+
+class YamlRangeError(ValueError):
+    """YAML text holds an integer outside the supported range; a reader reports it as it reports YAML it cannot parse."""
+
+
+def check_integers_in_range(value: Any, what: str = "front matter") -> None:
+    """Raise `YamlRangeError` when a parsed YAML value holds an ``int`` (not a ``bool``) that `bounded_int` refuses.
+
+    The walk is iterative and visits each container once, so neither a deeply nested value nor an alias that shares
+    containers can exhaust it, and an integer is compared by value and never turned into text.
+    """
+
+    stack: list[Any] = [value]
+    seen: set[int] = set()
+    while stack:
+        item = stack.pop()
+        if isinstance(item, int) and not isinstance(item, bool):
+            if bounded_int(item) is None and not -(10**MAX_RECORD_NUMBER_DIGITS) < item < 0:
+                raise YamlRangeError(f"{what} holds an integer outside the supported range")
+            continue
+        if isinstance(item, (dict, list, tuple, set)):
+            if id(item) in seen:
+                continue
+            seen.add(id(item))
+            stack.extend(item.keys() if isinstance(item, dict) else ())
+            stack.extend(item.values() if isinstance(item, dict) else item)
+
+
+def safe_yaml_load(text: Any, what: str = "front matter") -> Any:
+    """`yaml.safe_load` that also refuses an integer outside the supported range (`bounded_int`, or a negative one down to -10^18 + 1).
+
+    Every reader of page or manifest YAML uses it, so no later ``str()`` or f-string of a value can raise whatever the field.
+    """
+
+    loaded = yaml.safe_load(text)
+    check_integers_in_range(loaded, what)
+    return loaded
+
+
+def contract_version(value: Any) -> int | None:
+    """The version of an API contract (`version` in its front matter, or the number after `@v` in a citation), or ``None``.
+
+    It is an integer from 1 up to the upper bound of `bounded_int`. Contract validation, citation generation and the
+    Delivery row binding all use this range, so a version one of them accepts is a version the others accept.
+    """
+
+    number = bounded_int(value)
+    return number if number is not None and number >= 1 else None
 
 
 def oversized_number(identifier: str) -> bool:
@@ -1234,7 +1295,7 @@ _ARTIFACT_GRAMMARS = {
     "commit": re.compile(r"^commit:[0-9a-fA-F]{7,40}$"),
 }
 ARTIFACT_KINDS = tuple(_ARTIFACT_GRAMMARS)
-_CONTRACT_BINDING = re.compile(r"^(F-\d+)@v([0-9]+):(c1:[0-9a-f]{64})$")
+_CONTRACT_BINDING = re.compile(r"^(F-[0-9]+)@v([0-9]+):(c1:[0-9a-f]{64})$")
 CHECKED_BASES = ("checked", "attested")
 QA_METHODS = ("automated", "manual", "exploratory")
 QA_RESULTS = ("pass", "fail", "blocked")
@@ -1295,7 +1356,7 @@ class DeliveryRow:
         """(feature ID, version, digest) of the contract cited, or ``None`` for `none`."""
 
         match = _CONTRACT_BINDING.match(clean_cell(self.contract))
-        version = bounded_number(match.group(2)) if match else None
+        version = contract_version(bounded_number(match.group(2))) if match else None
         return (match.group(1), version, match.group(3)) if match and version is not None else None
 
 
@@ -2057,11 +2118,12 @@ def contract_page_citation(frontmatter: Mapping[str, Any], body: str) -> str | N
 
     feature = frontmatter.get("feature-id")
     version = frontmatter.get("version")
-    if not isinstance(feature, str) or not re.fullmatch(r"F-\d+", feature.strip(), re.IGNORECASE):
+    if not isinstance(feature, str) or not re.fullmatch(r"F-[0-9]+", feature.strip(), re.IGNORECASE):
         return None
-    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+    number = contract_version(version)
+    if number is None:
         return None
-    return contract_citation(feature, version, body)
+    return contract_citation(feature, number, body)
 
 
 # --- Acceptance criteria -------------------------------------------------------------------------------------------
@@ -2226,9 +2288,10 @@ def criteria_high_water(frontmatter: Mapping[str, Any]) -> tuple[int | None, str
     if "criteria-high-water" not in frontmatter:
         return None, None
     value = frontmatter["criteria-high-water"]
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    mark = bounded_int(value)
+    if mark is None:
         return None, "`criteria-high-water` must be a non-negative integer, the highest criterion number ever assigned."
-    return value, None
+    return mark, None
 
 
 # --- Attempts ------------------------------------------------------------------------------------------------------
@@ -2788,7 +2851,7 @@ def parse_conflict_report(text: str) -> tuple[str | None, list[str]]:
 def feature_id_from_path(path: Path) -> str | None:
     """Extract a canonical feature ID from a feature-like filename."""
 
-    match = re.match(r"^(F-\d+)(?:-|$)", path.stem)
+    match = re.match(r"^(F-[0-9]+)(?:-|$)", path.stem)
     return match.group(1) if match else None
 
 

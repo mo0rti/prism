@@ -350,7 +350,7 @@ def _oversize_placeholder(item: Any) -> dict[str, Any]:
     return placeholder
 
 
-_FEATURE_FILE = re.compile(r"^knowledge/wiki/features/F-\d+[^/]*\.md$")
+_FEATURE_FILE = re.compile(r"^knowledge/wiki/features/F-[0-9]+[^/]*\.md$")
 _CONTRACT_FILE = re.compile(r"^knowledge/wiki/api-contracts/[^/]+\.md$")
 
 
