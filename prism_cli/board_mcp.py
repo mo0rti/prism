@@ -157,7 +157,6 @@ def create_mcp_server(service: Any) -> Any:
     returned server is mounted by ``board_server`` and shares its lifecycle.
     """
 
-    from prism_cli import board_reads
     from prism_cli.board_reads import changes_page, operation_page, parse_changes_cursor, preview_page, shrink_to_budget
 
     try:
@@ -275,16 +274,7 @@ def create_mcp_server(service: Any) -> Any:
     def reply(tool: str, data: dict[str, Any]) -> Any:
         # The full result travels once, as structuredContent. The text block is
         # a short summary so clients that show both do not read two copies.
-        result = CallToolResult(content=[TextContent(type="text", text=_summarize(tool, data))], structured_content=data)
-        # Every shaper above aims at the limit; this is the check that holds when one of them cannot reach it. An
-        # oversized result is refused with a clear error and is never sent.
-        size = board_reads.compact_size(result.model_dump(mode="json", by_alias=True, exclude_none=True))
-        if size > board_reads.RESULT_BUDGET_CHARS:
-            raise ToolError(
-                f"result_too_large: The {tool} result is {size:,} characters, over the {board_reads.RESULT_BUDGET_CHARS:,}-character limit of a tool result, "
-                "so it was not returned. A change this call made is not undone; read the full record in the board."
-            )
-        return result
+        return CallToolResult(content=[TextContent(type="text", text=_summarize(tool, data))], structured_content=data)
 
     @server.tool(name="discover", description="Prism board: read the board's apps, capabilities, participant, pending operations and workflow skill names. Call this first.", annotations=read_annotations, structured_output=True)
     async def discover(ctx: Context) -> ToolReply:

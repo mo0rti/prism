@@ -18,8 +18,11 @@ from starlette.testclient import TestClient
 
 from prism_cli.board_server import MAX_REQUEST_BYTES, _LiveGraph, _SnapshotRefreshingService, create_app, quiet_connection_reset_handler
 from prism_cli.board_service import BoardError, BoardService
+from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_transitions import FingerprintCache
 from prism_cli.workflow_install import apply_install, plan_install
+from tests import release_support
+from tests.board_approval import apply_preview
 from tests.test_core_workflow_fixture import _feature_page, _write_index
 from tests.wiki_files import write_index, write_status_board
 from tests import real_temp  # noqa: F401
@@ -771,6 +774,36 @@ class BoardServerTests(unittest.TestCase):
             self.assertFalse(reader.is_alive(), "An open event stream held the server after it began stopping.")
         self.assertEqual(200, responses[0].status_code)
         self.assertTrue(responses[0].text.startswith("id: "), responses[0].text)
+
+
+class SnapshotAfterWriteTests(release_support.ReleaseTests):
+    """The snapshot a receipt names contains what the operation wrote, on a real two-app board."""
+
+    def release_through_the_wrapper(self) -> tuple[_LiveGraph, dict[str, Any]]:
+        graph = _LiveGraph(self.root, self.service.validate_graph_inputs)
+        api = _SnapshotRefreshingService(self.service, graph)
+        preview = self.ready("release-done", self.release_changes())
+        receipt = apply_preview(api, self.agent, preview, "release-operation", approver=self.owner)
+        self.assertEqual("applied", receipt["state"], receipt)
+        return graph, receipt
+
+    def test_the_snapshot_a_release_receipt_names_shows_the_release_and_reports_no_missing_record(self) -> None:
+        graph, receipt = self.release_through_the_wrapper()
+        epoch, version, envelope = graph.snapshot()
+        self.assertEqual((epoch, version), (receipt["graph_epoch"], receipt["graph_version"]), "The receipt names the snapshot the refresh produced.")
+        rows = {row["app"]: row for row in envelope["facts"]["app_operations"]}
+        for app in ("backend", "worker"):
+            self.assertEqual(("F-001", "REL-001", "released"), (rows[app]["released_features"], rows[app]["latest_release"], rows[app]["latest_outcome"]), app)
+        self.assertEqual([], [item for item in envelope["diagnostics"] if item["severity"] == "error"], "The graph reports no missing release record.")
+        self.assertEqual(build_graph(self.root), envelope, "The stamped snapshot equals a graph built from disk after the write.")
+        graph.refresh_now()
+        self.assertEqual((epoch, version), graph.snapshot()[:2], "The next refresh finds the stamped snapshot current.")
+
+    def test_the_operation_lookup_reports_the_same_snapshot_as_the_apply(self) -> None:
+        graph, receipt = self.release_through_the_wrapper()
+        stored = self.service.operation(self.owner, "release-operation")["receipt"]
+        self.assertEqual((receipt["graph_epoch"], receipt["graph_version"]), (stored["graph_epoch"], stored["graph_version"]))
+        self.assertEqual(graph.snapshot()[:2], (stored["graph_epoch"], stored["graph_version"]))
 
 
 def _free_port() -> int:
