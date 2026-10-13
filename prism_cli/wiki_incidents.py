@@ -39,7 +39,9 @@ INCIDENT_SEVERITIES = BUG_SEVERITIES
 INCIDENT_FIELDS = ("id", "title", "date", "status", "severity", "apps", "releases", "follow-ups")
 INCIDENT_SECTIONS = ("Impact", "Timeline", "Cause", "Mitigation", "Resolution", "Follow-ups")
 # `- YYYY-MM-DD[ HH:MM[ Z|UTC|+HH:MM]]: what happened`.
-TIMELINE_LINE = re.compile(r"^[-*+]\s+(?P<date>\d{4}-\d{2}-\d{2})(?:\s+\d{2}:\d{2}(?:\s*(?:Z|UTC|[+-]\d{2}:?\d{2}))?)?:\s+(?P<text>\S.*)$")
+TIMELINE_LINE = re.compile(
+    r"^[-*+]\s+(?P<when>(?P<date>\d{4}-\d{2}-\d{2})(?:\s+\d{2}:\d{2}(?:\s*(?:Z|UTC|[+-]\d{2}:?\d{2}))?)?):\s+(?P<text>\S.*)$"
+)
 _UNKNOWN_LABEL = re.compile(r"^\*\*Unknown:\*\*", re.IGNORECASE)
 
 
@@ -70,6 +72,19 @@ def timeline_items(body: str) -> tuple[list[str], list[str]]:
         if match is None or _bad_date(match.group("date")):
             malformed.append(line)
     return lines, malformed
+
+
+def timeline_entries(body: str) -> list[tuple[str | None, str]]:
+    """The lines of `## Timeline` as (when, text) in page order: `when` is `YYYY-MM-DD[ HH:MM[ zone]]`, and ``None`` with the whole line as the text for a line that is not a valid entry."""
+
+    entries: list[tuple[str | None, str]] = []
+    for line in timeline_items(body)[0]:
+        match = TIMELINE_LINE.match(line)
+        if match is None or _bad_date(match.group("date")):
+            entries.append((None, line))
+        else:
+            entries.append((re.sub(r"\s+", " ", match.group("when")), match.group("text")))
+    return entries
 
 
 def _bad_date(text: str) -> bool:

@@ -9,8 +9,17 @@ from typing import Any, Iterable
 
 from prism_cli.app_model import WorkspaceModel
 from prism_cli.status import detect_setup_state, list_queue_items
-from prism_cli.wiki_bugs import read_bug_pages
-from prism_cli.wiki_incidents import read_incident_pages
+from prism_cli.release_rules import ReleaseSequence, validate_release_sequence
+from prism_cli.wiki_bugs import BUG_OWNER_BY_STATUS, BUG_SEVERITIES, BUG_STATUS_ORDER, CLOSE_DISPOSITIONS, BugPage, parse_fix_rows, parse_verification_rows, read_bug_pages
+from prism_cli.wiki_incidents import (
+    INCIDENT_SEVERITIES,
+    INCIDENT_STATUSES,
+    IncidentPage,
+    cause_is_unknown,
+    read_incident_pages,
+    section_is_blank,
+    timeline_entries,
+)
 from prism_cli.wiki_lint import FRESHNESS_CODES, WIKI_BLOCKER_CODES, lint_wiki
 from prism_cli.wiki_index import general_page_kind, is_page_path
 from prism_cli.wiki_links import NON_PAGE_FILENAMES, markdown_files, page_references_feature
@@ -27,12 +36,16 @@ from prism_cli.wiki_model import (
     parse_design_tracks,
     parse_open_question_rows,
     ReleaseParticipation,
+    _NO_VALUE,
+    QA_RESULTS,
+    parse_release_rows,
     read_feature_evidence,
     read_feature_pages,
     read_app_requirement_pages,
     read_wiki_pages,
     read_wiki_settings,
     release_participants,
+    remove_html_comments,
     section_text,
     stage_scope,
     status_rank,
@@ -40,7 +53,18 @@ from prism_cli.wiki_model import (
 )
 from prism_cli.wiki_operations import bug_board_row, operation_row
 from prism_cli.wiki_query import build_envelope
-from prism_cli.wiki_releases import read_release_records, release_participation
+from prism_cli.wiki_releases import (
+    KIND_REDEPLOY,
+    KIND_RELEASE,
+    KIND_ROLLBACK,
+    RECORD_OUTCOMES,
+    ROW_OUTCOMES,
+    ReleaseRecord,
+    read_all_release_records,
+    record_id_of_cell,
+    record_sections,
+    release_participation,
+)
 from prism_cli.qa_rules import QA_FAIL_STAGES
 from prism_cli.wiki_transitions import (
     ACTION_BY_ID,
@@ -139,19 +163,26 @@ def action_registry() -> list[dict[str, Any]]:
 
 
 def app_operations(
-    wiki_root: Path, model: WorkspaceModel, feature_pages: list[Any], participation: ReleaseParticipation
+    wiki_root: Path,
+    model: WorkspaceModel,
+    feature_pages: list[Any],
+    participation: ReleaseParticipation,
+    *,
+    bugs: list[BugPage],
+    incidents: list[IncidentPage],
+    releases: list[ReleaseRecord],
 ) -> list[dict[str, str]]:
     """The status board's Operations rows, derived from the pages by the same function that writes and lints them.
 
+    `bugs`, `incidents` and the valid `releases` are the pages the caller already read, so the graph reads them once.
     An app with nothing released, recorded or open has no row, as on the status board.
     """
 
-    bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
+    bug_rows = [row for bug in bugs if (row := bug_board_row(bug)) is not None]
     stage_cells = {
         feature.feature_id: app_stages_text(feature.status, feature.apps, feature.page.body, model, feature.feature_id, participation)
         for feature in feature_pages
     }
-    incidents, releases = read_incident_pages(wiki_root), read_release_records(wiki_root)
     try:
         targets = {app: str(entry["target"]) for app, entry in read_wiki_settings(wiki_root, model).delivery_targets.items()}
     except (OSError, ValueError):
@@ -171,6 +202,213 @@ def app_operations(
         )
         is not None
     ]
+
+
+# --- Bug, release and incident records -----------------------------------------------------------------------------------
+#
+# The graph lists every bug page, release record and incident for the board's record views. Each entry is read by the
+# readers that lint and the status board use, and an entry that lint marks invalid is listed with `valid: false`.
+
+# The longest summary or impact, the longest timeline line and the most timeline lines an entry carries.
+SUMMARY_LIMIT = 240
+TIMELINE_TEXT_LIMIT = 200
+TIMELINE_LIMIT = 20
+# The lint codes that mark a page as not valid.
+BUG_INVALID_CODES = frozenset({"bug-page-invalid", "invalid-bug-status-owner"})
+RELEASE_INVALID_CODES = frozenset({"release-record-invalid"})
+INCIDENT_INVALID_CODES = frozenset({"incident-record-invalid"})
+# The kind of a release that retries a failed release; the validator calls it a `release`.
+KIND_RETRY = "retry"
+
+_BUG_OWNERS = tuple(dict.fromkeys(BUG_OWNER_BY_STATUS.values()))
+_RECORD_NUMBER = re.compile(r"(\d+)$")
+_BLANK_LINE = re.compile(r"\r?\n[ \t]*\r?\n")
+
+
+def bounded_text(text: str, limit: int) -> str:
+    """The text on one line, cut to `limit` characters at a word boundary with an ellipsis when it is longer."""
+
+    collapsed = re.sub(r"\s+", " ", text).strip()
+    if len(collapsed) <= limit:
+        return collapsed
+    head = collapsed[: limit - 1]
+    if not collapsed[limit - 1].isspace() and " " in head:
+        head = head[: head.rindex(" ")]
+    return head.rstrip() + "…"
+
+
+def _first_paragraph(section: str, limit: int) -> str | None:
+    """The first paragraph of a section, without its HTML comments and bounded to `limit`; ``None`` for a section with no text."""
+
+    cleaned = remove_html_comments(section).strip()
+    if not cleaned:
+        return None
+    return bounded_text(_BLANK_LINE.split(cleaned, maxsplit=1)[0], limit) or None
+
+
+def _one_of(value: str | None, allowed: Iterable[str]) -> str | None:
+    return value if value in allowed else None
+
+
+def _cell_value(text: str) -> str | None:
+    """A table cell, or ``None`` for an empty cell and for the dash that stands for no value."""
+
+    value = text.strip()
+    return None if value in _NO_VALUE else value
+
+
+def _record_order(identifier: str) -> tuple[int, str]:
+    match = _RECORD_NUMBER.search(identifier)
+    return (int(match.group(1)) if match else 10**9, identifier)
+
+
+def _page_path(workspace_root: Path, path: Path) -> str:
+    try:
+        return path.relative_to(workspace_root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _invalid_pages(diagnostics: Iterable[Any], codes: frozenset[str]) -> set[str]:
+    """The paths of the pages that carry a diagnostic with one of `codes`."""
+
+    return {diagnostic.path for diagnostic in diagnostics if diagnostic.code in codes}
+
+
+def bug_facts(bugs: Iterable[BugPage], *, workspace_root: Path, invalid_paths: set[str]) -> list[dict[str, Any]]:
+    """`facts.bugs`: one entry per bug page, by bug number. A value the page lacks or states outside its vocabulary is ``None``."""
+
+    entries: list[dict[str, Any]] = []
+    for bug in sorted(bugs, key=lambda item: _record_order(item.bug_id)):
+        body = bug.page.body
+        fix_rows, _fix_problems = parse_fix_rows(body)
+        verification_rows, _verification_problems = parse_verification_rows(body)
+        release_rows, _release_problems = parse_release_rows(body)
+        entries.append(
+            {
+                "id": bug.bug_id,
+                "title": bug.title,
+                "path": _page_path(workspace_root, bug.page.path),
+                "status": _one_of(bug.status, BUG_STATUS_ORDER),
+                "owner": _one_of(bug.owner, _BUG_OWNERS),
+                "severity": _one_of(bug.severity, BUG_SEVERITIES),
+                "blocking": bug.blocking,
+                "apps": bug.apps,
+                "feature": bug.feature,
+                "found_in": bug.found_in,
+                "environment": bug.environment,
+                "deferred": bug.deferred,
+                "close_reason": _one_of(bug.disposition, CLOSE_DISPOSITIONS),
+                "duplicate_of": bug.duplicate_of,
+                "promoted_to": bug.promoted_to,
+                "regression_of": bug.regression_of,
+                "summary": _first_paragraph(section_text(body, "Summary"), SUMMARY_LIMIT),
+                "fix": [{"app": row.app, "artifact": _cell_value(row.artifact)} for row in fix_rows],
+                "verification": [
+                    {
+                        "app": row.app,
+                        "attempt": f"qa-{row.attempt}" if row.attempt is not None else None,
+                        "result": _one_of(row.result, QA_RESULTS),
+                    }
+                    for row in verification_rows
+                ],
+                "release": [
+                    {
+                        "app": row.app,
+                        "target": _cell_value(row.target),
+                        "outcome": _one_of(row.outcome, ("released", "failed", "pending")),
+                        "record": record_id_of_cell(row.record),
+                    }
+                    for row in release_rows
+                ],
+                "valid": str(bug.page.path) not in invalid_paths,
+            }
+        )
+    return entries
+
+
+def _release_kind(record: ReleaseRecord, kinds: dict[str, str]) -> str:
+    """The kind of a record: the validator's, or `retry` for a release that names the failed release it retries.
+
+    A record the validator rejects has no derived kind, so it is read from the links it declares.
+    """
+
+    kind = kinds.get(record.record_id)
+    if kind is None:
+        source_kind = kinds.get(record.retry_of or "")
+        kind = KIND_ROLLBACK if record.rollback_of else KIND_REDEPLOY if source_kind in {KIND_ROLLBACK, KIND_REDEPLOY} else KIND_RELEASE
+    return KIND_RETRY if kind == KIND_RELEASE and record.retry_of else kind
+
+
+def release_facts(records: Iterable[ReleaseRecord], sequence: ReleaseSequence, *, workspace_root: Path, invalid_paths: set[str]) -> list[dict[str, Any]]:
+    """`facts.releases`: one entry per release record, in record order.
+
+    `sequence` is the `ReleaseSequence` of `validate_release_sequence` over those records: it decides each record's kind and
+    which records are the current delivery of an (app, target).
+    """
+
+    current = {record.record_id for record, _rows in sequence.deliveries.values()}
+    entries: list[dict[str, Any]] = []
+    for record in records:
+        entries.append(
+            {
+                "id": record.record_id,
+                "title": record.title,
+                "path": _page_path(workspace_root, record.page.path),
+                "date": record.date,
+                "kind": _release_kind(record, sequence.kinds),
+                "outcome": _one_of(record.outcome, RECORD_OUTCOMES),
+                "features": record.features,
+                "bugs": record.bugs,
+                "retry_of": record.retry_of,
+                "rollback_of": record.rollback_of,
+                "summary": _first_paragraph(record_sections(record.page.body).get("Summary", ""), SUMMARY_LIMIT),
+                "deliveries": [
+                    {
+                        "item": row.item,
+                        "app": row.app,
+                        "target": row.target,
+                        "version": row.version,
+                        "attempt": f"release-{row.attempt}" if row.attempt is not None else None,
+                        "outcome": _one_of(row.outcome, ROW_OUTCOMES),
+                    }
+                    for row in record.rows
+                ],
+                "current": record.record_id in current,
+                "valid": str(record.page.path) not in invalid_paths,
+            }
+        )
+    return entries
+
+
+def incident_facts(incidents: Iterable[IncidentPage], *, workspace_root: Path, invalid_paths: set[str]) -> list[dict[str, Any]]:
+    """`facts.incidents`: one entry per incident page, by incident number. The timeline keeps the last lines when it is long."""
+
+    entries: list[dict[str, Any]] = []
+    for incident in sorted(incidents, key=lambda item: _record_order(item.incident_id)):
+        body = incident.page.body
+        lines = timeline_entries(body)
+        truncated = len(lines) > TIMELINE_LIMIT
+        day = incident.date
+        entries.append(
+            {
+                "id": incident.incident_id,
+                "title": incident.title,
+                "path": _page_path(workspace_root, incident.page.path),
+                "date": day.isoformat() if day is not None else None,
+                "status": _one_of(incident.status, INCIDENT_STATUSES),
+                "severity": _one_of(incident.severity, INCIDENT_SEVERITIES),
+                "apps": incident.apps,
+                "releases": incident.releases,
+                "follow_ups": incident.follow_ups,
+                "impact": _first_paragraph(section_text(body, "Impact"), SUMMARY_LIMIT),
+                "cause_known": not section_is_blank(body, "Cause") and not cause_is_unknown(body),
+                "timeline": [{"when": when, "text": bounded_text(text, TIMELINE_TEXT_LIMIT)} for when, text in lines[-TIMELINE_LIMIT:]],
+                "timeline_truncated": truncated,
+                "valid": str(incident.page.path) not in invalid_paths,
+            }
+        )
+    return entries
 
 
 LIFECYCLE_STAGES = list(FEATURE_STATUS_ORDER)
@@ -290,7 +528,19 @@ def build_graph(root: Path) -> dict[str, Any]:
 
     # An app node stays when a feature targets it or when the app has an Operations row, so a standalone bug or incident
     # (`feature: none`) still shows the app in the Apps view.
-    operations = app_operations(wiki_root, inspection.model, feature_pages, participation)
+    # The bug, incident and release pages are read once for the Operations rows and for the record lists.
+    bug_pages, incident_pages = read_bug_pages(wiki_root), read_incident_pages(wiki_root)
+    release_pages = read_all_release_records(wiki_root)
+    release_sequence = validate_release_sequence(release_pages)
+    operations = app_operations(
+        wiki_root,
+        inspection.model,
+        feature_pages,
+        participation,
+        bugs=bug_pages,
+        incidents=incident_pages,
+        releases=release_sequence.records,
+    )
     shown_apps = {edge.target for edge in edges if edge.target.startswith("app:")} | {f"app:{row['app']}" for row in operations}
     nodes = {
         node_id: node
@@ -351,6 +601,18 @@ def build_graph(root: Path) -> dict[str, Any]:
         "transition_capability": transition_evaluation.capability,
         "action_registry": action_registry(),
         "app_operations": operations,
+        "bugs": bug_facts(
+            bug_pages, workspace_root=workspace_root, invalid_paths=_invalid_pages(lint_result.diagnostics, BUG_INVALID_CODES)
+        ),
+        "releases": release_facts(
+            release_pages,
+            release_sequence,
+            workspace_root=workspace_root,
+            invalid_paths=_invalid_pages(lint_result.diagnostics, RELEASE_INVALID_CODES),
+        ),
+        "incidents": incident_facts(
+            incident_pages, workspace_root=workspace_root, invalid_paths=_invalid_pages(lint_result.diagnostics, INCIDENT_INVALID_CODES)
+        ),
     }
     sources = [str(wiki_root), *transition_evaluation.sources] + sorted(node.path for node in sorted_nodes if node.path)
     diagnostics = [*lint_result.diagnostics, *transition_evaluation.diagnostics]

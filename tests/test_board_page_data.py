@@ -15,10 +15,13 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 from prism_cli.status import build_status
+from prism_cli.wiki_bugs import BugPage, parse_fix_rows, parse_verification_rows, read_bug_pages
+from prism_cli.wiki_incidents import IncidentPage, read_incident_pages
 from prism_cli.wiki_lint import lint_wiki
-from prism_cli.wiki_graph import action_registry, build_graph
-from prism_cli.wiki_model import DESIGN_OWNERS, FEATURE_STATUS_ORDER, status_rank
+from prism_cli.wiki_graph import action_registry, bounded_text, build_graph
+from prism_cli.wiki_model import DESIGN_OWNERS, FEATURE_STATUS_ORDER, parse_release_rows, section_text, status_rank
 from prism_cli.wiki_operations import OPERATION_ROW_KEYS, read_board_views
+from prism_cli.wiki_releases import current_delivery, read_all_release_records, read_release_records, record_id_of_cell, record_kinds, record_sections
 from prism_cli.wiki_transitions import (
     ACTION_SPECS,
     DESIGN_OWNER,
@@ -31,7 +34,7 @@ from prism_cli.wiki_transitions import (
 from tests import real_temp  # noqa: F401
 from tests.board_page_fixture import BOTH, TwoAppWorkspace
 from tests.browser.harness import EXTRA_FEATURES, build_workspace
-from tests.qa_pages import history_entry
+from tests.qa_pages import bug_page, history_entry
 from tests.test_lifecycle_model import delivery_row, release_row
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -490,6 +493,414 @@ class QaReturnPreflightTests(TwoAppWorkspace):
         for action in self.ACTIONS:
             with self.subTest(action=action):
                 self.assertEqual("ready", self.transition(action)["classification"])
+
+
+def paragraph(text: str) -> str | None:
+    """The first paragraph of a section on one line, or ``None``: the rule of the summary and impact fields, written out."""
+
+    stripped = text.strip()
+    return re.sub(r"\s+", " ", re.split(r"\n\s*\n", stripped)[0]) if stripped else None
+
+
+class RecordFactsTests(TwoAppWorkspace):
+    """`facts.bugs`, `facts.releases` and `facts.incidents` equal what the readers and lint say about the pages."""
+
+    def facts(self) -> dict:
+        graph = build_graph(self.root)
+        Draft202012Validator(json.loads(SCHEMA.read_text(encoding="utf-8"))).validate(graph)
+        return graph["facts"]
+
+    def wiki(self) -> Path:
+        return self.root / "knowledge" / "wiki"
+
+    def relative(self, path: Path | str) -> str:
+        return Path(path).resolve().relative_to(self.root.resolve()).as_posix()
+
+    def invalid_paths(self, *codes: str) -> set[str]:
+        """The pages (relative to the workspace) that lint reports with one of `codes`."""
+
+        return {self.relative(item.path) for item in lint_wiki(self.root).diagnostics if item.code in codes}
+
+    def by_id(self, entries: list[dict]) -> dict[str, dict]:
+        found = {entry["id"]: entry for entry in entries}
+        self.assertEqual(len(entries), len(found), "an ID is listed twice")
+        return found
+
+    def put_section(self, relative: str, heading: str, text: str) -> None:
+        """Replace the text of `## heading` in a page of the wiki; the next section follows after a blank line."""
+
+        path = self.wiki() / relative
+        content = path.read_text(encoding="utf-8")
+        changed = re.sub(rf"(?s)(## {re.escape(heading)}\n).*?(\n\n## )", lambda found: found.group(1) + text + found.group(2), content, count=1)
+        self.assertNotEqual(content, changed, f"{relative} has no `## {heading}` section to replace")
+        path.write_bytes(changed.encode("utf-8"))
+
+    def lumen_end_state(self) -> None:
+        """Replace this workspace's wiki pages by the end state of the Lumen Library case."""
+
+        from tests.lumen_checks import committed_end_state
+        from tests.lumen_library import create_lumen_workspace
+
+        temporary = tempfile.TemporaryDirectory(prefix="prism-records-")
+        self.addCleanup(temporary.cleanup)
+        self.root = create_lumen_workspace(Path(temporary.name))
+        for relative, text in committed_end_state().items():
+            target = self.wiki() / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(text.encode("utf-8"))
+
+    # -- The expectation of each field, read from the page and from the readers ------------------------------------------------
+
+    def expected_bug(self, bug: BugPage, invalid: set[str]) -> dict:
+        meta = bug.page.frontmatter
+        feature = meta["feature"]
+        disposition = bug.disposition
+        fix_rows, _ = parse_fix_rows(bug.page.body)
+        verification_rows, _ = parse_verification_rows(bug.page.body)
+        release_rows, _ = parse_release_rows(bug.page.body)
+        return {
+            "id": meta["id"],
+            "title": meta["title"],
+            "path": bug.page.path.relative_to(self.root).as_posix(),
+            "status": meta["status"],
+            "owner": meta["owner"],
+            "severity": meta["severity"],
+            "blocking": meta["blocking"],
+            "apps": meta["apps"],
+            "feature": None if feature == "none" else feature,
+            "found_in": meta["found-in"],
+            "environment": meta["environment"],
+            "deferred": "deferred-reason" in meta,
+            "close_reason": disposition if disposition in ("wont-fix", "duplicate", "promoted") else None,
+            "duplicate_of": meta.get("duplicate-of"),
+            "promoted_to": meta.get("promoted-to"),
+            "regression_of": meta.get("regression-of"),
+            "summary": paragraph(section_text(bug.page.body, "Summary")),
+            "fix": [{"app": row.app, "artifact": row.artifact} for row in fix_rows],
+            "verification": [{"app": row.app, "attempt": f"qa-{row.attempt}", "result": row.result} for row in verification_rows],
+            "release": [
+                {"app": row.app, "target": row.target, "outcome": row.outcome, "record": record_id_of_cell(row.record)} for row in release_rows
+            ],
+            "valid": self.relative(bug.page.path) not in invalid,
+        }
+
+    def expected_release(self, record, kinds: dict[str, str], current: set[str], invalid: set[str]) -> dict:
+        meta = record.page.frontmatter
+        kind = kinds.get(record.record_id)
+        if kind is None:  # the validator rejected the page: its own links say what it declares
+            kind = "rollback" if "rollback-of" in meta else "retry" if "retry-of" in meta else "release"
+        if kind == "release" and "retry-of" in meta:
+            kind = "retry"
+        return {
+            "id": meta["id"],
+            "title": meta["title"],
+            "path": record.page.path.relative_to(self.root).as_posix(),
+            "date": str(meta["date"]),
+            "kind": kind,
+            "outcome": meta["outcome"],
+            "features": meta["features"],
+            "bugs": meta["bugs"],
+            "retry_of": meta.get("retry-of"),
+            "rollback_of": meta.get("rollback-of"),
+            "summary": paragraph(record_sections(record.page.body)["Summary"]),
+            "deliveries": [
+                {
+                    "item": row.item,
+                    "app": row.app,
+                    "target": row.target,
+                    "version": row.version,
+                    "attempt": None if row.attempt is None else f"release-{row.attempt}",
+                    "outcome": row.outcome,
+                }
+                for row in record.rows
+            ],
+            "current": record.record_id in current,
+            "valid": self.relative(record.page.path) not in invalid,
+        }
+
+    def expected_incident(self, incident: IncidentPage, invalid: set[str]) -> dict:
+        meta = incident.page.frontmatter
+        body = incident.page.body
+        lines = [line.strip() for line in section_text(body, "Timeline").splitlines() if line.strip()]
+        entries = []
+        for line in lines:
+            found = re.match(r"^[-*+]\s+(\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?):\s+(\S.*)$", line)
+            entries.append({"when": found.group(1), "text": found.group(2)} if found else {"when": None, "text": line})
+        return {
+            "id": meta["id"],
+            "title": meta["title"],
+            "path": incident.page.path.relative_to(self.root).as_posix(),
+            "date": str(meta["date"]),
+            "status": meta["status"],
+            "severity": meta["severity"],
+            "apps": meta["apps"],
+            "releases": meta["releases"],
+            "follow_ups": meta["follow-ups"],
+            "impact": paragraph(section_text(body, "Impact")),
+            "cause_known": not section_text(body, "Cause").strip().startswith("**Unknown:**"),
+            "timeline": entries[-20:],
+            "timeline_truncated": len(entries) > 20,
+            "valid": self.relative(incident.page.path) not in invalid,
+        }
+
+    def assert_entries_equal_the_readers(self, facts: dict) -> None:
+        wiki = self.wiki()
+        records = read_all_release_records(wiki)
+        valid_records = read_release_records(wiki)
+        kinds = record_kinds(valid_records)
+        current: set[str] = set()
+        for app, target in {(row.app, row.target) for record in valid_records for row in record.rows}:
+            delivered = current_delivery(valid_records, app, target)
+            if delivered is not None:
+                current.add(delivered[0].record_id)
+        bug_invalid = self.invalid_paths("bug-page-invalid", "invalid-bug-status-owner")
+        release_invalid = self.invalid_paths("release-record-invalid")
+        incident_invalid = self.invalid_paths("incident-record-invalid")
+        for listed, expected in (
+            (facts["bugs"], [self.expected_bug(bug, bug_invalid) for bug in read_bug_pages(wiki)]),
+            (facts["releases"], [self.expected_release(record, kinds, current, release_invalid) for record in records]),
+            (facts["incidents"], [self.expected_incident(incident, incident_invalid) for incident in read_incident_pages(wiki)]),
+        ):
+            self.assertEqual(sorted(entry["id"] for entry in expected), sorted(entry["id"] for entry in listed))
+            found = self.by_id(listed)
+            for entry in expected:
+                for key, value in entry.items():
+                    with self.subTest(record=entry["id"], field=key):
+                        self.assertEqual(value, found[entry["id"]][key])
+                self.assertEqual(set(entry), set(found[entry["id"]]), f"{entry['id']} carries exactly the fields of the shape")
+
+    # -- The Lumen Library end state --------------------------------------------------------------------------------------------
+
+    def test_every_field_equals_the_readers_on_the_lumen_end_state(self) -> None:
+        self.lumen_end_state()
+        facts = self.facts()
+        self.assert_entries_equal_the_readers(facts)
+        self.assertEqual(["BUG-001", "BUG-002", "BUG-003"], [bug["id"] for bug in facts["bugs"]])
+        self.assertEqual(["REL-001", "REL-002", "REL-003", "REL-004", "REL-005", "REL-006"], [record["id"] for record in facts["releases"]])
+        self.assertEqual(["INC-001"], [incident["id"] for incident in facts["incidents"]])
+
+    def test_the_kinds_and_current_deliveries_of_the_lumen_case(self) -> None:
+        self.lumen_end_state()
+        records = self.by_id(self.facts()["releases"])
+        self.assertEqual(
+            {"REL-001": "release", "REL-002": "retry", "REL-003": "release", "REL-004": "rollback", "REL-005": "redeploy", "REL-006": "redeploy"},
+            {key: record["kind"] for key, record in records.items()},
+        )
+        # The reader app's current delivery is the retry; the catalog API's is the redeploy that follows the rollback.
+        self.assertEqual({"REL-002", "REL-006"}, {key for key, record in records.items() if record["current"]})
+        self.assertEqual({"REL-001": "partial", "REL-004": "rolled-back", "REL-005": "failed"}, {key: records[key]["outcome"] for key in ("REL-001", "REL-004", "REL-005")})
+        self.assertTrue(all(record["valid"] for record in records.values()))
+
+    def test_the_incident_of_the_lumen_case_has_a_known_cause_and_its_timeline(self) -> None:
+        self.lumen_end_state()
+        (incident,) = self.facts()["incidents"]
+        self.assertEqual("resolved", incident["status"])
+        self.assertTrue(incident["cause_known"])
+        self.assertEqual(["REL-003", "REL-004", "REL-005", "REL-006"], incident["releases"])
+        self.assertEqual(["BUG-003"], incident["follow_ups"])
+        self.assertEqual("2026-10-09 08:15", incident["timeline"][0]["when"])
+        self.assertFalse(incident["timeline_truncated"])
+
+    # -- A workspace with every state the views show ------------------------------------------------------------------------------
+
+    def seed_records(self) -> None:
+        self.seed_released()
+        self.add_record_history()
+        self.write_status_board()
+
+    def test_every_field_equals_the_readers_with_a_failed_release_a_retry_a_rollback_and_a_redeploy(self) -> None:
+        self.seed_records()
+        self.assert_entries_equal_the_readers(self.facts())
+
+    def test_the_release_kinds_and_current_deliveries(self) -> None:
+        self.seed_records()
+        records = self.by_id(self.facts()["releases"])
+        self.assertEqual(
+            ["release", "retry", "release", "rollback", "redeploy", "redeploy", "retry"], [records[f"REL-00{number}"]["kind"] for number in range(1, 8)]
+        )
+        self.assertEqual(["partial", "released", "released", "rolled-back", "failed", "released", "released"], [records[f"REL-00{n}"]["outcome"] for n in range(1, 8)])
+        # backend/production is delivered by REL-006 (a redeploy) and worker/store by REL-002 (a retry).
+        self.assertEqual(["REL-002", "REL-006"], sorted(key for key, record in records.items() if record["current"]))
+        self.assertEqual(["REL-007"], [key for key, record in records.items() if not record["valid"]])
+        self.assertEqual("REL-099", records["REL-007"]["retry_of"])
+        self.assertEqual("REL-003", records["REL-004"]["rollback_of"])
+        self.assertEqual(
+            [{"item": "BUG-002", "app": "backend", "target": "production", "version": "build:backend#413", "attempt": None, "outcome": "rolled-back"}],
+            records["REL-004"]["deliveries"],
+        )
+
+    def test_the_kinds_and_current_deliveries_match_the_operations_rows_of_the_status_board(self) -> None:
+        self.seed_records()
+        facts = self.facts()
+        records = self.by_id(facts["releases"])
+        board = read_board_views((self.wiki() / "status-board.md").read_text(encoding="utf-8"))
+        self.assertEqual(board.operations, {row["app"]: row for row in facts["app_operations"]})
+        for app, row in board.operations.items():
+            latest = records[row["latest_release"]]
+            with self.subTest(app=app):
+                self.assertTrue(latest["valid"])
+                delivered = [delivery for delivery in latest["deliveries"] if delivery["app"] == app]
+                self.assertEqual({row["latest_outcome"]}, {delivery["outcome"] for delivery in delivered})
+                # The latest record of an app that ends `released` is that app's current delivery.
+                self.assertEqual(row["latest_outcome"] == "released", latest["current"])
+        self.assertEqual({"backend": "redeploy", "worker": "retry"}, {app: records[row["latest_release"]]["kind"] for app, row in board.operations.items()})
+
+    def test_a_record_that_lint_marks_invalid_is_listed_with_valid_false(self) -> None:
+        self.seed_records()
+        facts = self.facts()
+        bugs, incidents = self.by_id(facts["bugs"]), self.by_id(facts["incidents"])
+        self.assertEqual(["BUG-006"], [key for key, bug in bugs.items() if not bug["valid"]])
+        self.assertEqual(["INC-003"], [key for key, incident in incidents.items() if not incident["valid"]])
+        # The invalid pages are still listed with what they say.
+        self.assertEqual(("open", "qa"), (bugs["BUG-006"]["status"], bugs["BUG-006"]["owner"]))
+        self.assertEqual([None], [line["when"] for line in incidents["INC-003"]["timeline"] if line["text"] == "- this line has no date"])
+        diagnostics = {(item.code, Path(item.path).name) for item in lint_wiki(self.root).diagnostics}
+        self.assertIn(("invalid-bug-status-owner", "BUG-006-owner-does-not-follow-the-status.md"), diagnostics)
+        self.assertIn(("incident-record-invalid", "INC-003-timeline-with-a-free-text-line.md"), diagnostics)
+        self.assertIn(("release-record-invalid", "REL-007.md"), diagnostics)
+
+    def test_the_bug_lifecycle_fields(self) -> None:
+        self.seed_records()
+        bugs = self.by_id(self.facts()["bugs"])
+        self.assertEqual(
+            {"BUG-001": "released", "BUG-002": "released", "BUG-003": "open", "BUG-004": "verified", "BUG-005": "closed", "BUG-006": "open"},
+            {key: bug["status"] for key, bug in bugs.items()},
+        )
+        self.assertEqual(
+            [{"app": "worker", "target": "store", "outcome": "released", "record": "REL-002"}], bugs["BUG-001"]["release"]
+        )
+        self.assertEqual([{"app": "worker", "attempt": "qa-1", "result": "pass"}], bugs["BUG-001"]["verification"])
+        self.assertEqual([{"app": "worker", "artifact": "build:worker#1"}], bugs["BUG-001"]["fix"])
+        self.assertEqual("F-001", bugs["BUG-001"]["feature"])
+        self.assertIsNone(bugs["BUG-002"]["feature"])
+        self.assertEqual("BUG-002", bugs["BUG-003"]["regression_of"])
+        self.assertEqual(("duplicate", "BUG-003"), (bugs["BUG-005"]["close_reason"], bugs["BUG-005"]["duplicate_of"]))
+        self.assertEqual([], bugs["BUG-003"]["fix"] + bugs["BUG-003"]["verification"] + bugs["BUG-003"]["release"])
+        self.assertEqual(["worker"], [row["app"] for row in bugs["BUG-004"]["verification"]])
+        self.assertEqual("qa-2", bugs["BUG-004"]["verification"][0]["attempt"])
+        self.assertTrue(bugs["BUG-001"]["blocking"])
+        self.assertFalse(bugs["BUG-003"]["blocking"])
+
+    def test_the_incident_fields_for_an_open_and_a_resolved_incident(self) -> None:
+        self.seed_records()
+        incidents = self.by_id(self.facts()["incidents"])
+        resolved, unknown = incidents["INC-001"], incidents["INC-002"]
+        self.assertEqual(("resolved", True, ["BUG-003", "F-001"]), (resolved["status"], resolved["cause_known"], resolved["follow_ups"]))
+        self.assertEqual(("open", False, ["REL-002"]), (unknown["status"], unknown["cause_known"], unknown["releases"]))
+        # Only the first paragraph of the Impact is kept, on one line.
+        self.assertEqual("Readers could not reserve books for 25 minutes. Support received a few reports.", resolved["impact"])
+        self.assertEqual("2026-10-09", resolved["date"])
+        self.assertEqual(
+            [
+                {"when": "2026-10-09 08:15", "text": "Reservations started failing after REL-003."},
+                {"when": "2026-10-09 08:40", "text": "REL-003 was rolled back by REL-004."},
+                {"when": "2026-10-09 09:10", "text": "Build 413 was redeployed by REL-006."},
+            ],
+            resolved["timeline"],
+        )
+
+    def test_a_record_is_listed_by_its_number_not_its_file_name(self) -> None:
+        self.seed_records()
+        for number in (999, 1000):
+            self.write_wiki_page(f"bugs/BUG-{number}-late-bug.md", bug_page(f"BUG-{number}", apps=["backend"], feature="none"))
+        bugs = self.facts()["bugs"]
+        self.assertEqual(["BUG-001", "BUG-002", "BUG-003", "BUG-004", "BUG-005", "BUG-006", "BUG-999", "BUG-1000"], [bug["id"] for bug in bugs])
+
+    def test_a_workspace_without_records_lists_none(self) -> None:
+        self.seed_in_dev()
+        facts = self.facts()
+        self.assertEqual(([], [], []), (facts["bugs"], facts["releases"], facts["incidents"]))
+
+    # -- Bounded text -----------------------------------------------------------------------------------------------------------
+
+    def test_a_long_summary_and_impact_are_cut_at_a_word_boundary_with_an_ellipsis(self) -> None:
+        self.seed_records()
+        words = " ".join(f"word{number:03d}" for number in range(120))
+        self.put_section("bugs/BUG-001-reserve-button-does-nothing.md", "Summary", f"{words}\n\nA second paragraph.")
+        self.put_section("releases/REL-001.md", "Summary", words)
+        self.put_section("incidents/INC-001-reservations-fail-after-the-catalog-fix.md", "Impact", words)
+        facts = self.facts()
+        shown = {
+            "bug": self.by_id(facts["bugs"])["BUG-001"]["summary"],
+            "release": self.by_id(facts["releases"])["REL-001"]["summary"],
+            "incident": self.by_id(facts["incidents"])["INC-001"]["impact"],
+        }
+        for name, text in shown.items():
+            with self.subTest(record=name):
+                self.assertLessEqual(len(text), 240)
+                self.assertTrue(text.endswith("…"))
+                kept = text[:-1]
+                self.assertTrue(words.startswith(kept))
+                self.assertEqual(" ", words[len(kept)], "the cut falls between two words")
+                self.assertGreater(len(kept), 200)
+
+    def test_an_html_comment_only_section_has_no_summary(self) -> None:
+        self.seed_records()
+        self.put_section("incidents/INC-002-exports-fail-for-the-worker.md", "Impact", "<!-- fill in -->")
+        incident = self.by_id(self.facts()["incidents"])["INC-002"]
+        self.assertIsNone(incident["impact"])
+        self.assertFalse(incident["valid"])
+
+    def test_a_long_timeline_keeps_its_last_twenty_lines_and_says_it_was_cut(self) -> None:
+        self.seed_records()
+        long_text = " ".join(f"detail{number:03d}" for number in range(60))
+
+        lines = [f"- 2026-10-10 {number // 60:02d}:{number % 60:02d}: Step {number} {long_text}" for number in range(25)]
+        self.put_section("incidents/INC-002-exports-fail-for-the-worker.md", "Timeline", "\n".join(lines))
+        incident = self.by_id(self.facts()["incidents"])["INC-002"]
+        self.assertTrue(incident["timeline_truncated"])
+        self.assertEqual(20, len(incident["timeline"]))
+        self.assertEqual("2026-10-10 00:05", incident["timeline"][0]["when"])
+        self.assertEqual("2026-10-10 00:24", incident["timeline"][-1]["when"])
+        for line in incident["timeline"]:
+            self.assertLessEqual(len(line["text"]), 200)
+            self.assertTrue(line["text"].endswith("…"))
+        self.assertTrue(incident["valid"])
+
+    def test_exactly_twenty_timeline_lines_are_not_cut(self) -> None:
+        self.seed_records()
+        lines = [f"- 2026-10-10 10:{number:02d}: Step {number}." for number in range(20)]
+        self.put_section("incidents/INC-002-exports-fail-for-the-worker.md", "Timeline", "\n".join(lines))
+        incident = self.by_id(self.facts()["incidents"])["INC-002"]
+        self.assertFalse(incident["timeline_truncated"])
+        self.assertEqual(20, len(incident["timeline"]))
+
+    def test_bounded_text_keeps_a_text_at_the_limit_and_cuts_one_over_it(self) -> None:
+        self.assertEqual("a" * 240, bounded_text("a" * 240, 240))
+        self.assertEqual("one two", bounded_text("one   two", 240))
+        self.assertEqual("one two…", bounded_text("one two three", 9))
+        self.assertEqual("one two…", bounded_text("one two three", 10))
+        self.assertEqual("one two three…", bounded_text("one two three four", 15))
+        self.assertEqual("abcd…", bounded_text("abcdefghij", 5))
+        self.assertLessEqual(len(bounded_text("word " * 100, 240)), 240)
+
+    # -- The schema --------------------------------------------------------------------------------------------------------------
+
+    def test_the_schema_rejects_a_record_that_leaves_the_shape(self) -> None:
+        self.seed_records()
+        graph = build_graph(self.root)
+        validator = Draft202012Validator(json.loads(SCHEMA.read_text(encoding="utf-8")))
+        validator.validate(graph)
+        for facts_key, field, value in (
+            ("releases", "kind", "title-guess"),
+            ("bugs", "status", "banana"),
+            ("incidents", "timeline_truncated", "yes"),
+            ("bugs", "summary", "x" * 241),
+            ("incidents", "impact", "x" * 241),
+        ):
+            with self.subTest(field=f"{facts_key}.{field}"):
+                changed = json.loads(json.dumps(graph))
+                changed["facts"][facts_key][0][field] = value
+                self.assertFalse(validator.is_valid(changed))
+        extra = json.loads(json.dumps(graph))
+        extra["facts"]["releases"][0]["guess"] = True
+        self.assertFalse(validator.is_valid(extra))
+        missing = json.loads(json.dumps(graph))
+        del missing["facts"]["incidents"][0]["cause_known"]
+        self.assertFalse(validator.is_valid(missing))
+        long_timeline = json.loads(json.dumps(graph))
+        long_timeline["facts"]["incidents"][0]["timeline"] = [{"when": None, "text": "x"}] * 21
+        self.assertFalse(validator.is_valid(long_timeline))
 
 
 class DesignTracksEnvelopeTests(unittest.TestCase):
