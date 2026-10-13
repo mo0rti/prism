@@ -4,6 +4,10 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+
+- **`read_workspace` of a feature page with hundreds of criteria stays within one tool result.** The criteria annotations of a feature page (each criterion's `id`, `revision`, `applies_to` and `integration`) rode on the first piece without counting toward its size, so a page with 500 criteria returned about 71,000 characters against the 48,000-character limit. A page whose record with all its annotations does not fit is now cut so that every piece, annotations included, fits, and each piece lists the criteria whose list item starts in its content range (an empty list when none does); joining the `annotations.criteria` of the pieces in order gives the list a whole read returns. A criterion whose `applies_to` list alone is too long to fit beside one character of content keeps its exact `id` and `revision` and shows `applies_to_count` and `applies_to_omitted: true` instead of the list. A file that fits whole, the cursors, the digests and the recorded reads are unchanged, and `mcp_contract` stays 4. An API contract whose `feature-id` is longer than `F-` and 18 digits has no citation, because the citation repeats the ID: `read_workspace` returns no `annotations.contract` for it, lint reports `invalid-api-contract-feature-id` at the contract page, and no Delivery row can cite it.
+
 ## [0.7.4]
 
 Release date: 2026-10-13

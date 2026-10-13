@@ -54,6 +54,7 @@ from prism_cli.wiki_model import (
     candidate_relative_markdown_link as _candidate_relative_link,
     bounded_int,
     clean_cell,
+    contract_feature_id_too_long,
     contract_page_citation,
     contract_version,
     criteria_high_water,
@@ -2462,6 +2463,16 @@ def _auxiliary_feature_id(page: MarkdownPage) -> str | None:
 
 def _lint_api_contract_page(page: MarkdownPage, feature_id: str | None) -> list[WikiDiagnostic]:
     diagnostics = _lint_aux_required_string(page, "feature-id", "api-contract", feature_id)
+    if contract_feature_id_too_long(page.frontmatter.get("feature-id")):
+        diagnostics.append(
+            _diag(
+                "invalid-api-contract-feature-id",
+                "error",
+                page.path,
+                f"`feature-id` must be a feature ID of `F-` and at most {MAX_RECORD_NUMBER_DIGITS} digits; a contract with a longer one has no citation, so no Delivery row can cite it.",
+                feature_id,
+            )
+        )
     diagnostics.extend(_lint_aux_required_int(page, "version", "api-contract", feature_id))
     diagnostics.extend(
         _lint_aux_enum(

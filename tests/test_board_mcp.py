@@ -659,7 +659,9 @@ class BoardMCPFeatureReadTests(unittest.IsolatedAsyncioTestCase):
                             arguments["cursor"] = cursor
                         result = await session.call_tool("read_workspace", arguments)
                         self.assertFalse(result.is_error, result.content)
+                        self.assertLessEqual(board_reads.compact_size(result.structured_content), board_reads.RESULT_BUDGET_CHARS)
                         record = result.structured_content["files"][0]
+                        self.assertIn("criteria", record["annotations"], "every piece carries the criteria that start in it")
                         self.assertEqual(len(text), record["offset"])
                         text += record["content"]
                         criteria.extend(record.get("annotations", {}).get("criteria", []))

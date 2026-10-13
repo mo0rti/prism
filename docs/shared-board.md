@@ -510,7 +510,7 @@ The HTTP routes `POST /api/board/v1/workspace/read` and `POST /api/board/v1/quer
 | `list_skills` | none | `mcp_contract`, `version`, `read_support`, `skills` (`name`, `version`, `description`, `actions`, `supported`, `write_supported`, `participant_kinds`, `write_tools`, `required_roles`, `write_scopes`, `limitations`) |
 | `get_skill` | `name`, `cursor?` | `skill` (metadata, `instructions`, `instructions_chunk` with `offset`, `total_chars`, `digest`, `required_workspace_reads`, `required_workspace_reads_chunk` with `offset`, `total`, and `references`) and `next_cursor` |
 | `get_skill_reference` | `name`, `path`, `cursor?` | `content`, `offset`, `total_chars`, `digest`, `next_cursor`. A path outside the skill's `references` is `reference_not_found` (404) |
-| `read_workspace` | `paths`, `cursor?` | `files` (each with `path`, `content`, `offset`, `total_chars`, `digest`, `provenance`) and `next_cursor` |
+| `read_workspace` | `paths`, `cursor?` | `files` (each with `path`, `content`, `offset`, `total_chars`, `digest`, `provenance` and, for a feature page or an API contract page, `annotations`) and `next_cursor` |
 | `list_workspace` | `prefix?`, `cursor?` | unchanged: `files`, `total`, `next_cursor` |
 | `query` | `kind`, `value?`, `action?`, `cursor?` | the existing result, plus `next_cursor`; `owner`, `app` and `search` also return `total` |
 | `preview_skill` | `skill`, `changes`, `moves?`, `read_revisions?` (usually left out: see "Recorded reads") | the preview header (`preview_id`, `classification`, `applicable`, `checks`, `blockers`, `source`, `target`, `source_revision`, `moves`), `writes` and `writes_chunk` (`offset`, `count`, `total`), and `next_cursor` |
@@ -528,6 +528,8 @@ The HTTP routes `POST /api/board/v1/workspace/read` and `POST /api/board/v1/quer
 `get_skill` continues first through its `instructions` and then through `required_workspace_reads`. Every page repeats the metadata and the references index. Join the `instructions` chunks and concatenate the `required_workspace_reads` lists across the pages.
 
 `read_workspace` returns whole files in request order until the next file would not fit, then a `next_cursor`. A file larger than one result is returned in chunks. Resend the same `paths` with each cursor. The 64-path, approved-path and 2 MiB limits of the request are unchanged.
+
+`annotations` are facts the board computes from the file. A feature page has `annotations.criteria`, its acceptance criteria with their `id`, `revision`, `applies_to` and `integration`; an API contract page has `annotations.contract` (`version`, `digest`, `citation`). A file that fits one result with its annotations arrives whole, with its annotations on the piece at offset 0. A feature page that does not fit is cut so that each piece, annotations included, fits one result, and its criteria travel with its content: every piece has `annotations.criteria` for the criteria whose list item starts in that piece's content range, in page order, and an empty list when none starts there. A criterion whose own `applies_to` list is too long to fit beside one character of content keeps its exact `id`, `revision` and `integration` and has `applies_to_count` and `applies_to_omitted: true` instead of `applies_to`; read its line in the content for the apps. The cursor is unchanged: it names the file and the character offset, because the annotations follow from the content range. A contract page's `annotations.contract` is a few hundred characters (a contract whose `feature-id` is longer than `F-` and 18 digits has no citation, so `annotations.contract` is absent, lint reports `invalid-api-contract-feature-id` at the contract page and no Delivery row can cite it) and stays on the piece at offset 0.
 
 **Recorded reads.** The service records, for each participant, the digest of every file `read_workspace` returned in full (the last chunk of a chunked file counts). When a `preview_skill` proposal omits `read_revisions`, or omits a source the skill requires, the service uses that participant's recorded digest for the source. The stale check is the same as for a digest the caller sends: a file that changed after the read is rejected as `stale_read_revision`. A required source the participant never read, including one only another participant read, is rejected as `missing_read_revisions` with `details.paths` listing what to read. The record is held in memory per participant and is empty after a service restart, so the agent reads again. A digest the caller does send is checked as before.
 
@@ -570,7 +572,7 @@ def read_all(call_tool, tool, arguments, field="content"):
 schema = read_all(call_tool, "get_skill_reference", {"name": "po-intake", "path": "knowledge/wiki/SCHEMA.md"})
 ```
 
-For `read_workspace`, group the chunks of each file by `path` and compare the joined text with that file's `digest`; `offset + len(content) == total_chars` marks a file's last chunk.
+For `read_workspace`, group the chunks of each file by `path` and compare the joined text with that file's `digest`; `offset + len(content) == total_chars` marks a file's last chunk. For a feature page read in pieces, join the `annotations.criteria` lists of its pieces in piece order: the result is the list a whole read returns, except that a criterion with `applies_to_omitted` keeps its short form.
 
 ### Upgrading a pinned workspace
 

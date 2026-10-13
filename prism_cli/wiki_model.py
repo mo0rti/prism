@@ -2113,12 +2113,22 @@ def contract_citation(feature_id: str, version: int, body: str) -> str:
     return f"{feature_id.strip().upper()}@v{version}:{contract_digest(feature_id, version, body)}"
 
 
+def contract_feature_id_too_long(value: Any) -> bool:
+    """Whether the `feature-id` of an API contract is longer than `F-` and `MAX_RECORD_NUMBER_DIGITS` digits.
+
+    The citation repeats the text of the ID, so a longer ID has no citation: it would make the citation, and every result
+    that carries it, as long as the page chooses.
+    """
+
+    return isinstance(value, str) and len(value.strip()) > 2 + MAX_RECORD_NUMBER_DIGITS
+
+
 def contract_page_citation(frontmatter: Mapping[str, Any], body: str) -> str | None:
     """The citation of an API contract page, or ``None`` when its `feature-id` or `version` is not usable."""
 
     feature = frontmatter.get("feature-id")
     version = frontmatter.get("version")
-    if not isinstance(feature, str) or not re.fullmatch(r"F-[0-9]+", feature.strip(), re.IGNORECASE):
+    if not isinstance(feature, str) or contract_feature_id_too_long(feature) or not re.fullmatch(r"F-[0-9]+", feature.strip(), re.IGNORECASE):
         return None
     number = contract_version(version)
     if number is None:
