@@ -6,7 +6,7 @@ import unittest
 
 import yaml
 
-from prism_cli.board_service import _parse_markdown
+from prism_cli.board_service import BoardError, _parse_markdown
 from tests.qa_support import DELIVERY_HEADER, FEATURE, QA_HEADER, RELEASE_HEADER, append_history, history_entry, requirement_path
 from tests.release_support import ReleaseTests, table
 from tests.test_board_service import _set_requirement_status
@@ -192,6 +192,35 @@ class ReopenTests(ReopenBoard):
         error = self.refused("feature-reopen", self.reopen_changes("reopen-spec", mutate=drop_entry), approver=self.owner)
         self.assertIn(error.code, {"history_entry_required", "reopen_route_required"})
         self.assertEqual(409, error.status)
+
+    def test_a_feature_that_is_not_released_has_no_reopen_route(self) -> None:
+        changes = self.reopen_changes("reopen-design")
+        self.put(FEATURE, self.with_status("ready-for-design", "tech-lead"))
+        error = self.refused("feature-reopen", changes, approver=self.owner)
+        # The registry selects a route by its source, so a feature in another status answers `lifecycle_action_required`.
+        self.assertEqual(("lifecycle_action_required", 409), (error.code, error.status))
+
+    def test_the_reopen_validator_guards_its_own_source(self) -> None:
+        # The board route never reaches the guard (the registry selects the route by its source); call the validator directly.
+        changes = self.reopen_changes("reopen-design")
+        supplied = {FEATURE: changes[0]["content"]}
+        before = {FEATURE: self.with_status("ready-for-design", "tech-lead")}
+        feature = {"path": FEATURE, "id": "F-001"}
+        with self.assertRaises(BoardError) as raised:
+            self.service._d4_validate_reopen("reopen-design", feature, supplied, before)
+        self.assertEqual(("unsupported_source_pair", 409), (raised.exception.code, raised.exception.status))
+
+    def test_the_transition_source_validator_guards_its_own_source(self) -> None:
+        # Same as above for the source check shared by the feature lifecycle skills.
+        old = _parse_markdown(self.with_status("in-dev", "dev"))[0]
+        new = _parse_markdown(self.with_status("ready-for-dev", "dev"))[0]
+        text = self.with_status("ready-for-dev", "dev")
+        with self.assertRaises(BoardError) as raised:
+            self.service._validate_transition_source(
+                "design-handoff", FEATURE, text, old, new, original_content=self.read(FEATURE), supplied={FEATURE: text}, before={FEATURE: self.read(FEATURE)}
+            )
+        self.assertEqual(("unsupported_source_pair", 409), (raised.exception.code, raised.exception.status))
+        self.assertIn("`design-handoff`", raised.exception.message)
 
     def test_a_reopen_is_requested_by_a_human_with_the_role_of_its_destination(self) -> None:
         preview = self.ready("feature-reopen", self.dev_changes(APPS))

@@ -1281,8 +1281,8 @@ def _lint_api_contract_blockers(
             api_by_feature.setdefault(feature_id, []).append(page)
     diagnostics: list[WikiDiagnostic] = []
     for feature in feature_pages:
-        if feature.status not in API_CONTRACT_DOWNSTREAM_STATUSES:
-            continue
+        # Only a downstream feature is held to its contracts; `unused-api-contract` is reported in every status.
+        downstream = feature.status in API_CONTRACT_DOWNSTREAM_STATUSES
         references: list[MarkdownPage] = []
         feature_id = normalize_feature_id(feature.feature_id)
         declared_apps = {app_id.strip().lower() for app_id in feature.apps}
@@ -1326,6 +1326,8 @@ def _lint_api_contract_blockers(
                             gates=False,
                         )
                     )
+                    continue
+                if not downstream:
                     continue
                 diagnostics.append(
                     _diag(

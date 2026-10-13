@@ -4261,6 +4261,14 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             declared = [item for item in apps if isinstance(item, str)] if isinstance(apps, list) else []
             outside = [item for item in declared if item not in allowed]
             details = {"apps": _names(declared), "board_apps": _names(self._app_ids)}
+            if skill == SCOPE_SKILL and apps == [] and before_apps:
+                # A scope edit that removes the last app: the scope-edit code names the case better than the generic apps rule.
+                raise BoardError(
+                    "scope_empty",
+                    f"A feature keeps at least one app in scope; `{relative}` would have none. Remove the feature's work through a bug or a new feature instead.",
+                    409,
+                    {"path": relative},
+                )
             if not self._app_ids:
                 raise BoardError(
                     "invalid_feature_output",
@@ -5086,8 +5094,6 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 409,
                 {"path": path, "added_apps": _names(added)},
             )
-        if not new_apps:
-            raise BoardError("scope_empty", f"A feature keeps at least one app in scope; `{path}` would have none. Remove the feature's work through a bug or a new feature instead.", 409, {"path": path})
         extra = [name for name in changed if name not in scope.frontmatter]
         if extra:
             raise BoardError(
@@ -5391,6 +5397,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         spec = next(item for item in _REGISTERED_ACTION_SPECS if item.action == action)
         design_before = design_owner(_scope_of(old) or [], self._model)
         design_after = design_owner(_scope_of(new) or [], self._model)
+        # Defence in depth: `_action_from_feature_change` selects the action by these sources, so a feature in another status
+        # answers `lifecycle_action_required` first today. This guard catches only a future path that bypasses that selection.
         if (old.get("status"), old.get("owner")) not in spec.resolved_sources(design_before):
             wanted = " or ".join(f"`{status}` + `{owner}`" for status, owner in spec.resolved_sources(design_before))
             raise BoardError("unsupported_source_pair", f"Action `{action}` requires {wanted}.", 409)

@@ -978,6 +978,8 @@ class ReleaseActionsMixin:
         pages = self._d3_pages(feature, supplied, before)  # type: ignore[attr-defined]
         path = pages["path"]
         old_fm = pages["old_fm"]
+        # Defence in depth: the registry selects a reopen route by its source (`released` + `none`), so another status answers
+        # `lifecycle_action_required` first today. This guard catches only a future path that bypasses that selection.
         if old_fm.get("status") != "released":
             raise bs.BoardError("unsupported_source_pair", f"Action `{action}` reopens a feature that is `released`; {pages['feature_id']} is `{old_fm.get('status')}`.", 409, {"path": path})
         history = pages["new_history"]
