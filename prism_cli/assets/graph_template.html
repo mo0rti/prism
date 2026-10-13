@@ -3131,7 +3131,69 @@ function bindCmdBlocks(rootEl) {
 }
 
 /* ==================== render everything; guide is just a view ==================== */
+// A render replaces the markup of the board, the app lanes, the session bar and the other regions, so the element that
+// had keyboard focus is gone afterwards and the browser moves focus to the page. The render records what had focus by a
+// stable identity (the region, the card or chip it sits on, and which control on it) and puts focus back on the
+// replacement. If the control or card no longer exists, focus goes to the card's column and then to the region, never
+// to the page. Focus inside a dialog is left to the dialog's own restore.
+const FOCUS_REGION_SELECTOR = "#board-view, #app-view, #board-session, #type-chips, #statrow, #graph-legend, #statusline, #firstrun-view";
+const FOCUS_OWNER_SELECTOR = ".card[data-id], .card[data-intake], .fchip[data-id]";
+function focusSignature(el) {
+  const parts = [el.tagName];
+  for (const name of el.getAttributeNames().sort()) {
+    if (name.startsWith("data-") || name === "aria-label" || name === "role" || name === "type") parts.push(name + "=" + el.getAttribute(name));
+  }
+  return parts.join("|");
+}
+function focusOwnerKey(owner) {
+  const kind = owner.classList.contains("fchip") ? "chip" : "card";
+  return kind + "\u0000" + (owner.dataset.id !== undefined ? "id:" + owner.dataset.id : "intake:" + owner.dataset.intake + "/" + owner.dataset.name);
+}
+function captureRenderFocus() {
+  const el = document.activeElement;
+  if (!el || el === document.body || !el.closest || el.closest("#transition-dialog")) return null;
+  const region = el.closest(FOCUS_REGION_SELECTOR);
+  if (!region) return null;
+  const owner = el.closest(FOCUS_OWNER_SELECTOR);
+  const column = el.closest(".column[data-stage]");
+  const signature = focusSignature(el);
+  const scope = owner || region;
+  return {
+    regionId: region.id,
+    ownerKey: owner ? focusOwnerKey(owner) : null,
+    isOwner: owner === el,
+    tag: el.tagName,
+    signature,
+    ordinal: Array.from(scope.querySelectorAll(el.tagName)).filter(candidate => focusSignature(candidate) === signature).indexOf(el),
+    stage: column ? column.dataset.stage : null,
+  };
+}
+function restoreRenderFocus(saved) {
+  if (!saved) return;
+  const active = document.activeElement;
+  if (active && active !== document.body && active.isConnected) return;
+  const region = document.getElementById(saved.regionId);
+  if (!region) return;
+  const owner = saved.ownerKey ? Array.from(region.querySelectorAll(FOCUS_OWNER_SELECTOR)).find(item => focusOwnerKey(item) === saved.ownerKey) : null;
+  const candidates = [];
+  if (owner) {
+    if (saved.isOwner) candidates.push(owner);
+    else candidates.push(Array.from(owner.querySelectorAll(saved.tag)).filter(item => focusSignature(item) === saved.signature)[saved.ordinal]);
+    candidates.push(owner);
+  } else if (saved.ownerKey) {
+    const column = saved.stage ? Array.from(region.querySelectorAll(".column[data-stage]")).find(item => item.dataset.stage === saved.stage) : null;
+    if (column) candidates.push(column.querySelector(".card[data-id]"), column);
+  } else {
+    candidates.push(Array.from(region.querySelectorAll(saved.tag)).filter(item => focusSignature(item) === saved.signature)[saved.ordinal]);
+  }
+  candidates.push(region);
+  const target = candidates.find(item => item && transitionTargetAvailable(item));
+  if (!target) return;
+  if (!target.hasAttribute("tabindex") && !/^(A|BUTTON|INPUT|SELECT|TEXTAREA|SUMMARY)$/.test(target.tagName)) target.setAttribute("tabindex", "-1");
+  target.focus({ preventScroll: true });
+}
 function renderAll(first) {
+  const savedFocus = captureRenderFocus();
   renderHeader(); renderStatusline();
   renderStats(); renderChips(); renderLegend();
   renderFirstRunPage();
@@ -3139,6 +3201,7 @@ function renderAll(first) {
   if (state.transitionPreview) renderTransitionDialog(false);
   if (graph) { requestAnimationFrame(sizeGraph); applyGraphData(first === true); }
   if (first === true) switchView(featureNodes().length ? "graph" : "firstrun");
+  restoreRenderFocus(savedFocus);
 }
 
 /* ==================== stats ==================== */

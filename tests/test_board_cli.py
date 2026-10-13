@@ -12,13 +12,14 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
 import yaml
 
 from prism_cli.cli import build_parser
-from prism_cli.board_store import BoardStore
+from prism_cli.board_store import BoardLockError, BoardStore, workspace_process_lock
 from prism_cli.workflow_assets import asset_digest
 from prism_cli.workflow_install import apply_install, plan_install
 from tests.manifest_fixtures import manifest_data
@@ -170,9 +171,98 @@ def _free_port() -> int:
         return probe.getsockname()[1]
 
 
-def _stop_process_tree(process: subprocess.Popen) -> None:
-    """Stop the server and any interpreter it launched (a Windows venv launcher starts a child)."""
+def _child_process_ids(parent_pid: int) -> list[int]:
+    """The processes started by ``parent_pid`` (a Windows venv launcher starts the real interpreter as its child)."""
 
+    if os.name != "nt":
+        return []
+    import ctypes
+    from ctypes import wintypes
+
+    class ProcessEntry(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.c_size_t),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", ctypes.c_char * 260),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.Process32First.argtypes = kernel32.Process32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    if snapshot in (None, wintypes.HANDLE(-1).value):
+        return []
+    children: list[int] = []
+    try:
+        entry = ProcessEntry()
+        entry.dwSize = ctypes.sizeof(ProcessEntry)
+        found = kernel32.Process32First(snapshot, ctypes.byref(entry))
+        while found:
+            if entry.th32ParentProcessID == parent_pid:
+                children.append(entry.th32ProcessID)
+            found = kernel32.Process32Next(snapshot, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snapshot)
+    return children
+
+
+def _wait_for_processes_to_exit(process_ids: list[int], timeout: float) -> None:
+    """Block until each process has exited; an ID that no longer exists counts as exited."""
+
+    if os.name != "nt":
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    deadline = time.monotonic() + timeout
+    for process_id in process_ids:
+        handle = kernel32.OpenProcess(0x00100000, False, process_id)  # SYNCHRONIZE
+        if not handle:
+            continue
+        try:
+            remaining = max(int((deadline - time.monotonic()) * 1000), 0)
+            if kernel32.WaitForSingleObject(handle, remaining) != 0:
+                raise AssertionError(f"Process {process_id} did not exit within {timeout} seconds.")
+        finally:
+            kernel32.CloseHandle(handle)
+
+
+def _wait_for_board_lock_release(root: Path, timeout: float) -> None:
+    """Block until no process holds the workspace's board lock, so the folder can be removed."""
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            with workspace_process_lock(root, create=False):
+                return
+        except BoardLockError:
+            if time.monotonic() >= deadline:
+                raise AssertionError("The board server still holds the workspace lock after it was stopped.")
+            time.sleep(0.01)
+
+
+def _stop_process_tree(process: subprocess.Popen, root: Path) -> None:
+    """Stop the server and any interpreter it launched, and return only when none of them is running.
+
+    A Windows venv launcher starts the real interpreter as a child. Waiting for the launcher alone returns while the
+    server it started may still be shutting down with ``board.lock`` open, which would block the removal of ``root``.
+    """
+
+    children = _child_process_ids(process.pid)
     if process.poll() is None:
         if os.name == "nt":
             subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, check=False)
@@ -183,6 +273,8 @@ def _stop_process_tree(process: subprocess.Popen) -> None:
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait()
+    _wait_for_processes_to_exit(children, timeout=30)
+    _wait_for_board_lock_release(root, timeout=30)
 
 
 class BoardServeFirstRunTests(unittest.TestCase):
@@ -256,7 +348,7 @@ class BoardServeFirstRunTests(unittest.TestCase):
             self.assertEqual(f"Prism board: http://127.0.0.1:{port}/", line.strip())
             self.assertIsNone(process.poll(), "the server must still be running when the banner is read")
         finally:
-            _stop_process_tree(process)
+            _stop_process_tree(process, self.root)
             reader.join(timeout=5)
             process.stdout.close()
 
