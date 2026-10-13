@@ -1,7 +1,7 @@
 """The standard wiki files: the one manifest they are listed in, and every part of Prism that reads it.
 
 `PinnedBehaviourTests` states, as literal lists, which standard file each part of the product treats as required,
-copied, recorded as a revision or gating. It never reads the manifest, so it keeps the lists that existed before the
+recorded as a revision or gating. It never reads the manifest, so it keeps the lists that existed before the
 manifest from drifting. `ManifestBehaviourTests` runs the same checks against the manifest's categories, so each
 consumer's list equals the manifest's. `ExtraEntryTests` adds an entry to the manifest and nothing else, and every
 consumer follows it.
@@ -273,11 +273,14 @@ class ManifestBehaviourTests(StandardFileBehaviour, unittest.TestCase):
     NON_PAGE = {"_FORMAT.md", "BOARD.md", "PROJECT_FOUNDATION.md", "WIKI_REPORT.md", *standard_files.names("non_page")}
     FIXED_LINES = standard_files.index_lines()
 
-    def test_every_copied_file_lands_in_a_candidate_built_from_a_normal_workspace(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            self.service._build_candidate_root(Path(directory), {}, [])
-            missing = [name for name in standard_files.names("copied") if not (Path(directory) / WIKI / name).is_file()]
-        self.assertEqual([], missing)
+    def test_the_refusal_to_supply_a_managed_file_names_every_managed_file(self) -> None:
+        managed = standard_files.names("managed")
+        with self.assertRaises(BoardError) as refused:
+            self.service.preview_skill(self.agent, "ask", [{"path": f"{WIKI}/{managed[0]}", "content": "x"}])
+        self.assertEqual("managed_file", refused.exception.code)
+        self.assertEqual(f"{', '.join(managed[:-1])} and {managed[-1]} are generated and merged by BoardService.", str(refused.exception))
+        for name in managed:
+            self.assertIn(name, str(refused.exception))
 
     def test_the_refusal_to_adopt_a_workspace_names_every_required_file(self) -> None:
         (self.wiki / "status-board.md").unlink()
@@ -296,7 +299,6 @@ class ManifestTests(unittest.TestCase):
         table = {
             "required": ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "index.md", "status-board.md"),
             "gating": ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "index.md", "status-board.md"),
-            "copied": ALL,
             "managed": ("index.md", "status-board.md", "log.md"),
             "versioned": ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md"),
             "non_source": ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "SETTINGS.md", "status-board.md", "log.md"),
@@ -400,6 +402,14 @@ class ExtraEntryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.service._build_candidate_root(Path(directory), {}, [])
             self.assertTrue((Path(directory) / self.extra).is_file())
+
+    def test_the_managed_file_message_follows_a_managed_entry(self) -> None:
+        generated = standard_files.StandardFile("GENERATED.md", managed=True)
+        with patch.object(standard_files, "STANDARD_FILES", (*standard_files.STANDARD_FILES, generated)):
+            with self.assertRaises(BoardError) as refused:
+                self.service.preview_skill(self.agent, "ask", [{"path": f"{WIKI}/GENERATED.md", "content": "x"}])
+        self.assertEqual("managed_file", refused.exception.code)
+        self.assertEqual("index.md, status-board.md, log.md and GENERATED.md are generated and merged by BoardService.", str(refused.exception))
 
     def test_the_refusal_to_adopt_a_workspace_names_the_file(self) -> None:
         (self.wiki / EXTRA).unlink()

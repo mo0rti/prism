@@ -1312,6 +1312,24 @@ if (checkConnectedBoard) {
   assert(waitingPreview.operationMessage.includes("view stale") && state.pendingAppliedStage, "an unrelated snapshot cleared the waiting state");
   adoptData(closedApplyEnvelope);
   assert(waitingPreview.operationMessage.includes("refreshed and validated") && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && closeStage() === "in-design", "the event stream snapshot did not settle the waiting state");
+
+  // A minimum-of-stages action has no certain drop column: recovering a partial dev-done leaves the feature at any status the
+  // action's targets allow, so the refreshed view settles on it instead of waiting for a column that may never come.
+  assert(actionDropStage("dev-done") === "" && actionDropStage("qa-pass") === "" && actionDropStage("qa-verify") === "" && actionDropStage("release-done") === "", "a minimum-of-stages action kept a drop column");
+  assert(actionDropStage("po-handoff") === "ready-for-design", "a concrete-target action lost its drop column");
+  const recoveredExpectation = appliedStageExpectation({ kind: "connected", featureId: "F-close", action: "dev-done" });
+  assert(recoveredExpectation && recoveredExpectation.featureId === "F-close" && ["in-dev", "ready-for-qa"].every(status => recoveredExpectation.statuses.includes(status)) && !recoveredExpectation.statuses.includes("released"), "the recovery of dev-done did not expect any status of its targets: " + JSON.stringify(recoveredExpectation));
+  assert(appliedStageExpectation({ kind: "connected", featureId: "F-close", action: "po-handoff" }).statuses.join() === "ready-for-design", "a concrete-target action did not expect its drop column");
+  const partialEnvelope = JSON.parse(JSON.stringify(beforeEnvelope));
+  partialEnvelope.facts.nodes.find(node => node.id === "F-close").status = "in-dev";
+  adoptData(beforeEnvelope);
+  state.liveVersion = 1;
+  dataRefreshEnvelope = partialEnvelope;
+  retryTimers.length = 0;
+  const recoveredPreview = { kind: "connected", featureId: "F-close", action: "dev-done", receipt: { state: "applied" }, operationState: "applied", operationMessage: "" };
+  refreshBoardGraphAfterApply(recoveredPreview);
+  assert(recoveredPreview.operationMessage.includes("refreshed and validated") && closeStage() === "in-dev" && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && retryDelays().length === 0, "the recovery of a partial dev-done ended in a stale view: " + recoveredPreview.operationMessage);
+  dataRefreshEnvelope = beforeEnvelope;
   globalThis.setTimeout = priorSetTimeout;
   staleDataReads = 0;
 

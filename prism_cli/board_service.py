@@ -267,6 +267,13 @@ def _managed_paths() -> frozenset[str]:
     return frozenset(standard_files.wiki_paths(standard_files.names("managed")))
 
 
+def _managed_file_list() -> str:
+    """The managed standard files as a sentence list: `a`, `a and b` or `a, b and c`."""
+
+    managed = standard_files.names("managed")
+    return f"{', '.join(managed[:-1])} and {managed[-1]}" if len(managed) > 1 else ", ".join(managed)
+
+
 def _wiki_root_pages() -> frozenset[str]:
     """The pages at the root of the wiki that the board reads: every standard file and the root page kinds."""
 
@@ -3642,7 +3649,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             if len(item["content"].encode("utf-8")) > _MAX_TEXT_FILE:
                 raise BoardError("text_file_limit", f"Proposed file `{relative}` exceeds 512 KiB.", 413)
             if relative in _managed_paths():
-                raise BoardError("managed_file", "index.md, status-board.md and log.md are generated and merged by BoardService.", 403)
+                raise BoardError("managed_file", f"{_managed_file_list()} are generated and merged by BoardService.", 403)
             self._assert_skill_write_path(skill, relative)
             supplied[relative] = item["content"]
         if not supplied:

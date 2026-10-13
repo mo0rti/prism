@@ -1950,24 +1950,29 @@ function createBoardOperationId() {
 }
 const APPLY_REFRESH_RETRY_MS = [150, 300, 600, 900, 1200];
 const APPLY_STALE_VIEW_ERROR = "Dashboard view is stale after the applied board operation; wait for a refreshed and validated snapshot before another action.";
+// The statuses the feature may show once the applied action is visible: the drop column when the action has a certain one,
+// otherwise any status in the action's target statuses (a minimum over the app stages depends on the other apps).
 function appliedStageExpectation(preview) {
   if (!preview) return null;
   const receipt = preview.receipt || {};
   const featureId = preview.kind === "connected" ? preview.featureId : receipt.feature_id;
   const action = preview.kind === "connected" ? preview.action : receipt.action;
-  if (typeof featureId !== "string" || !featureId || typeof action !== "string" || !actionDropStage(action)) return null;
-  return { featureId, status: actionDropStage(action) };
+  if (typeof featureId !== "string" || !featureId || typeof action !== "string") return null;
+  const drop = actionDropStage(action);
+  const meta = actionMeta(action);
+  const statuses = drop ? [drop] : meta && Array.isArray(meta.target_status) ? meta.target_status.map(String) : [];
+  return statuses.length ? { featureId, statuses } : null;
 }
 function envelopeShowsStage(envelope, expectation) {
   const nodes = envelope && envelope.facts && Array.isArray(envelope.facts.nodes) ? envelope.facts.nodes : [];
   const matches = nodes.filter(node => node && node.id === expectation.featureId);
-  return matches.length === 1 && matches[0].status === expectation.status;
+  return matches.length === 1 && expectation.statuses.includes(matches[0].status);
 }
 function confirmPendingAppliedStage() {
   const pending = state.pendingAppliedStage;
   if (!pending) return;
   const node = nodesById[pending.featureId];
-  if (!node || node.status !== pending.status) return;
+  if (!node || !pending.statuses.includes(node.status)) return;
   state.pendingAppliedStage = null;
   state.boardViewStale = false;
   if (pending.preview) {
@@ -1993,7 +1998,7 @@ function refreshBoardGraphAfterApply(preview) {
         if (attempt < APPLY_REFRESH_RETRY_MS.length) { setTimeout(() => requestSnapshot(attempt + 1), APPLY_REFRESH_RETRY_MS[attempt]); return; }
         state.boardViewStale = true;
         state.liveRefreshError = APPLY_STALE_VIEW_ERROR;
-        state.pendingAppliedStage = { preview, featureId: expectation.featureId, status: expectation.status };
+        state.pendingAppliedStage = { preview, featureId: expectation.featureId, statuses: expectation.statuses };
         if (preview) preview.operationMessage = "Operation applied. Dashboard view stale: the board has not received the applied change yet; waiting for the live update stream.";
         renderAll(false);
         return;
@@ -3135,8 +3140,9 @@ function bindCmdBlocks(rootEl) {
 // had keyboard focus is gone afterwards and the browser moves focus to the page. The render records what had focus by a
 // stable identity (the region, the card or chip it sits on, and which control on it) and puts focus back on the
 // replacement. If the control or card no longer exists, focus goes to the card's column and then to the region, never
-// to the page. Focus inside a dialog is left to the dialog's own restore.
-const FOCUS_REGION_SELECTOR = "#board-view, #app-view, #board-session, #type-chips, #statrow, #graph-legend, #statusline, #firstrun-view";
+// to the page. Focus inside a dialog is left to the dialog's own restore. The open panel is a region too: a live update
+// re-renders it, and `adoptData` wraps that render in the same capture and restore.
+const FOCUS_REGION_SELECTOR = "#board-view, #app-view, #board-session, #type-chips, #statrow, #graph-legend, #statusline, #firstrun-view, #panel";
 const FOCUS_OWNER_SELECTOR = ".card[data-id], .card[data-intake], .fchip[data-id]";
 function focusSignature(el) {
   const parts = [el.tagName];
@@ -3451,11 +3457,13 @@ function focusNode(id) {
 }
 
 /* ==================== per-app stages, design tracks and operations ==================== */
-// The apps of a feature's scope with the stage of each: the active apps carry a stage, a retired app is marked as retired.
+// The apps of a feature's scope with the stage of each: an active app carries a stage, and so does a retired app of a released
+// feature, which keeps its whole scope as history; a retired app without a stage is marked as retired.
 function featureAppRows(node) {
   const stages = Array.isArray(node && node.app_stages) ? node.app_stages : null;
   if (!stages) return [];
-  const rows = stages.map(entry => ({ app: String(entry.app), stage: String(entry.stage), retired: false }));
+  const isRetired = app => { const appNode = nodesById["app:" + app]; return !!appNode && appNode.status === "retired"; };
+  const rows = stages.map(entry => ({ app: String(entry.app), stage: String(entry.stage), retired: isRetired(String(entry.app)) }));
   const listed = new Set(rows.map(row => row.app));
   const retired = state.data.facts.edges
     .filter(edge => edge.kind === "targets" && edge.source === node.id && String(edge.target).startsWith("app:"))
@@ -3465,13 +3473,15 @@ function featureAppRows(node) {
   return rows.concat(retired);
 }
 function appStageHtml(row) {
-  if (row.retired) return `<div class="app-stage retired"><span>${escapeHtml(boundedText(row.app, 80))}</span><span class="sep">·</span><span>retired</span></div>`;
+  const name = `<span>${escapeHtml(boundedText(row.app, 80))}</span>`;
+  if (row.retired && !row.stage) return `<div class="app-stage retired">${name}<span class="sep">·</span><span>retired</span></div>`;
   const color = C[STAGE_PHASE[row.stage]] || C.muted;
-  return `<div class="app-stage"><i style="background:${color}"></i><span>${escapeHtml(boundedText(row.app, 80))}</span><span class="sep">·</span><span>${escapeHtml(boundedText(row.stage, 40))}</span></div>`;
+  const retiredMark = row.retired ? '<span class="sep">·</span><span>retired</span>' : "";
+  return `<div class="app-stage${row.retired ? " retired" : ""}"><i style="background:${color}"></i>${name}<span class="sep">·</span><span>${escapeHtml(boundedText(row.stage, 40))}</span>${retiredMark}</div>`;
 }
-// A card lists the active apps of a feature in development or later; the panel adds the retired ones.
+// A card lists the apps that carry a stage in a feature in development or later; the panel adds the retired apps without one.
 function cardAppStagesHtml(node) {
-  const rows = featureAppRows(node).filter(row => !row.retired);
+  const rows = featureAppRows(node).filter(row => row.stage);
   return rows.length ? `<div class="app-stages" data-app-stages="${escapeHtml(node.id)}">${rows.map(appStageHtml).join("")}</div>` : "";
 }
 function designTrackStates(node) {
@@ -3580,7 +3590,7 @@ function renderApps() {
       const reqStatus = req ? (req.status || "unknown") : "no requirement";
       const reqColor = reqStatus === "done" ? C.done : reqStatus === "in-progress" ? C.dev : C.muted;
       const stageRow = featureAppRows(f).find(row => row.app === appId);
-      const stageLabel = stageRow ? (stageRow.retired ? "retired" : stageRow.stage) : "";
+      const stageLabel = stageRow ? (stageRow.stage ? (stageRow.retired ? stageRow.stage + " · retired" : stageRow.stage) : "retired") : "";
       return `<div class="fchip" data-id="${escapeHtml(fid)}" tabindex="0" role="button" aria-label="Open feature ${escapeHtml(boundedText(fid, 120))}: ${escapeHtml(boundedText(f.title, 180))}"><i style="background:${phaseColor(f)}"></i>${escapeHtml(fid)} · ${escapeHtml(f.title)}
         ${stageLabel ? `<span class="req">${escapeHtml(boundedText(stageLabel, 40))}</span>` : ""}<span class="req" style="color:${reqColor}">req: ${escapeHtml(reqStatus)}</span></div>`;
     }).join("");
@@ -3880,8 +3890,12 @@ function adoptData(envelope) {
       switchView("graph");
       toast("First feature landed - welcome to the graph");
     }
-    if (state.selected && nodesById[state.selected]) renderPanel(nodesById[state.selected]);
-    else if (state.selected) closePanel();
+    if (state.selected && nodesById[state.selected]) {
+      // The open panel is replaced in place, so focus on one of its controls is put back like the focus of the other regions.
+      const savedPanelFocus = captureRenderFocus();
+      renderPanel(nodesById[state.selected]);
+      restoreRenderFocus(savedPanelFocus);
+    } else if (state.selected) closePanel();
     reconcileTransitionPreview();
     pulseSpectrum();
     confirmPendingAppliedStage();

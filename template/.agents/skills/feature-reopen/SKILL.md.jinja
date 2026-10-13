@@ -100,8 +100,9 @@ so, and a defect found in released work is a new bug.
 
 ### Routes back from QA
 
-While an app has reached QA, the same `specified` and `in-design` arguments select the QA return routes. They send the
-whole feature back before anything shipped:
+While an app has reached QA, the same `specified` and `in-design` arguments select the QA return routes. Use `qa-return-spec`
+when QA shows that the specification is wrong and `qa-return-design` when the design is wrong. They send the whole feature
+back before anything shipped, and a `qa` participant approves them:
 
 | Route | Action | Source | Destination | Pending revalidation |
 |---|---|---|---|---|
@@ -124,7 +125,9 @@ revalidation domains above, and:
 - `qa-return-design` sets each affected track in `design-tracks` to `pending` (its reason removed), lists every other `done` track
   in `design-reaffirm`, sets a requirement page that was `done` to `in-progress` and an `implemented` API contract to `agreed`.
 
-Change only `status` in a requirement page or API contract.
+Change only `status` in a requirement page or API contract. The feature page changes only `status`, `owner`, `revalidation`,
+`app-revalidation`, `design-tracks`, `design-reaffirm`, the three evidence sections and `## Evidence history`. The preflight to
+probe is `prism wiki transition-preflight F-XXX [path] --action qa-return-spec --json` (or `qa-return-design`).
 
 ## Read-only preflight and impact review
 
@@ -135,7 +138,8 @@ delivery evidence, the release records the Release rows link, and workspace iden
 prism wiki transition-preflight F-XXX [path] --action reopen-dev --json
 ```
 
-Replace `reopen-dev` with `reopen-spec` or `reopen-design` for the selected route. Accept the response only with envelope schema 1,
+Replace `reopen-dev` with the action of the selected route: `reopen-spec`, `reopen-design`, `dev-return-spec`, `dev-return-design`,
+`qa-return-spec` or `qa-return-design`. Accept the response only with envelope schema 1,
 command facts, capability version 3 and a matching action-specific surface, transition version 2, exact target owner, and a
 consistent snapshot. A version string alone is not capability evidence. If the probe is missing or unsupported, report the
 direct-file fallback; the preflight is copy-only and never authorizes a write.

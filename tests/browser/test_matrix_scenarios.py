@@ -309,6 +309,39 @@ class RenderFocusTests(FocusAssertions, ScenarioCase):
             run.effect(f"a live update renamed {other.feature_id}: the board re-rendered and {focused.feature_id}'s Review button kept keyboard focus")
             self.assertEqual([], self.page_errors)
 
+    def test_live_update_keeps_focus_on_a_control_of_the_open_panel(self) -> None:
+        """A live update re-renders the open panel; the control in it that had focus has it afterwards."""
+
+        selected = FEATURES_BY_ID["F-001"]
+        other = FEATURES_BY_ID["F-004"]
+        with self.scenario("L-focus-panel-live-update") as run:
+            page = self.page
+            harness = self.harness
+            board = self.sign_in("human")
+            self.open_board(board)
+            self.wait_until_current(board)
+            board.card(selected.feature_id).locator(".ctitle").click()
+            panel = page.locator("#panel")
+            expect(panel).to_have_class(re.compile(r"\bopen\b"))
+            copy = panel.locator("#copy-path")
+            copy.focus()
+            expect(copy).to_be_focused()
+            before = copy.element_handle()
+
+            path = other.path.as_posix()
+            text = harness.read(path)
+            self.assertIn("title: Document review\n", text)
+            harness.write(path, text.replace("title: Document review\n", f"title: {RENAMED}\n", 1))
+            expect(board.card(other.feature_id)).to_contain_text(RENAMED)
+            self.wait_until_current(board)
+
+            # The update replaced the panel's markup, so this is a new element that took the focus.
+            self.assertFalse(page.evaluate("element => element.isConnected", before), "the live update did not re-render the open panel")
+            expect(panel.locator("#copy-path")).to_be_focused()
+            run.screenshot(page, "focus-kept-in-panel-after-live-update")
+            run.effect(f"a live update renamed {other.feature_id}: the open panel of {selected.feature_id} re-rendered and its Copy control kept keyboard focus")
+            self.assertEqual([], self.page_errors)
+
 
 if __name__ == "__main__":
     unittest.main()

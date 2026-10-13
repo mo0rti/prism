@@ -14,12 +14,13 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from prism_cli.status import build_status
 from prism_cli.wiki_graph import action_registry, build_graph
 from prism_cli.wiki_model import DESIGN_OWNERS, FEATURE_STATUS_ORDER, status_rank
 from prism_cli.wiki_operations import OPERATION_ROW_KEYS, read_board_views
 from prism_cli.wiki_transitions import ACTION_SPECS, DESIGN_OWNER, MINIMUM, MODE_AGENT_PROPOSED, MODE_HUMAN_DIRECT, UNCHANGED
 from tests import real_temp  # noqa: F401
-from tests.board_page_fixture import TwoAppWorkspace
+from tests.board_page_fixture import BOTH, TwoAppWorkspace
 from tests.browser.harness import EXTRA_FEATURES, build_workspace
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -70,6 +71,26 @@ class ActionRegistryTests(unittest.TestCase):
                 if drop is not None:
                     self.assertGreater(status_rank(drop), max(status_rank(status) for status in entry["source_status"]))
 
+    def test_a_drop_column_is_set_only_for_a_concrete_target_that_moves_forward(self) -> None:
+        metadata = self.by_action()
+        for spec in feature_specs():
+            entry = metadata[spec.action]
+            with self.subTest(action=spec.action):
+                if spec.target_status in (MINIMUM, UNCHANGED):
+                    # The minimum over the app stages (or no change) depends on the other apps: no column is certain.
+                    self.assertIsNone(entry["drop_stage"])
+                    self.assertTrue(entry["target_status"], "a recovery view needs the statuses the action may leave the feature in")
+                    continue
+                forward = status_rank(spec.target_status) > max(status_rank(status) for status in entry["source_status"])
+                self.assertEqual(spec.target_status if forward else None, entry["drop_stage"])
+        for action in ("dev-done", "qa-verify", "qa-pass", "release-done"):
+            with self.subTest(minimum=action):
+                self.assertIsNone(metadata[action]["drop_stage"])
+        self.assertEqual(["design-start", "dev-start", "po-handoff"], sorted(a for a, e in metadata.items() if e["human_direct"]))
+        for action in ("design-start", "dev-start", "po-handoff"):
+            with self.subTest(human=action):
+                self.assertIsNotNone(metadata[action]["drop_stage"])
+
     def test_known_actions_carry_the_values_the_registry_declares(self) -> None:
         metadata = self.by_action()
         self.assertEqual(
@@ -88,9 +109,9 @@ class ActionRegistryTests(unittest.TestCase):
             metadata["dev-return-spec"],
         )
         self.assertEqual(["in-dev", "ready-for-qa"], metadata["dev-done"]["target_status"])
-        self.assertEqual("ready-for-qa", metadata["dev-done"]["drop_stage"])
+        self.assertIsNone(metadata["dev-done"]["drop_stage"])
         self.assertEqual(["dev", "qa", "release", "none"], metadata["release-done"]["target_owner"])
-        self.assertEqual("released", metadata["release-done"]["drop_stage"])
+        self.assertIsNone(metadata["release-done"]["drop_stage"])
         self.assertEqual(["designer", "tech-lead"], metadata["po-handoff"]["target_owner"])
         self.assertEqual("ready-for-design", metadata["po-handoff"]["drop_stage"])
         self.assertEqual("release-done", metadata["release-return-dev"]["skill"])
@@ -181,6 +202,81 @@ class BoardPageEnvelopeTests(TwoAppWorkspace):
         registry = {entry["action"] for entry in graph["facts"]["action_registry"]}
         self.assertTrue({"dev-return-spec", "dev-return-design"} <= offered)
         self.assertTrue(offered <= registry, offered - registry)
+
+    def test_a_released_feature_keeps_its_whole_scope_on_every_surface(self) -> None:
+        self.seed_released()
+        self.retire("worker")
+        self.write_status_board()
+        both = [{"app": "backend", "stage": "released"}, {"app": "worker", "stage": "released"}]
+        graph = build_graph(self.root)
+        node = self.feature_node(graph)
+        self.assertEqual("released", node["status"])
+        self.assertEqual(both, node["app_stages"])
+        worker = next(item for item in graph["facts"]["nodes"] if item["id"] == "app:worker")
+        self.assertEqual("retired", worker["status"])
+        # The status board row, `prism status` and the graph node name the same apps and stages.
+        cell = "; ".join(f"{entry['app']}: {entry['stage']}" for entry in node["app_stages"])
+        self.assertEqual("backend: released; worker: released", cell)
+        board = (self.root / "knowledge" / "wiki" / "status-board.md").read_text(encoding="utf-8")
+        row = next(line for line in board.splitlines() if line.startswith("| F-001 "))
+        self.assertIn(f"| {cell} |", row)
+        self.assertEqual({"F-001": {"backend": "released", "worker": "released"}}, build_status(self.root).feature_app_stages)
+        # The retired app's Operations row keeps the release.
+        rows = {row["app"]: row for row in graph["facts"]["app_operations"]}
+        self.assertEqual("F-001", rows["worker"]["released_features"])
+        Draft202012Validator(json.loads(SCHEMA.read_text(encoding="utf-8"))).validate(graph)
+
+    def test_a_feature_before_released_still_excludes_a_retired_app(self) -> None:
+        self.seed_in_qa()
+        self.retire("worker")
+        node = self.feature_node(build_graph(self.root))
+        self.assertEqual([{"app": "backend", "stage": "in-qa"}], node["app_stages"])
+        self.assertEqual({"F-001": {"backend": "in-qa"}}, build_status(self.root).feature_app_stages)
+
+    def test_an_app_with_only_a_standalone_bug_or_incident_is_in_the_graph_with_its_facts(self) -> None:
+        self.add_standalone_bug("backend")
+        self.add_open_incident("worker")
+        self.write_status_board()
+        graph = build_graph(self.root)
+        self.assertEqual([], [node for node in graph["facts"]["nodes"] if node["type"] == "feature"])
+        self.assertEqual({"app:backend", "app:worker"}, {node["id"] for node in graph["facts"]["nodes"] if node["type"] == "app"})
+        self.assertEqual([], [edge for edge in graph["facts"]["edges"] if edge["kind"] == "targets"])
+        rows = {row["app"]: row for row in graph["facts"]["app_operations"]}
+        self.assertEqual({"backend", "worker"}, set(rows))
+        self.assertEqual("BUG-002", rows["backend"]["open_bugs"])
+        self.assertEqual("INC-001", rows["worker"]["open_incidents"])
+        board = read_board_views((self.root / "knowledge" / "wiki" / "status-board.md").read_text(encoding="utf-8"))
+        self.assertEqual(board.operations, rows)
+        self.assertEqual(len(graph["facts"]["nodes"]), graph["facts"]["node_count"])
+        Draft202012Validator(json.loads(SCHEMA.read_text(encoding="utf-8"))).validate(graph)
+
+    def test_an_app_with_no_feature_and_no_operations_row_stays_out_of_the_graph(self) -> None:
+        self.add_standalone_bug("backend")
+        graph = build_graph(self.root)
+        self.assertEqual({"app:backend"}, {node["id"] for node in graph["facts"]["nodes"] if node["type"] == "app"})
+        self.assertEqual(["backend"], [row["app"] for row in graph["facts"]["app_operations"]])
+
+    def test_a_feature_in_qa_offers_its_return_requests(self) -> None:
+        self.seed_in_qa()
+        node = self.feature_node(build_graph(self.root))
+        self.assertEqual("in-qa", node["status"])
+        records = {record["action"]: record for record in node["transitions"]}
+        for action, target in (("qa-return-spec", "specified"), ("qa-return-design", "in-design")):
+            with self.subTest(action=action):
+                self.assertIn(action, records)
+                record = records[action]
+                self.assertEqual((target, "ready", True), (record["target_status"], record["classification"], record["supported"]))
+                self.assertEqual({"codex": f"$feature-reopen F-001 {target}", "claude": f"/feature-reopen F-001 {target}"}, record["invocations"])
+        # The transition the card shows first does not change.
+        self.assertEqual(["qa-verify", "qa-pass", "qa-fail", "qa-return-spec", "qa-return-design"], list(records))
+
+    def test_a_feature_in_development_without_an_app_in_qa_does_not_offer_the_qa_returns(self) -> None:
+        self.seed("in-dev", "dev", self.page("in-dev", "dev", BOTH, self.criteria()))
+        node = self.feature_node(build_graph(self.root))
+        self.assertEqual([{"app": "backend", "stage": "in-dev"}, {"app": "worker", "stage": "in-dev"}], node["app_stages"])
+        offered = {record["action"] for record in node["transitions"]}
+        self.assertTrue({"dev-return-spec", "dev-return-design"} <= offered)
+        self.assertFalse({"qa-return-spec", "qa-return-design"} & offered)
 
 
 class DesignTracksEnvelopeTests(unittest.TestCase):

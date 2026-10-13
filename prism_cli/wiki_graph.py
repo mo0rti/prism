@@ -19,7 +19,6 @@ from prism_cli.wiki_model import (
     DESIGN_TRACKS,
     FEATURE_STATUS_ORDER,
     OWNER_BY_STATUS,
-    active_scope,
     app_stages,
     app_stages_text,
     extract_markdown_links,
@@ -33,6 +32,7 @@ from prism_cli.wiki_model import (
     read_wiki_pages,
     read_wiki_settings,
     section_text,
+    stage_scope,
     status_rank,
     within_wiki_read_scope,
 )
@@ -92,7 +92,8 @@ def _action_metadata(spec: Any) -> dict[str, Any]:
     Every list is a set of allowed values, one per field. A design owner symbol resolves to both design owners. An action that
     targets the minimum over the app stages can leave the feature at any stage from `in-dev` (the first stage with app stages)
     up to the one after the highest stage it starts from; its owner follows the stage. The drop column is the stage the card
-    moves to when the action completes: a concrete target after every source, or the stage after the highest source.
+    moves to when the action completes, and it is set only where it is certain: a concrete target after every source. A
+    minimum-of-stages or unchanged target has no drop column, because the result depends on the other apps.
     """
 
     sources = _unique(pair for owner in DESIGN_OWNERS for pair in spec.resolved_sources(owner))
@@ -105,8 +106,6 @@ def _action_metadata(spec: Any) -> dict[str, Any]:
         last = min(max(source_ranks) + 1, len(FEATURE_STATUS_ORDER) - 1)
         target_status = list(FEATURE_STATUS_ORDER[first : last + 1])
         target_owner = _unique(OWNER_BY_STATUS[status] for status in target_status)
-        if max(source_ranks) + 1 < len(FEATURE_STATUS_ORDER):
-            drop_stage = FEATURE_STATUS_ORDER[max(source_ranks) + 1]
     elif spec.target_status == UNCHANGED:
         target_status, target_owner = source_status, source_owner
     else:
@@ -282,11 +281,14 @@ def build_graph(root: Path) -> dict[str, Any]:
     nodes, pages_by_id, path_to_id = _collect_nodes(wiki_root, inspection.model, feature_pages=feature_pages)
     edges, dangling = _collect_edges(wiki_root, nodes, pages_by_id, path_to_id)
 
-    edged_apps = {edge.target for edge in edges if edge.target.startswith("app:")}
+    # An app node stays when a feature targets it or when the app has an Operations row, so a standalone bug or incident
+    # (`feature: none`) still shows the app in the Apps view.
+    operations = app_operations(wiki_root, inspection.model, feature_pages)
+    shown_apps = {edge.target for edge in edges if edge.target.startswith("app:")} | {f"app:{row['app']}" for row in operations}
     nodes = {
         node_id: node
         for node_id, node in nodes.items()
-        if node.type != "app" or node_id in edged_apps
+        if node.type != "app" or node_id in shown_apps
     }
     edges = [edge for edge in edges if edge.source in nodes and edge.target in nodes]
 
@@ -341,7 +343,7 @@ def build_graph(root: Path) -> dict[str, Any]:
         },
         "transition_capability": transition_evaluation.capability,
         "action_registry": action_registry(),
-        "app_operations": app_operations(wiki_root, inspection.model, feature_pages),
+        "app_operations": operations,
     }
     sources = [str(wiki_root), *transition_evaluation.sources] + sorted(node.path for node in sorted_nodes if node.path)
     diagnostics = [*lint_result.diagnostics, *transition_evaluation.diagnostics]
@@ -383,7 +385,7 @@ def _collect_nodes(
                 (row["number"], row["question"], row["owner"], row["status"]) for row in question_rows
             ),
             app_stages=(
-                tuple(app_stages(active_scope(feature.apps, model), read_feature_evidence(feature.page.body)).items())
+                tuple(app_stages(stage_scope(feature.status, feature.apps, model), read_feature_evidence(feature.page.body)).items())
                 if status_rank(feature.status) >= status_rank("in-dev")
                 else None
             ),
