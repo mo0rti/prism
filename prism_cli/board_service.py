@@ -37,6 +37,7 @@ from prism_cli.app_model import (
     retired_in_scope_message,
 )
 from prism_cli import roles as _roles
+from prism_cli import standard_files
 from prism_cli.board_bugs import BugActionsMixin, is_bug_path
 from prism_cli.board_incidents import IncidentActionsMixin
 from prism_cli.board_qa import D3_ACTIONS, D3_QA_ACTIONS, D3_RETURN_ACTIONS, QaActionsMixin
@@ -223,12 +224,10 @@ _WIKI_DIRS = (
 _INDEX_PATH = "knowledge/wiki/index.md"
 _STATUS_BOARD_PATH = "knowledge/wiki/status-board.md"
 _SETTINGS_PATH = "knowledge/wiki/SETTINGS.md"
-_ACTIONS_PATH = "knowledge/wiki/ACTIONS.md"
 _LOG_PATH = "knowledge/wiki/log.md"
 _WIKI_PREFIX = "knowledge/wiki/"
 # A direct append is retried this many times when the log changes between the read and the swap.
 _LOG_APPEND_ATTEMPTS = 3
-_MANAGED_PATHS = frozenset({_INDEX_PATH, _STATUS_BOARD_PATH, _LOG_PATH})
 # The write roles whose merge is by key: a feature row of the status board, a page line of the index.
 _ROW_ROLES = frozenset({"index", "status-board"})
 # The shape of a review revision (`_sha256`); a value of another shape is refused before any comparison.
@@ -249,7 +248,6 @@ _REQUIREMENT_RANK = {"pending": 0, "in-progress": 1, "done": 2}
 _CONTRACT_RANK = {"draft": 0, "agreed": 1, "implemented": 2}
 # The feature statuses in which a feature that links a contract is a consumer of it (CONTRACTS 3.4).
 _CONTRACT_CONSUMER_STATUSES = frozenset({"ready-for-dev", "in-dev", "ready-for-qa", "in-qa", "ready-for-release"})
-_WIKI_ROOT_PAGES = frozenset({"SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "SETTINGS.md", "CONNECTED.md", "index.md", "status-board.md", "log.md", *ROOT_PAGE_KINDS})
 # The page folders where an ingest only creates pages and never rewrites one; a decision changes only by supersession.
 _INGEST_CREATE_ONLY = ("features", "personas", "business-rules", "decisions", "bugs")
 _ADR_FIELDS = {"id", "title", "date", "status", "supersedes", "superseded-by"}
@@ -261,6 +259,18 @@ _STATUS_ROW = re.compile(
 # The header is exact, as `parse_status_board_rows` reads it: a board whose header differs in case is not a canonical board for either.
 _STATUS_HEADER = re.compile(r"^\s*\|\s*" + r"\s*\|\s*".join(re.escape(column) for column in STATUS_BOARD_COLUMNS) + r"\s*\|\s*$")
 _FRONTMATTER = re.compile(r"\A\ufeff?---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
+
+
+def _managed_paths() -> frozenset[str]:
+    """The wiki files the service writes itself, as workspace paths (the `managed` standard files)."""
+
+    return frozenset(standard_files.wiki_paths(standard_files.names("managed")))
+
+
+def _wiki_root_pages() -> frozenset[str]:
+    """The pages at the root of the wiki that the board reads: every standard file and the root page kinds."""
+
+    return frozenset({*standard_files.names(), *ROOT_PAGE_KINDS})
 
 
 def _replace_file(source: Path, destination: Path, *, recheck: Callable[[], None] | None = None) -> None:
@@ -1169,11 +1179,12 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         """
 
         writes = {write["path"] for write in intent.get("writes", [])}
+        managed = _managed_paths()
         prefixes = [path for move in intent.get("moves", []) for path in (move["source"], move["destination"])]
         relevant = {
             path
             for path in self._recovery_dependency_paths(intent)
-            if path not in _MANAGED_PATHS and path not in writes and not any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes)
+            if path not in managed and path not in writes and not any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes)
         }
         return self._fingerprint_paths(relevant)
 
@@ -2371,8 +2382,9 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         if not isinstance(manifest_digest, str) or manifest_digest != expected_digest:
             self._read_only_reason = "The workspace workflow assets do not match the installed canonical version; run the explicit workflow upgrade."
             return
-        if not all((self.root / "knowledge" / "wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "index.md", "status-board.md")):
-            self._read_only_reason = "The workspace is missing the canonical wiki schema, lifecycle protocol, action registry, index or status board."
+        required = standard_files.names("required")
+        if not all((self.root / "knowledge" / "wiki" / name).is_file() for name in required):
+            self._read_only_reason = f"The workspace is missing a canonical wiki file; a board requires all of: {', '.join(required)}."
             return
         self._board_id = parsed_id
         self._workflow_version = "1"
@@ -2499,7 +2511,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 403,
                 {"path": _clip(relative, 120), "approved": ["knowledge/wiki/", "knowledge/intake/"]},
             )
-        if parts[1] == "wiki" and (len(parts) < 3 or parts[2] not in {*_WIKI_DIRS, *_WIKI_ROOT_PAGES, "PROJECT_FOUNDATION.md"}):
+        if parts[1] == "wiki" and (len(parts) < 3 or parts[2] not in {*_WIKI_DIRS, *_wiki_root_pages(), "PROJECT_FOUNDATION.md"}):
             raise BoardError("path_not_approved", "The requested wiki path is outside the approved source folders.", 403)
         if parts[1] == "intake" and not (len(parts) == 3 and parts[2] == "README.md") and (len(parts) < 4 or parts[2] not in {"pending", "processed", "quarantined"}):
             raise BoardError("path_not_approved", "Intake access is limited to pending, processed, and quarantined entries.", 403)
@@ -2948,10 +2960,10 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
     def _transition_context_paths(self, feature_path: str, frontmatter: Mapping[str, Any]) -> set[str]:
         """The context of a transition: the feature context and the action registry that defines what the action may write."""
 
-        return self._feature_context_paths(feature_path, frontmatter) | {_ACTIONS_PATH}
+        return self._feature_context_paths(feature_path, frontmatter) | set(standard_files.wiki_paths(standard_files.revision_names("transition")))
 
     def _feature_context_paths(self, feature_path: str, frontmatter: Mapping[str, Any]) -> set[str]:
-        paths = {"prism.workspace.yml", "knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", "knowledge/wiki/SETTINGS.md", feature_path}
+        paths = {"prism.workspace.yml", *standard_files.wiki_paths(standard_files.revision_names("feature")), feature_path}
         from prism_cli.wiki_model import extract_markdown_links, resolve_relative_markdown_link
 
         feature_full = self._safe_path(feature_path)
@@ -3385,7 +3397,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         return None
 
     def _all_board_revision_paths(self) -> set[str]:
-        paths = {"prism.workspace.yml", *_MANAGED_PATHS}
+        paths = {"prism.workspace.yml", *_managed_paths()}
         wiki = self.root / "knowledge" / "wiki"
         for path in wiki.rglob("*.md"):
             if not path.name.startswith("_"):
@@ -3629,7 +3641,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 raise BoardError("duplicate_change", f"Path `{relative}` appears more than once in this proposal.", 400)
             if len(item["content"].encode("utf-8")) > _MAX_TEXT_FILE:
                 raise BoardError("text_file_limit", f"Proposed file `{relative}` exceeds 512 KiB.", 413)
-            if relative in _MANAGED_PATHS:
+            if relative in _managed_paths():
                 raise BoardError("managed_file", "index.md, status-board.md and log.md are generated and merged by BoardService.", 403)
             self._assert_skill_write_path(skill, relative)
             supplied[relative] = item["content"]
@@ -3758,7 +3770,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         log_after = _append_once(log_before or "", f"<!-- prism:board-history:v1 preview={preview_id} -->", log_entry)
         writes.append(self._write_record(_LOG_PATH, log_before, log_after, role="log", merge={"kind": "log", "marker": f"preview={preview_id}", "entry": log_entry}))
 
-        context_paths = {"prism.workspace.yml", "knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md"}
+        context_paths = {"prism.workspace.yml", *standard_files.wiki_paths(standard_files.revision_names("write"))}
         for relative, text in supplied.items():
             if relative.startswith("knowledge/wiki/features/") and before_frontmatter.get(relative):
                 context_paths.update(self._feature_context_paths(relative, before_frontmatter[relative] or {}))
@@ -3766,7 +3778,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 context_paths.add(relative)
         for relative in normalized_revisions:
             context_paths.add(relative)
-        source_map = self._fingerprint_paths(context_paths - {*_MANAGED_PATHS, *supplied.keys()})
+        source_map = self._fingerprint_paths(context_paths - {*_managed_paths(), *supplied.keys()})
         source_revision = _revision(source_map)
         checks = list(operation["checks"])
         warnings = list(operation.get("warnings", []))
@@ -3916,10 +3928,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         before: Mapping[str, str | None],
         moves: list[dict[str, Any]],
     ) -> set[str]:
-        required = {"knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", "knowledge/wiki/index.md"}
-        settings = self._safe_path("knowledge/wiki/SETTINGS.md", allow_missing=True)
-        if settings.is_file():
-            required.add("knowledge/wiki/SETTINGS.md")
+        # A standard file that is absent drops out of the returned set with the other paths that are not files.
+        required = set(standard_files.wiki_paths(standard_files.revision_names("read")))
         catalog = self._asset_get(skill)
         for reference in catalog.get("references", []):
             relative = reference.get("path") if isinstance(reference, Mapping) else None
@@ -7484,7 +7494,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         revisions = dict(payload.get("read_revisions", {}))
         # Target rows and append-only history have their own merge checks. A
         # change to an unrelated row/log entry is not a stale semantic input.
-        for path in sorted(_MANAGED_PATHS):
+        for path in sorted(_managed_paths()):
             if path in revisions:
                 revisions[path] = _file_digest(self._optional_text(self._safe_path(path, allow_missing=True)))
         if reviewed:
@@ -8116,9 +8126,10 @@ def BoardServiceIdentity(root: Path) -> tuple[Any, ...] | None:
         workspace_root = Path(root).expanduser().absolute()
         manifest_path = workspace_root / "prism.workspace.yml"
         BoardService._reject_reparse(manifest_path, include_leaf=True)
-        for relative in ("knowledge/wiki/SCHEMA.md", "knowledge/wiki/LIFECYCLE.md", _ACTIONS_PATH, _INDEX_PATH, _STATUS_BOARD_PATH):
+        required = standard_files.names("required")
+        for relative in standard_files.wiki_paths(required):
             BoardService._reject_reparse(workspace_root / relative, include_leaf=True)
-        if not all((workspace_root / "knowledge/wiki" / name).is_file() for name in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "index.md", "status-board.md")):
+        if not all((workspace_root / "knowledge/wiki" / name).is_file() for name in required):
             return None
         data = yaml.safe_load(manifest_path.read_text(encoding="utf-8-sig")) or {}
         workflow = data.get("workflow") if isinstance(data, dict) else None

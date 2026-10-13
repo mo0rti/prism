@@ -30,6 +30,7 @@ from prism_cli.app_model import (
     api_surface_without_api_app_message,
     retired_in_scope_message,
 )
+from prism_cli import standard_files
 from prism_cli.fs_safety import reparse_kind
 from prism_cli.qa_checks import qa_fail_checks, qa_pass_checks, qa_verify_checks
 from prism_cli.release_checks import release_done_checks, release_inclusion_checks, release_return_checks
@@ -1348,11 +1349,7 @@ def _evaluate_po_handoff(
         str(path),
         str(workspace_root / MANIFEST_FILE),
         str(workspace_root / COPIER_ANSWERS_FILE),
-        str(wiki_root / "SCHEMA.md"),
-        str(wiki_root / "LIFECYCLE.md"),
-        str(wiki_root / "ACTIONS.md"),
-        str(wiki_root / "index.md"),
-        str(wiki_root / "status-board.md"),
+        *[str(wiki_root / name) for name in standard_files.revision_names("sources")],
         *[str(workspace_root / relative) for relative in CAPABILITY_FILES.values()],
     ]
     for raw_target in extract_markdown_links(feature.page.body):
@@ -2017,11 +2014,7 @@ def _transition_sources(
         str(feature.page.path),
         str(workspace_root / MANIFEST_FILE),
         str(workspace_root / COPIER_ANSWERS_FILE),
-        str(wiki_root / "SCHEMA.md"),
-        str(wiki_root / "LIFECYCLE.md"),
-        str(wiki_root / "ACTIONS.md"),
-        str(wiki_root / "index.md"),
-        str(wiki_root / "status-board.md"),
+        *[str(wiki_root / name) for name in standard_files.revision_names("sources")],
         *[str(workspace_root / relative) for relative in _ACTION_SURFACE_PATHS[spec.action].values()],
     ]
     feature_id = normalize_feature_id(feature.feature_id)
@@ -2989,8 +2982,9 @@ def _relevant_integrity_checks(
         target = resolve_relative_markdown_link(feature.page.path, raw_target, wiki_root)
         if target is not None:
             linked_paths.add(target.resolve())
+    gating_files = set(standard_files.names("gating"))
     relevant: list[WikiDiagnostic] = []
-    for filename in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "index.md", "status-board.md"):
+    for filename in standard_files.names("required"):
         required_path = wiki_root / filename
         if _required_wiki_file_unreadable(required_path):
             relevant.append(
@@ -3015,13 +3009,7 @@ def _relevant_integrity_checks(
         if diagnostic.code in {"app-retired-in-scope", "api-surface-without-api-app"} and diagnostic_path == path:
             # The feature's own scope: the app-scope and api-surface checks report these as blocked.
             continue
-        is_global_contract = diagnostic.code in {"missing-required-wiki-file", "malformed-index", "malformed-status-board"} and diagnostic_path.name in {
-            "SCHEMA.md",
-            "LIFECYCLE.md",
-            "ACTIONS.md",
-            "index.md",
-            "status-board.md",
-        }
+        is_global_contract = diagnostic.code in {"missing-required-wiki-file", "malformed-index", "malformed-status-board"} and diagnostic_path.name in gating_files
         diagnostic_feature_id = feature_id_from_path(diagnostic_path)
         if (
             is_global_contract

@@ -18,7 +18,7 @@ from uuid import UUID
 
 import yaml
 
-from prism_cli import __version__
+from prism_cli import __version__, standard_files
 from prism_cli.app_model import (
     GENERATED_PLATFORM_DIRS,
     MANIFEST_SCHEMA_VERSION,
@@ -421,9 +421,7 @@ def detect_workspace_kind(root: Path) -> str:
     if (
         (workspace_root / "README.md").exists()
         and (workspace_root / "AGENTS.md").exists()
-        and (workspace_root / "knowledge" / "wiki" / "SCHEMA.md").exists()
-        and (workspace_root / "knowledge" / "wiki" / "LIFECYCLE.md").exists()
-        and (workspace_root / "knowledge" / "wiki" / "ACTIONS.md").exists()
+        and all((workspace_root / "knowledge" / "wiki" / name).exists() for name in standard_files.names("versioned"))
     ):
         return "generated-project"
     return "unknown"

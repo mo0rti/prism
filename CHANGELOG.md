@@ -4,6 +4,10 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- The standard wiki files (`SCHEMA.md`, `LIFECYCLE.md`, `ACTIONS.md`, `SETTINGS.md`, `CONNECTED.md`, `index.md`, `status-board.md` and `log.md`) are listed once, in `prism_cli/standard_files.py`, with the categories each belongs to: required, copied into a preview's candidate workspace, recorded as a revision of a preview, and gating for lifecycle actions. Lint, the board service, the lifecycle checks, the index and the workspace checks read that manifest, so a new standard file is one entry in it. Behavior is unchanged.
+
 ## [0.7.1]
 
 Release date: 2026-10-13
