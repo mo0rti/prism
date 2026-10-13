@@ -94,6 +94,8 @@ class JsonContractTests(unittest.TestCase):
                 "qa-verify",
                 "qa-pass",
                 "qa-fail",
+                "qa-return-spec",
+                "qa-return-design",
                 "release-done",
                 "release-return-dev",
                 "reopen-spec",

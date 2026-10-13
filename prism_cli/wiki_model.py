@@ -2275,10 +2275,17 @@ def app_stages_text(status: str | None, apps: Iterable[str], body: str, model: W
 
     if status_rank(status) < status_rank("in-dev"):
         return "—"
-    # A released feature keeps its whole scope as history, so a later retirement does not change its cell.
-    scoped = list(apps) if status == "released" else active_scope(apps, model)
-    stages = app_stages(scoped, read_feature_evidence(body))
+    stages = app_stages(stage_scope(status, apps, model), read_feature_evidence(body))
     return "; ".join(f"{app}: {stage}" for app, stage in stages.items()) or "—"
+
+
+def stage_scope(status: str | None, apps: Iterable[str], model: WorkspaceModel | None) -> list[str]:
+    """The apps whose stages a feature shows: its active apps, or for a released feature its whole scope as history.
+
+    A later retirement does not change what a released feature shows, on the status board, the graph and `prism status`.
+    """
+
+    return list(apps) if status == "released" else active_scope(apps, model)
 
 
 def active_scope(apps: Iterable[str], model: WorkspaceModel | None) -> list[str]:

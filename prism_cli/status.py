@@ -13,13 +13,13 @@ from prism_cli.app_model import PURPOSE_KNOWLEDGE_ROOT, WORKSPACE_REPOSITORY_ID
 from prism_cli.wiki_lint import WIKI_BLOCKER_CODES, WikiDiagnostic, WikiLintResult, lint_wiki
 from prism_cli.wiki_model import (
     FEATURE_STATUS_ORDER,
-    active_scope,
     app_stages,
     parse_open_question_rows,
     read_feature_evidence,
     read_feature_pages,
     read_app_requirement_pages,
     read_wiki_settings,
+    stage_scope,
     status_rank,
 )
 from prism_cli.workspace import (
@@ -692,13 +692,13 @@ def _wiki_counts(root: Path) -> tuple[dict[str, int], dict[str, int], dict[str, 
 
 
 def _feature_app_stages(root: Path, model: Any) -> dict[str, dict[str, str]]:
-    """The stage of each active app of every feature at `in-dev` or later, from its evidence tables."""
+    """The stage of each app of every feature at `in-dev` or later, from its evidence tables: the active apps, or a released feature's whole scope."""
 
     stages: dict[str, dict[str, str]] = {}
     for feature in read_feature_pages(root / "knowledge" / "wiki"):
         if status_rank(feature.status) < status_rank("in-dev"):
             continue
-        stages[feature.feature_id] = app_stages(active_scope(feature.apps, model), read_feature_evidence(feature.page.body))
+        stages[feature.feature_id] = app_stages(stage_scope(feature.status, feature.apps, model), read_feature_evidence(feature.page.body))
     return dict(sorted(stages.items()))
 
 

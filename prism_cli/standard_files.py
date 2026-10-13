@@ -1,13 +1,14 @@
 """The standard files at the root of the wiki, listed once.
 
 Every part of Prism that names these files reads its list from `STANDARD_FILES`; none keeps a list of its own. A file
-that joins the manifest takes part in each category its entry sets and in no other, so adding one is one entry.
+that joins the manifest takes part in each category its entry sets and in no other, so adding one is one entry. The
+candidate workspace a preview, a repair or a recovery validates copies the whole wiki tree, so every file of the manifest
+is in it without a category of its own.
 
 The categories:
 
 - `required`: lint reports `missing-required-wiki-file` when the file is absent, a board refuses to adopt a workspace
   without it, and a lifecycle check reports it when it cannot be read.
-- `copied`: the candidate workspace a preview, a repair or a recovery validates carries the file.
 - `revision`: the scopes in which a preview records the file's revision, so a change to it makes the preview stale:
   `write` (any skill write), `feature` (a write that changes a feature), `transition` (a lifecycle transition),
   `read` (a skill must have read the file before it writes) and `sources` (the sources a transition snapshot watches).
@@ -31,7 +32,7 @@ WIKI_DIR = "knowledge/wiki"
 # The revision scopes of `StandardFile.revision`.
 REVISION_SCOPES = ("write", "feature", "transition", "read", "sources")
 # The flag categories of `StandardFile`, for `names`.
-CATEGORIES = ("required", "copied", "gating", "managed", "versioned", "non_source", "non_page", "unindexed")
+CATEGORIES = ("required", "gating", "managed", "versioned", "non_source", "non_page", "unindexed")
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,6 @@ class StandardFile:
 
     name: str
     required: bool = False
-    copied: bool = True
     revision: tuple[str, ...] = ()
     gating: bool = False
     managed: bool = False
