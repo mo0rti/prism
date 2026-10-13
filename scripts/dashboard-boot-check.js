@@ -1026,6 +1026,7 @@ if (checkConnectedBoard) {
   let dataRefreshEnvelope = beforeEnvelope;
   let dataRefreshVersion = null;
   let failGraphRefresh = false;
+  let inspectedReceipt = null;
   let staleDataReads = 0;
   let lostOperationId = "";
   let failNextOperationInspection = false;
@@ -1081,10 +1082,14 @@ if (checkConnectedBoard) {
     if (url === "/api/board/v1/operations/" + abandonId) {
       return reply({ schema_version: 1, operation_id: abandonId, state: "conflict", recovery_review_revision: "review-abandon", actor: { participant_id: "agent-9", name: "Former Agent", kind: "agent" }, remaining_changes: [{ path: "knowledge/wiki/features/F-gone.md", state: "pending", before: null, after: "status: raw\\n", current_digest: null }], moves: [{ source: "knowledge/intake/pending/F-gone", destination: "knowledge/intake/processed/F-gone" }], receipt: { schema_version: 1, operation_id: abandonId, state: "conflict", applied_paths: [], conflicts: [{ path: null, reason: "recovery_move_conflict: Both the recorded intake source and destination are missing." }] } });
     }
+    if (url === "/api/board/v1/operations/op-original") return reply({ schema_version: 1, operation_id: "op-original", state: "applied", receipt: inspectedReceipt });
     if (url.startsWith("/api/board/v1/operations/") && !url.endsWith("/recover")) return reply({ schema_version: 1, operation_id: lostOperationId, state: "pending", recovery_review_revision: lostReviewRevision, actor: { participant_id: "human-7", name: "Safe Human", kind: "human" }, remaining_changes: [{ path: "knowledge/wiki/features/F-lost.md", state: "pending", before: "status: ready-for-dev\\n", after: "status: done\\n", current_digest: "sha256-current" }], moves: [], receipt: null });
     if (url.endsWith("/recover")) {
       const operationId = decodeURIComponent(url.split("/").at(-2));
       const body = JSON.parse(options.body || "{}");
+      if (operationId === "op-astra-recover") {
+        return reply({ schema_version: 1, operation_id: operationId, state: "applied", applied_paths: ["knowledge/wiki/features/F-close.md", "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"], graph_epoch: "board-epoch", graph_version: 2, resulting_features: { "F-close": { status: "in-dev", owner: "dev", app_stages: { backend: "ready-for-qa", worker: "in-dev" } } }, recovery_available: false, actor: { participant_id: "human-7", name: "Safe Human", kind: "human" } });
+      }
       if (operationId === abandonId) {
         if (body.abandon !== true || body.review_revision !== "review-abandon" || body.semantic_review_acknowledged !== true) return reply({ error: { code: "stale_recovery_review", message: "The operation changed after review." } }, 409);
         discoveredPendingOperations = discoveredPendingOperations.filter(item => item.operation_id !== operationId);
@@ -1323,9 +1328,9 @@ if (checkConnectedBoard) {
   const cloneEnvelope = envelope => JSON.parse(JSON.stringify(envelope));
   const withClose = (envelope, fields) => { const copy = cloneEnvelope(envelope); Object.assign(copy.facts.nodes.find(node => node.id === "F-close"), fields); return copy; };
   const stagesOf = (backend, worker) => [{ app: "backend", stage: backend }, { app: "worker", stage: worker }];
-  assert(appliedStageExpectation({ kind: "connected", featureId: "F-close", action: "dev-done", receipt: { state: "applied" } }) === null, "a receipt without the operation's resulting features produced an expectation");
+  assert(appliedStageExpectation({ state: "applied" }) === null, "a receipt without the operation's resulting features produced an expectation");
   const releaseReceipt = { state: "applied", resulting_features: { "F-close": { status: "released", owner: "none", app_stages: { backend: "released", worker: "released" } } } };
-  const releaseExpectation = appliedStageExpectation({ kind: "connected", featureId: "F-close", action: "release-done", receipt: releaseReceipt });
+  const releaseExpectation = appliedStageExpectation(releaseReceipt);
   assert(releaseExpectation && releaseExpectation.features.length === 1 && releaseExpectation.features[0].id === "F-close" && releaseExpectation.features[0].status === "released", "the receipt of release-done did not give the released feature as the expectation: " + JSON.stringify(releaseExpectation));
   const staleReleaseEnvelope = withClose(beforeEnvelope, { status: "ready-for-release", owner: "release", app_stages: stagesOf("ready-for-release", "ready-for-release") });
   const releasedEnvelope = withClose(beforeEnvelope, { status: "released", owner: "none", app_stages: stagesOf("released", "released") });
@@ -1335,8 +1340,8 @@ if (checkConnectedBoard) {
 
   const beforeDevEnvelope = withClose(beforeEnvelope, { status: "in-dev", owner: "dev", app_stages: stagesOf("in-dev", "in-dev") });
   const partialEnvelope = withClose(beforeEnvelope, { status: "in-dev", owner: "dev", app_stages: stagesOf("ready-for-qa", "in-dev") });
-  const partialReceipt = { state: "applied", resulting_features: { "F-close": { status: "in-dev", owner: "dev", app_stages: { backend: "ready-for-qa", worker: "in-dev" } } } };
-  const partialExpectation = appliedStageExpectation({ kind: "connected", featureId: "F-close", action: "dev-done", receipt: partialReceipt });
+  const partialReceipt = { state: "applied", graph_epoch: "board-epoch", graph_version: 2, resulting_features: { "F-close": { status: "in-dev", owner: "dev", app_stages: { backend: "ready-for-qa", worker: "in-dev" } } } };
+  const partialExpectation = appliedStageExpectation(partialReceipt);
   assert(partialExpectation && partialExpectation.features[0].stages.map(item => item.join(":")).join() === "backend:ready-for-qa,worker:in-dev", "the receipt of a partial dev-done did not give its app stages: " + JSON.stringify(partialExpectation));
   assert(!envelopeShowsStage(beforeDevEnvelope, partialExpectation) && envelopeShowsStage(partialEnvelope, partialExpectation), "a partial dev-done was matched on the aggregate status alone");
   const partialPreview = () => ({ kind: "connected", featureId: "F-close", action: "dev-done", receipt: partialReceipt, operationState: "applied", operationMessage: "" });
@@ -1378,7 +1383,7 @@ if (checkConnectedBoard) {
   const supersededLive = partialPreview();
   refreshBoardGraphAfterApply(supersededLive);
   for (let index = 0; index < 5; index += 1) fireRetry();
-  assert(state.boardViewStale && state.pendingAppliedStage && state.pendingAppliedStage.baseVersion === 1 && supersededLive.operationMessage.includes("view stale"), "a stale snapshot did not keep waiting: " + supersededLive.operationMessage);
+  assert(state.boardViewStale && state.pendingAppliedStage && state.pendingAppliedStage.position.version === 2 && supersededLive.operationMessage.includes("view stale"), "a stale snapshot did not keep waiting: " + supersededLive.operationMessage);
   adoptData(otherEnvelope, 1);
   assert(state.boardViewStale && state.pendingAppliedStage && supersededLive.operationMessage.includes("view stale"), "a snapshot of the same version ended the wait");
   adoptData(otherEnvelope, 2);
@@ -1394,6 +1399,89 @@ if (checkConnectedBoard) {
   const supersededRefresh = partialPreview();
   refreshBoardGraphAfterApply(supersededRefresh);
   assert(supersededRefresh.operationMessage.includes("a later change") && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && retryDelays().length === 0 && state.liveVersion === 2 && closeStage() === "ready-for-qa", "a newer snapshot with a different state was not adopted as current: " + supersededRefresh.operationMessage);
+  // The receipt names the graph version that first contains the operation (graph_epoch, graph_version). A graph of that epoch at
+  // or after the version is current for the operation, whatever it shows now; an earlier one waits. The page never takes the version
+  // from the view it holds when it inspects the operation.
+  const positionedReceipt = (epoch, version) => ({ ...partialReceipt, graph_epoch: epoch, graph_version: version });
+  const positionedPreview = (epoch, version) => ({ ...partialPreview(), receipt: positionedReceipt(epoch, version) });
+  const waitOutRetries = () => { for (let index = 0; index < 5; index += 1) fireRetry(); };
+
+  // The response of the original apply was lost and a later operation moved the board to version 3. Inspecting the original reads
+  // its receipt at version 2: the live page already holds version 3, so it is current and carries no stale warning.
+  adoptData(otherEnvelope);
+  state.liveEpoch = "board-epoch";
+  state.liveVersion = 3;
+  dataRefreshEnvelope = otherEnvelope;
+  dataRefreshVersion = 3;
+  retryTimers.length = 0;
+  inspectedReceipt = positionedReceipt("board-epoch", 2);
+  const inspectedOriginal = { ...partialPreview(), receipt: null, operationId: "op-original", operationState: "outcome unknown" };
+  inspectConnectedOperation(inspectedOriginal);
+  assert(inspectedOriginal.operationState === "applied" && inspectedOriginal.operationMessage.includes("a later change") && !inspectedOriginal.operationMessage.includes("stale") && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && retryDelays().length === 0 && state.liveVersion === 3 && closeStage() === "ready-for-qa", "inspecting the original operation at version 3 left a stale warning: " + inspectedOriginal.operationMessage);
+
+  // A view at an earlier version than the receipt's waits, however it differs from the result, and a graph at the version ends it.
+  adoptData(beforeDevEnvelope);
+  state.liveEpoch = "board-epoch";
+  state.liveVersion = 1;
+  dataRefreshEnvelope = otherEnvelope;
+  dataRefreshVersion = 2;
+  retryTimers.length = 0;
+  const earlierView = positionedPreview("board-epoch", 3);
+  refreshBoardGraphAfterApply(earlierView);
+  waitOutRetries();
+  assert(state.boardViewStale && state.pendingAppliedStage && state.pendingAppliedStage.position.version === 3 && earlierView.operationMessage.includes("view stale") && closeStage() === "in-dev", "a view at version 2 was current for an operation first contained in version 3: " + earlierView.operationMessage);
+  adoptData(otherEnvelope, 2);
+  assert(state.boardViewStale && state.pendingAppliedStage && earlierView.operationMessage.includes("view stale"), "a snapshot at version 2 ended the wait for version 3");
+  adoptData(otherEnvelope, 3);
+  assert(state.pendingAppliedStage === null && !state.boardViewStale && !state.liveRefreshError && closeStage() === "ready-for-qa" && earlierView.operationMessage.includes("a later change"), "the graph at the receipt's version did not end the wait: " + earlierView.operationMessage);
+
+  // Another epoch (a restarted server): the versions cannot be compared. The feature values of the receipt still validate a graph
+  // that shows them; otherwise the page waits for the live stream, and a newer graph of the new epoch ends the wait.
+  adoptData(beforeDevEnvelope);
+  state.liveEpoch = "board-epoch";
+  state.liveVersion = 1;
+  dataRefreshEnvelope = partialEnvelope;
+  dataRefreshVersion = 1;
+  retryTimers.length = 0;
+  const restartedShown = positionedPreview("old-epoch", 7);
+  refreshBoardGraphAfterApply(restartedShown);
+  assert(restartedShown.operationMessage.includes("refreshed and validated") && !state.boardViewStale && state.pendingAppliedStage === null && retryDelays().length === 0, "a graph of the new epoch that shows the result was not validated: " + restartedShown.operationMessage);
+  adoptData(beforeDevEnvelope);
+  state.liveEpoch = "board-epoch";
+  state.liveVersion = 1;
+  dataRefreshEnvelope = otherEnvelope;
+  dataRefreshVersion = 2;
+  retryTimers.length = 0;
+  const restartedOther = positionedPreview("old-epoch", 7);
+  refreshBoardGraphAfterApply(restartedOther);
+  waitOutRetries();
+  assert(state.boardViewStale && state.pendingAppliedStage && state.pendingAppliedStage.position.epoch === "old-epoch" && restartedOther.operationMessage.includes("view stale") && closeStage() === "in-dev", "a graph of the new epoch that differs from the result was current at once: " + restartedOther.operationMessage);
+  adoptData(otherEnvelope, 2);
+  assert(state.boardViewStale && state.pendingAppliedStage, "the snapshot the wait started from ended it");
+  adoptData(otherEnvelope, 3);
+  assert(state.pendingAppliedStage === null && !state.boardViewStale && !state.liveRefreshError && closeStage() === "ready-for-qa" && restartedOther.operationMessage.includes("a later change"), "a newer graph of the new epoch did not end the wait: " + restartedOther.operationMessage);
+
+  // Recovery from the Operations dialog confirms the view against the recovered receipt, like the connected dialog does. The receipt
+  // requires backend at ready-for-qa; the graph still shows in-dev, so the view is not validated.
+  adoptData(beforeDevEnvelope);
+  state.liveEpoch = "board-epoch";
+  state.liveVersion = 1;
+  dataRefreshEnvelope = beforeDevEnvelope;
+  dataRefreshVersion = 1;
+  retryTimers.length = 0;
+  openBoardOperations(null);
+  const operationsDialog = state.transitionPreview;
+  operationsDialog.selectedOperation = { operation_id: "op-astra-recover", state: "conflict", actor: { participant_id: "agent-9", name: "Former Agent", kind: "agent" }, remaining_changes: [], moves: [], recovery_review_revision: "review-astra", receipt: { schema_version: 1, operation_id: "op-astra-recover", state: "conflict", applied_paths: [], conflicts: [{ path: "knowledge/wiki/features/F-close.md", reason: "Current file differs." }] }, approval: null };
+  operationsDialog.inspectedOperationId = "op-astra-recover";
+  operationsDialog.recoveryAcknowledged = true;
+  recoverBoardOperation(operationsDialog, "op-astra-recover");
+  waitOutRetries();
+  assert(operationsDialog.operationState === "applied" && state.boardViewStale && state.pendingAppliedStage && state.pendingAppliedStage.expectation.features[0].id === "F-close" && operationsDialog.operationMessage.includes("view stale") && !operationsDialog.operationMessage.includes("refreshed and validated") && closeStage() === "in-dev", "recovery from the Operations dialog validated a graph that does not show the recovered receipt: " + operationsDialog.operationMessage);
+  adoptData(partialEnvelope, 2);
+  assert(operationsDialog.operationMessage.includes("refreshed and validated") && !state.boardViewStale && state.pendingAppliedStage === null, "the graph that shows the recovered receipt did not settle the recovery");
+  document.getElementById("transition-dialog").querySelector("[data-transition-cancel]").__listeners.click[0]();
+  state.boardViewStale = false;
+  state.liveRefreshError = null;
   dataRefreshVersion = null;
   dataRefreshEnvelope = beforeEnvelope;
   globalThis.setTimeout = priorSetTimeout;

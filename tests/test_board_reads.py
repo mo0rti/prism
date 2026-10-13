@@ -527,6 +527,50 @@ class ResultShapingTests(unittest.TestCase):
         self.assertLessEqual(compact_size(text), board_reads.STRUCTURED_BUDGET_CHARS)
         self.assertIn("message#chars", text["truncated"])
 
+    def _wide_receipt(self, features=100, apps=10):
+        return {
+            "state": "applied",
+            "applied_paths": [f"knowledge/wiki/features/F-{number:03d}.md" for number in range(features)] + ["knowledge/wiki/log.md"],
+            "resulting_features": {
+                f"F-{number:03d}": {"status": "in-dev", "owner": "dev", "app_stages": {f"service-application-{index:02d}": "ready-for-release" for index in range(apps)}}
+                for number in reversed(range(features))
+            },
+            "recovery_available": False,
+        }
+
+    def test_shrink_to_budget_cuts_resulting_features_before_the_applied_paths(self):
+        receipt = self._wide_receipt()
+        self.assertGreater(compact_size(receipt), board_reads.RESULT_BUDGET_CHARS)
+        result = board_reads.shrink_to_budget(receipt)
+        self.assertLessEqual(compact_size(result), board_reads.STRUCTURED_BUDGET_CHARS)
+        self.assertEqual(receipt["applied_paths"], result["applied_paths"])
+        self.assertIs(True, result["resulting_features_truncated"])
+        kept = list(result["resulting_features"])
+        self.assertTrue(0 < len(kept) < 100)
+        self.assertEqual([f"F-{number:03d}" for number in range(len(kept))], kept, "the first entries stay, in feature ID order")
+        self.assertEqual(100 - len(kept), result["truncated"]["resulting_features"])
+        self.assertNotIn("applied_paths", result["truncated"])
+        self.assertEqual(100, len(receipt["resulting_features"]), "the input is not modified")
+        self.assertNotIn("resulting_features_truncated", receipt)
+
+    def test_shrink_to_budget_finds_the_mapping_inside_an_operation_result(self):
+        wrapper = {"schema_version": 1, "operation_id": "op-1", "state": "applied", "receipt": self._wide_receipt()}
+        result = board_reads.shrink_to_budget(wrapper)
+        self.assertLessEqual(compact_size(result), board_reads.STRUCTURED_BUDGET_CHARS)
+        self.assertEqual(wrapper["receipt"]["applied_paths"], result["receipt"]["applied_paths"])
+        self.assertIs(True, result["receipt"]["resulting_features_truncated"])
+        self.assertNotIn("resulting_features_truncated", result)
+        self.assertEqual(result["receipt"], board_reads.operation_page(wrapper)["receipt"])
+
+    def test_shrink_to_budget_leaves_a_fitting_mapping_unmarked_and_empties_one_that_cannot_fit(self):
+        small = self._wide_receipt(features=3, apps=2)
+        self.assertIs(small, board_reads.shrink_to_budget(small))
+        self.assertNotIn("resulting_features_truncated", small)
+        one = {"state": "applied", "resulting_features": {"F-001": {"status": "in-dev", "owner": "dev", "app_stages": {"a": "x" * 100}}}}
+        result = board_reads.shrink_to_budget(one, 150)
+        self.assertEqual({}, result["resulting_features"])
+        self.assertIs(True, result["resulting_features_truncated"])
+
     def _items(self):
         return [
             {"path": "a.md", "role": "canonical", "before": None, "after": "new file\n"},

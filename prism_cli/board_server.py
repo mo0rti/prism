@@ -151,6 +151,12 @@ class _LiveGraph:
                 raise GraphUnavailable
             return self.epoch, self.version, self.envelope
 
+    def position(self) -> tuple[str, int] | None:
+        """The epoch and version of the current snapshot, or None while no valid snapshot is available."""
+
+        with self._lock:
+            return (self.epoch, self.version) if self.valid else None
+
 
 class _SnapshotRefreshingService:
     """Delegate to the shared BoardService and refresh the graph snapshot as soon
@@ -176,12 +182,36 @@ class _SnapshotRefreshingService:
             # parsed pages, and the scope ends when the request does.
             with wiki_read_scope():
                 try:
-                    return attribute(*args, **kwargs)
+                    result = attribute(*args, **kwargs)
                 finally:
                     # Runs after the service releases its lock; never raises.
                     self._graph.refresh_now()
+                return self._with_graph_version(result)
 
         return call
+
+    def _with_graph_version(self, result: Any) -> Any:
+        """Name the graph version that first contains an applied operation on its receipt.
+
+        The snapshot read here is the one the synchronous refresh just produced (or a newer one), so every graph of the same
+        epoch at or after this version contains the operation's writes. The service stores it on the receipt once, so the
+        `operation` lookup reports the same version later. Without a valid snapshot, or when the stamp fails, the receipt is
+        returned as it is and the page falls back to the feature values the receipt carries.
+        """
+
+        stamp = getattr(self._service, "stamp_graph_version", None)
+        if not callable(stamp) or not isinstance(result, dict) or result.get("state") != "applied" or not isinstance(result.get("operation_id"), str):
+            return result
+        position = self._graph.position()
+        if position is None:
+            return result
+        try:
+            stamped = stamp(result["operation_id"], position[0], position[1])
+        except Exception:
+            return result
+        if not isinstance(stamped, dict) or "graph_version" not in stamped:
+            return result
+        return {**result, "graph_epoch": stamped["graph_epoch"], "graph_version": stamped["graph_version"]}
 
 
 class _BoundaryMiddleware:

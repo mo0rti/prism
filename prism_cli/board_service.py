@@ -1105,6 +1105,31 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             result["recovery_review_revision"] = self._recovery_review_revision(actor, operation_id, intent, result["remaining_changes"])
         return result
 
+    def stamp_graph_version(self, operation_id: str, epoch: str, version: int) -> dict[str, Any] | None:
+        """Record on an applied receipt the board graph version that first contains the operation.
+
+        The shared server calls it right after the synchronous graph refresh that follows a write, with the epoch and version of
+        that snapshot. The first stamp stays: a later call returns the receipt as it is, so the apply response, the recovery
+        response and every later `operation` lookup name the same version. Returns the stored receipt, or None when the
+        operation is not an applied one.
+        """
+
+        if not isinstance(epoch, str) or not epoch or not isinstance(version, int) or isinstance(version, bool) or version < 1:
+            raise BoardError("invalid_graph_version", "The graph epoch and version are invalid.", 400)
+        operation_id = _safe_id(operation_id, "operation_id")
+        store = self._require_store()
+        with self._lock:
+            with store.transaction() as db:
+                row = db.execute("SELECT state, receipt_json FROM operations WHERE operation_id = ?", (operation_id,)).fetchone()
+                if row is None or row[0] != "applied" or not row[1]:
+                    return None
+                receipt = _loads(row[1])
+                if "graph_version" in receipt:
+                    return receipt
+                receipt = {**receipt, "graph_epoch": epoch, "graph_version": version}
+                db.execute("UPDATE operations SET receipt_json = ? WHERE operation_id = ?", (_json(receipt), operation_id))
+            return receipt
+
     def _recovery_review_revision(
         self,
         actor: Actor,

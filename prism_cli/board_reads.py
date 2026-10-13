@@ -543,9 +543,12 @@ def relativize_paths(value: Any, roots: Iterable[Any]) -> Any:
 def shrink_to_budget(result: dict[str, Any], limit: int = STRUCTURED_BUDGET_CHARS) -> dict[str, Any]:
     """Return `result` unchanged when it fits `limit`, otherwise a cut-down copy.
 
-    The last-resort fit for results that have no paging of their own. The tail
-    of the largest list is dropped until the result fits, then the longest text
-    is clipped. Every cut is named in `truncated` so nothing disappears silently.
+    The last-resort fit for results that have no paging of their own. The
+    `resulting_features` mapping of a receipt is cut first: the entries after the
+    first ones, in feature ID order, are dropped and the receipt gets
+    `resulting_features_truncated: true`. Then the tail of the largest list is
+    dropped until the result fits, and then the longest text is clipped. Every
+    cut is named in `truncated` so nothing disappears silently.
     """
 
     if compact_size(result) <= limit:
@@ -570,6 +573,19 @@ def shrink_to_budget(result: dict[str, Any], limit: int = STRUCTURED_BUDGET_CHAR
     for _ in range(10000):
         if compact_size(work) <= limit:
             return work
+        mappings = [
+            (label, parent, key)
+            for label, parent, key in containers(work, "")
+            if key == "resulting_features" and isinstance(parent[key], dict) and parent[key]
+        ]
+        if mappings:
+            label, parent, key = max(mappings, key=lambda found: compact_size(found[1][found[2]]))
+            entries = parent[key]
+            kept = len(entries) // 2
+            cut[label] = cut.get(label, 0) + len(entries) - kept
+            parent[key] = {feature: entries[feature] for feature in sorted(entries)[:kept]}
+            parent["resulting_features_truncated"] = True
+            continue
         lists = [(label, parent, key) for label, parent, key in containers(work, "") if isinstance(parent[key], list) and parent[key]]
         if lists:
             label, parent, key = max(lists, key=lambda found: compact_size(found[1][found[2]]))

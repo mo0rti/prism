@@ -15,6 +15,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import MCPError
 
 from prism_cli.board_mcp import SERVER_INSTRUCTIONS, _safe_error
+from prism_cli import board_reads
 from prism_cli.board_service import BoardError
 from prism_cli.board_server import create_app
 from tests import real_temp  # noqa: F401
@@ -259,6 +260,95 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(1, len(texts))
                 self.assertLessEqual(len(texts[0]), 500)
                 self.assertIn("next_cursor", texts[0])
+            finally:
+                await self._disconnect(http, streams, session)
+
+    @staticmethod
+    def _wide_receipt(features: int = 100, apps: int = 10) -> dict[str, Any]:
+        """The receipt of a release that wrote many features: every feature page lists every app and stage."""
+
+        return {
+            "schema_version": 1,
+            "operation_id": "op-wide",
+            "state": "applied",
+            "applied_paths": [f"knowledge/wiki/features/F-{number:03d}.md" for number in range(features)] + ["knowledge/wiki/log.md"],
+            "resulting_features": {
+                f"F-{number:03d}": {"status": "in-dev", "owner": "dev", "app_stages": {f"service-application-{index:02d}": "ready-for-release" for index in range(apps)}}
+                for number in range(features)
+            },
+            "moved_folders": [],
+            "applied_at": "2026-10-13T12:00:00+00:00",
+            "recovery_available": False,
+        }
+
+    def _result_size(self, result: Any) -> int:
+        return board_reads.compact_size(result.model_dump(mode="json", by_alias=True, exclude_none=True))
+
+    def _assert_truncated_receipt(self, receipt: dict[str, Any], original: dict[str, Any]) -> None:
+        self.assertEqual(original["applied_paths"], receipt["applied_paths"], "The mapping is cut before the applied paths.")
+        self.assertIs(True, receipt["resulting_features_truncated"])
+        kept = list(receipt["resulting_features"])
+        self.assertTrue(kept and len(kept) < len(original["resulting_features"]))
+        self.assertEqual(sorted(original["resulting_features"])[: len(kept)], kept, "The first entries stay, in a stable order.")
+        for feature_id in kept:
+            self.assertEqual(original["resulting_features"][feature_id], receipt["resulting_features"][feature_id])
+
+    async def test_a_wide_receipt_stays_within_the_result_limit_over_apply_and_operation(self) -> None:
+        wide = self._wide_receipt()
+        self.assertGreater(board_reads.compact_size(wide), board_reads.RESULT_BUDGET_CHARS, "The reproduction must exceed the limit before shaping.")
+        async with self.app.router.lifespan_context(self.app):
+            http, streams, session = await self._connect()
+            try:
+                await session.initialize()
+                original_apply, original_operation = self.service.apply, self.service.operation
+                self.service.apply = lambda actor, preview_id, operation_id: dict(wide)
+                self.service.operation = lambda actor, operation_id: {"schema_version": 1, "operation_id": "op-wide", "state": "applied", "receipt": dict(wide), "created_at": "t0", "updated_at": "t1"}
+                try:
+                    applied = await session.call_tool("apply", {"preview_id": "preview-1", "operation_id": "op-wide"})
+                    looked_up = await session.call_tool("operation", {"operation_id": "op-wide"})
+                finally:
+                    self.service.apply, self.service.operation = original_apply, original_operation
+                for result in (applied, looked_up):
+                    self.assertFalse(result.is_error, result.content)
+                    self.assertLessEqual(self._result_size(result), board_reads.RESULT_BUDGET_CHARS)
+                self._assert_truncated_receipt(applied.structured_content, wide)
+                self._assert_truncated_receipt(looked_up.structured_content["receipt"], wide)
+                self.assertIn("resulting_features", applied.structured_content["truncated"])
+            finally:
+                await self._disconnect(http, streams, session)
+
+    async def test_a_receipt_that_fits_keeps_its_whole_mapping(self) -> None:
+        small = self._wide_receipt(features=3, apps=2)
+        async with self.app.router.lifespan_context(self.app):
+            http, streams, session = await self._connect()
+            try:
+                await session.initialize()
+                original = self.service.apply
+                self.service.apply = lambda actor, preview_id, operation_id: dict(small)
+                try:
+                    applied = await session.call_tool("apply", {"preview_id": "preview-1", "operation_id": "op-wide"})
+                finally:
+                    self.service.apply = original
+                self.assertEqual(small, applied.structured_content)
+            finally:
+                await self._disconnect(http, streams, session)
+
+    async def test_a_result_no_shaper_can_reduce_fails_closed_with_a_clear_error(self) -> None:
+        async with self.app.router.lifespan_context(self.app):
+            http, streams, session = await self._connect()
+            try:
+                await session.initialize()
+                original = self.service.read_workspace
+                self.service.read_workspace = lambda actor, paths, cursor=None: {"schema_version": 1, "files": [{"path": "knowledge/wiki/index.md", "content": "x" * (board_reads.RESULT_BUDGET_CHARS + 1)}], "next_cursor": None}
+                try:
+                    result = await session.call_tool("read_workspace", {"paths": ["knowledge/wiki/index.md"]})
+                finally:
+                    self.service.read_workspace = original
+                self.assertTrue(result.is_error)
+                message = " ".join(block.text for block in result.content if block.type == "text")
+                self.assertIn("result_too_large", message)
+                self.assertIn(f"{board_reads.RESULT_BUDGET_CHARS:,}", message)
+                self.assertLess(len(message), 1000, "The refusal does not carry the oversized result.")
             finally:
                 await self._disconnect(http, streams, session)
 

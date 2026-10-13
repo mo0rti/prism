@@ -504,6 +504,20 @@ class BoardServerTests(unittest.TestCase):
                 self.assertGreater(version_after, version_before)
                 self.assertEqual((version_after, status_after), stage(), "A read after the refresh must not rebuild the snapshot again.")
 
+                # The receipt names the epoch and version of the refreshed snapshot, the first graph that contains the operation.
+                epoch = client.get("/data.json", headers=headers).json()["epoch"]
+                receipt = applied.json()
+                self.assertEqual((epoch, version_after), (receipt["graph_epoch"], receipt["graph_version"]))
+                looked_up = client.get("/api/board/v1/operations/refresh-operation", headers=headers)
+                self.assertEqual(200, looked_up.status_code, looked_up.text)
+                self.assertEqual((epoch, version_after), (looked_up.json()["receipt"]["graph_epoch"], looked_up.json()["receipt"]["graph_version"]))
+                # The first stamp stays: a later call, at a later version, reports the same one.
+                again = service.stamp_graph_version("refresh-operation", epoch, version_after + 5)
+                self.assertEqual((epoch, version_after), (again["graph_epoch"], again["graph_version"]))
+                self.assertIsNone(service.stamp_graph_version("no-such-operation", epoch, version_after))
+                with self.assertRaises(BoardError):
+                    service.stamp_graph_version("refresh-operation", "", version_after)
+
     def test_only_the_graph_poller_reuses_file_hashes(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -617,6 +631,52 @@ class BoardServerTests(unittest.TestCase):
         with self.assertRaises(_BoardError):
             wrapped.apply(None, "bad", "op-2")
         self.assertEqual(3, graph.refreshes, "A failed write may still have touched files, so it refreshes too.")
+
+    def test_the_wrapper_stamps_the_refreshed_snapshot_on_an_applied_receipt_only(self) -> None:
+        class Graph:
+            def __init__(self) -> None:
+                self.current: tuple[str, int] | None = ("epoch-a", 4)
+                self.refreshes = 0
+
+            def refresh_now(self) -> None:
+                self.refreshes += 1
+                if self.current is not None:
+                    self.current = (self.current[0], self.current[1] + 1)
+
+            def position(self) -> tuple[str, int] | None:
+                return self.current
+
+        class Service:
+            def __init__(self) -> None:
+                self.stamped: list[tuple[str, str, int]] = []
+                self.fail = False
+
+            def apply(self, actor: Any, preview_id: str, operation_id: str) -> dict[str, Any]:
+                return {"state": "applied" if preview_id != "conflict" else "conflict", "operation_id": operation_id}
+
+            def stamp_graph_version(self, operation_id: str, epoch: str, version: int) -> dict[str, Any]:
+                if self.fail:
+                    raise RuntimeError("store unavailable")
+                self.stamped.append((operation_id, epoch, version))
+                return {"graph_epoch": epoch, "graph_version": version}
+
+        graph, service = Graph(), Service()
+        wrapped = _SnapshotRefreshingService(service, graph)  # type: ignore[arg-type]
+        receipt = wrapped.apply(None, "good", "op-1")
+        self.assertEqual({"state": "applied", "operation_id": "op-1", "graph_epoch": "epoch-a", "graph_version": 5}, receipt)
+        self.assertEqual([("op-1", "epoch-a", 5)], service.stamped, "The version is read after the refresh that follows the write.")
+        self.assertEqual({"state": "conflict", "operation_id": "op-2"}, wrapped.apply(None, "conflict", "op-2"))
+        service.fail = True
+        self.assertEqual({"state": "applied", "operation_id": "op-3"}, wrapped.apply(None, "good", "op-3"), "A failed stamp leaves the receipt as it is.")
+        service.fail = False
+        graph.current = None
+
+        def unavailable_refresh() -> None:
+            graph.refreshes += 1
+
+        graph.refresh_now = unavailable_refresh  # type: ignore[method-assign]
+        self.assertEqual({"state": "applied", "operation_id": "op-4"}, wrapped.apply(None, "good", "op-4"), "Without a valid snapshot there is no version to name.")
+        self.assertEqual(1, len(service.stamped))
 
     def test_host_origin_mixed_credential_and_body_size_guards(self) -> None:
         wrong_host = self.client.get("/api/board/v1/discover", headers={"Host": "attacker.example"})

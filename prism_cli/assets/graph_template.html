@@ -1958,8 +1958,8 @@ const APPLY_STALE_VIEW_ERROR = "Dashboard view is stale after the applied board 
 // What the applied operation left on each feature page it wrote: the status, owner and app stages its receipt reports
 // (`resulting_features`). A refreshed view is current only when its graph shows these, so a snapshot that predates the writes is
 // never validated. The aggregate status can stay the same (a partial `dev-done`), so the app stages are part of the match.
-function appliedStageExpectation(preview) {
-  const written = preview && preview.receipt ? preview.receipt.resulting_features : null;
+function appliedStageExpectation(receipt) {
+  const written = receipt ? receipt.resulting_features : null;
   if (!written || typeof written !== "object" || Array.isArray(written)) return null;
   const features = Object.keys(written).filter(id => written[id] && typeof written[id] === "object").map(id => {
     const entry = written[id];
@@ -1980,10 +1980,20 @@ function envelopeShowsStage(envelope, expectation) {
     return matches.length === 1 && nodeShowsApplied(matches[0], feature);
   });
 }
-// A graph version newer than the one current when the operation applied supersedes the wait: another change was made after the
-// operation, so the newer state is the truth even when it no longer shows the operation's own result.
+// The graph version that first contains the operation, from its receipt (`graph_epoch`, `graph_version`).
+function appliedGraphPosition(receipt) {
+  if (!receipt || typeof receipt.graph_epoch !== "string" || !receipt.graph_epoch || typeof receipt.graph_version !== "number" || !Number.isFinite(receipt.graph_version)) return null;
+  return { epoch: receipt.graph_epoch, version: receipt.graph_version };
+}
+// A graph of the receipt's epoch at or after its version contains the operation and is current for it, whatever it shows now: a
+// later change may have replaced the result. With another epoch (the server restarted) or a receipt without a position, the
+// versions cannot be compared, so only a graph newer than the last snapshot known to lack the result ends the wait.
 function supersedesApplied(pending, epoch, version) {
-  return pending.baseVersion !== null && pending.baseEpoch === epoch && Number.isFinite(version) && version > pending.baseVersion;
+  if (!Number.isFinite(version)) return false;
+  const position = pending.position;
+  if (position && position.epoch === epoch) return version >= position.version;
+  const lacking = pending.lacking;
+  return !!lacking && lacking.epoch === epoch && version > lacking.version;
 }
 const APPLY_SUPERSEDED_MESSAGE = "Operation applied. Dashboard view refreshed; a later change replaced the applied result.";
 function confirmPendingAppliedStage(version) {
@@ -2000,12 +2010,13 @@ function confirmPendingAppliedStage(version) {
     if (state.transitionPreview === pending.preview) renderTransitionDialog(false);
   }
 }
-function refreshBoardGraphAfterApply(preview) {
+function refreshBoardGraphAfterApply(preview, receipt = preview && preview.receipt) {
   if (preview) preview.operationMessage = "Operation applied. Refreshing and validating the dashboard view…";
   renderTransitionDialog(false);
   state.pendingAppliedStage = null;
-  const expectation = appliedStageExpectation(preview);
-  const baseEpoch = state.liveEpoch, baseVersion = state.liveVersion;
+  const expectation = appliedStageExpectation(receipt);
+  const position = appliedGraphPosition(receipt);
+  let lacking = null;
   const refreshId = preview ? (preview.graphRefreshId = (preview.graphRefreshId || 0) + 1) : 0;
   const superseded = () => !!preview && preview.graphRefreshId !== refreshId;
   const requestSnapshot = attempt => {
@@ -2014,13 +2025,14 @@ function refreshBoardGraphAfterApply(preview) {
       const version = Number(payload && payload.version);
       if (!payload || !payload.envelope || !Number.isFinite(version) || typeof payload.epoch !== "string") throw new Error("The refreshed graph response could not be validated.");
       if (state.liveEpoch === payload.epoch && state.liveVersion !== null && version < state.liveVersion) throw new Error("The refreshed graph was older than the current dashboard snapshot.");
-      const replaced = !!expectation && !envelopeShowsStage(payload.envelope, expectation) && supersedesApplied({ baseEpoch, baseVersion }, payload.epoch, version);
+      const replaced = !!expectation && !envelopeShowsStage(payload.envelope, expectation) && supersedesApplied({ position, lacking }, payload.epoch, version);
       if (expectation && !replaced && !envelopeShowsStage(payload.envelope, expectation)) {
         // The snapshot predates the applied write. Retry briefly, then wait for the live event stream.
+        lacking = { epoch: payload.epoch, version };
         if (attempt < APPLY_REFRESH_RETRY_MS.length) { setTimeout(() => requestSnapshot(attempt + 1), APPLY_REFRESH_RETRY_MS[attempt]); return; }
         state.boardViewStale = true;
         state.liveRefreshError = APPLY_STALE_VIEW_ERROR;
-        state.pendingAppliedStage = { preview, expectation, baseEpoch, baseVersion };
+        state.pendingAppliedStage = { preview, expectation, position, lacking };
         if (preview) preview.operationMessage = "Operation applied. Dashboard view stale: the board has not received the applied change yet; waiting for the live update stream.";
         renderAll(false);
         return;
@@ -2053,7 +2065,7 @@ function acceptBoardOperationReceipt(preview, receipt) {
   if (preview.operationState === "applied") preview.staleReason = "";
   preview.operationMessage = preview.operationState === "applied" ? "Operation applied. Refreshing the dashboard view…" : "Operation state recorded; review any conflicts before recovery.";
   refreshBoardDiscovery().catch(() => {});
-  if (preview.operationState === "applied") refreshBoardGraphAfterApply(preview);
+  if (preview.operationState === "applied") refreshBoardGraphAfterApply(preview, receipt);
   else if (state.transitionPreview === preview) inspectConnectedOperation(preview);
   else renderTransitionDialog(false);
 }
@@ -2415,7 +2427,7 @@ function recoverBoardOperation(preview, operationId, abandon) {
       preview.inspectedOperationId = operationId;
     }
     refreshBoardDiscovery().then(() => {
-      if (preview.operationState === "applied") refreshBoardGraphAfterApply(preview);
+      if (preview.operationState === "applied") refreshBoardGraphAfterApply(preview, receipt);
       else if (state.transitionPreview === preview) renderTransitionDialog(false);
     }).catch(() => {
       preview.error = "The operation recovery returned, but pending operation state could not be refreshed.";
