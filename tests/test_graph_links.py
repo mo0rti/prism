@@ -35,7 +35,7 @@ class RecordLinkTests(unittest.TestCase):
         self.assertEqual([], self.dangling())
 
     def test_a_link_to_a_record_that_does_not_exist_is_still_dangling(self) -> None:
-        feature = next((self.wiki / "features").glob("*.md"))
+        feature = sorted((self.wiki / "features").glob("F-*.md"))[0]
         feature.write_text(feature.read_text(encoding="utf-8") + "\nSee [the missing record](../releases/REL-099.md).\n", encoding="utf-8")
         self.assertEqual(["../releases/REL-099.md"], [item["reference"] for item in self.dangling()])
 
