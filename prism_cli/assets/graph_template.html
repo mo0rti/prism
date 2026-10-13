@@ -355,6 +355,11 @@ main { position: relative; flex: 1; overflow: hidden; }
 .badge.blocked { color: var(--critical); border: 1px solid color-mix(in srgb, var(--critical) 45%, transparent); }
 .badge.advisory { color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 55%, transparent); }
 .badge.broken { color: var(--muted); border: 1px dashed var(--muted); }
+.app-stages, .design-tracks { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font: 10px/1.35 ui-monospace, Consolas, monospace; color: var(--ink-2); }
+.app-stage, .design-track { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.app-stage i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.app-stage .sep, .design-track .sep { color: var(--muted); }
+.app-stage.retired { color: var(--muted); }
 .card.intake { --stage-color: var(--muted); }
 .card.intake.quarantined { --stage-color: var(--critical); }
 
@@ -375,6 +380,9 @@ main { position: relative; flex: 1; overflow: hidden; }
 .fchip i { width: 8px; height: 8px; border-radius: 50%; }
 .fchip .req { font-size: 8.5px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; font-family: ui-monospace, Consolas, monospace; }
 .lane .none { color: var(--muted); font-size: 12px; }
+.ops-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 14px; margin-bottom: 10px; }
+.ops-fact .k { font-size: 8.5px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+.ops-fact .v { font-size: 12px; font-weight: 650; margin-top: 2px; overflow-wrap: anywhere; }
 
 /* ---------- detail panel ---------- */
 .panel {
@@ -620,6 +628,8 @@ const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const STAGES = ["raw", "specified", "ready-for-design", "in-design", "ready-for-dev", "in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released"];
 const STAGE_PHASE = { raw: "po", specified: "po", "ready-for-design": "design", "in-design": "design", "ready-for-dev": "dev", "in-dev": "dev", "ready-for-qa": "qa", "in-qa": "qa", "ready-for-release": "release", released: "done" };
 const READY_STAGES = new Set(["ready-for-design", "ready-for-dev", "ready-for-qa", "ready-for-release"]);
+// The design tracks are shown while a feature is waiting for design or in design.
+const DESIGN_STATUSES = new Set(["ready-for-design", "in-design"]);
 const CONTEXT_TYPES = ["design", "app-requirement", "api-contract", "business-rule", "persona", "decision", "advisory-review"];
 const TYPE_LABELS = {
   feature: "Features", app: "Apps", design: "Design", "app-requirement": "Requirements",
@@ -777,78 +787,65 @@ function transitionOptionLabel(t) {
   const classification = t && typeof t.classification === "string" ? t.classification : "unknown";
   return `${transitionActionLabel(t)} -> ${target} (${classification})`;
 }
-// Each field lists the values a transition record may carry. The design owner is `designer` or `tech-lead` by the
-// feature's scope, and a delivery or a QA action moves the feature to the minimum of its app stages.
-const DESIGN_OWNERS = ["designer", "tech-lead"];
-const QA_SOURCE_STATUSES = ["in-dev", "ready-for-qa", "in-qa"];
-const QA_STAGE_STATUSES = ["in-dev", "ready-for-qa", "in-qa", "ready-for-release"];
-const QA_STAGE_OWNERS = ["dev", "qa", "release"];
-// A release settles the apps that are ready for release, so a feature in development or QA may still release one app.
-const RELEASE_SOURCE_STATUSES = ["in-dev", "ready-for-qa", "in-qa", "ready-for-release"];
-const RELEASE_TARGET_STATUSES = ["in-dev", "ready-for-qa", "in-qa", "ready-for-release", "released"];
-const RELEASE_TARGET_OWNERS = ["dev", "qa", "release", "none"];
-const ACTION_CONTRACTS = {
-  "po-specify": { source_status: ["raw"], source_owner: ["po"], target_status: ["specified"], target_owner: ["po"] },
-  "po-handoff": { source_status: ["specified"], source_owner: ["po"], target_status: ["ready-for-design"], target_owner: DESIGN_OWNERS },
-  "design-start": { source_status: ["ready-for-design"], source_owner: DESIGN_OWNERS, target_status: ["in-design"], target_owner: DESIGN_OWNERS },
-  "design-handoff": { source_status: ["ready-for-design", "in-design"], source_owner: DESIGN_OWNERS, target_status: ["ready-for-dev"], target_owner: ["dev"] },
-  "dev-start": { source_status: ["ready-for-dev"], source_owner: ["dev"], target_status: ["in-dev"], target_owner: ["dev"] },
-  "dev-done": { source_status: ["ready-for-dev", "in-dev"], source_owner: ["dev"], target_status: ["in-dev", "ready-for-qa"], target_owner: ["dev", "qa"] },
-  "design-ui-done": { source_status: ["ready-for-design", "in-design"], source_owner: DESIGN_OWNERS, target_status: ["in-design"], target_owner: DESIGN_OWNERS },
-  "tech-design-done": { source_status: ["ready-for-design", "in-design"], source_owner: DESIGN_OWNERS, target_status: ["in-design"], target_owner: DESIGN_OWNERS },
-  "qa-verify": { source_status: QA_SOURCE_STATUSES, source_owner: ["dev", "qa"], target_status: QA_STAGE_STATUSES, target_owner: QA_STAGE_OWNERS },
-  "qa-pass": { source_status: QA_SOURCE_STATUSES, source_owner: ["dev", "qa"], target_status: QA_STAGE_STATUSES, target_owner: QA_STAGE_OWNERS },
-  "qa-fail": { source_status: QA_STAGE_STATUSES, source_owner: QA_STAGE_OWNERS, target_status: ["in-dev"], target_owner: ["dev"] },
-  "release-done": { source_status: RELEASE_SOURCE_STATUSES, source_owner: QA_STAGE_OWNERS, target_status: RELEASE_TARGET_STATUSES, target_owner: RELEASE_TARGET_OWNERS },
-  "release-return-dev": { source_status: RELEASE_SOURCE_STATUSES, source_owner: QA_STAGE_OWNERS, target_status: ["in-dev"], target_owner: ["dev"] },
-  "reopen-spec": { source_status: ["released"], source_owner: ["none"], target_status: ["specified"], target_owner: ["po"] },
-  "reopen-design": { source_status: ["released"], source_owner: ["none"], target_status: ["in-design"], target_owner: DESIGN_OWNERS },
-  "reopen-dev": { source_status: ["released"], source_owner: ["none"], target_status: ["in-dev"], target_owner: ["dev"] },
-};
+// The action rules come from the transition registry: the server sends one entry per feature action with the graph
+// (facts.action_registry). An entry lists the values a transition record may carry (source_status, source_owner,
+// target_status, target_owner), the skill and arguments that run the action, whether a human may run it directly
+// (human_direct) or an agent proposes it (agent_proposal), and the column a card is dropped on (drop_stage).
+let actionRegistrySource = null, actionRegistryByAction = {};
+function actionRegistry() {
+  const list = state.data && state.data.facts && state.data.facts.action_registry;
+  if (list !== actionRegistrySource) {
+    actionRegistrySource = list;
+    actionRegistryByAction = Object.create(null);
+    for (const entry of Array.isArray(list) ? list : []) {
+      if (entry && typeof entry.action === "string" && entry.action) actionRegistryByAction[entry.action] = entry;
+    }
+  }
+  return actionRegistryByAction;
+}
+function actionMeta(action) {
+  return typeof action === "string" ? actionRegistry()[action] || null : null;
+}
+function actionContract(action) {
+  const meta = actionMeta(action);
+  return meta ? { source_status: meta.source_status, source_owner: meta.source_owner, target_status: meta.target_status, target_owner: meta.target_owner } : null;
+}
 // The column a card is dropped on to request the action.
-const ACTION_DROP_STAGE = {
-  "po-specify": "specified", "po-handoff": "ready-for-design", "design-start": "in-design",
-  "design-handoff": "ready-for-dev", "dev-start": "in-dev", "dev-done": "ready-for-qa",
-};
+function actionDropStage(action) {
+  const meta = actionMeta(action);
+  return meta && meta.drop_stage ? meta.drop_stage : "";
+}
 function contractMatches(contract, record) {
   return !!contract && Object.keys(contract).every(key => contract[key].includes(String(record[key] === undefined || record[key] === null ? "" : record[key])));
 }
 const BOARD_SESSION_EXPIRED = "The board session has expired. Reconnect to continue this connected action.";
-const CONNECTED_HUMAN_ACTIONS = new Set(["po-handoff", "design-start", "dev-start"]);
-const CONNECTED_AGENT_ACTIONS = new Set(["po-specify", "design-ui-done", "tech-design-done", "design-handoff", "dev-done", "qa-verify", "qa-pass", "qa-fail", "release-done", "release-return-dev", "reopen-spec", "reopen-design", "reopen-dev"]);
-const CONNECTED_AGENT_SKILLS = {
-  "po-specify": "po-specify",
-  "design-ui-done": "design-ui-done",
-  "tech-design-done": "tech-design-done",
-  "design-handoff": "design-handoff",
-  "dev-done": "dev-done",
-  "qa-verify": "qa-verify",
-  "qa-pass": "qa-pass",
-  "qa-fail": "qa-fail",
-  "release-done": "release-done",
-  "release-return-dev": "release-done",
-  "reopen-spec": "feature-reopen",
-  "reopen-design": "feature-reopen",
-  "reopen-dev": "feature-reopen",
-};
-const CONNECTED_ACTION_BY_STAGE = {
-  specified: "po-handoff",
-  "ready-for-design": "design-start",
-  "ready-for-dev": "dev-start",
-};
+// A human runs a direct action in the board; an agent proposes every other action.
+function connectedHumanActionKnown(action) {
+  const meta = actionMeta(action);
+  return !!(meta && meta.human_direct);
+}
+function connectedAgentActionKnown(action) {
+  const meta = actionMeta(action);
+  return !!(meta && meta.agent_proposal && !meta.human_direct);
+}
+// The direct human action a feature at this status offers, or "".
+function connectedHumanActionForStatus(status) {
+  const entry = Object.values(actionRegistry()).find(meta => meta.human_direct && Array.isArray(meta.source_status) && meta.source_status.includes(status));
+  return entry ? entry.action : "";
+}
 function connectedBoardExpected() {
   return CONFIG.mode === "live" && state.boardConnection !== "unsupported";
 }
 function connectedHumanAction(node) {
   if (!connectedBoardExpected() || !node || node.type !== "feature" || duplicateFeatureIds.has(canonicalFeatureId(node))) return null;
-  return CONNECTED_ACTION_BY_STAGE[String(node.status || "")] || null;
+  return connectedHumanActionForStatus(String(node.status || "")) || null;
 }
 function connectedHumanWriter() {
   return !!(state.boardConnection === "connected" && state.boardActor && state.boardActor.kind === "human" && state.boardActor.writable === true);
 }
 function connectedActionReady(action) {
   const actor = state.boardActor, capability = state.boardCapability;
-  return !!(CONNECTED_HUMAN_ACTIONS.has(action) && connectedHumanWriter() && actor && capability && capability.workflow_eligible === true && Array.isArray(capability.human_actions) &&
+  return !!(connectedHumanActionKnown(action) && connectedHumanWriter() && actor && capability && capability.workflow_eligible === true && Array.isArray(capability.human_actions) &&
     capability.human_actions.includes(action) && !state.liveRefreshError);
 }
 function connectedActionReason(action) {
@@ -866,7 +863,8 @@ function connectedActionReason(action) {
   return "Connected preview is unavailable.";
 }
 function connectedAgentSkill(action) {
-  return CONNECTED_AGENT_SKILLS[action] || "";
+  const meta = actionMeta(action);
+  return meta && connectedAgentActionKnown(action) ? meta.skill : "";
 }
 function connectedAgentActionReady(action) {
   const actor = state.boardActor, capability = state.boardCapability, skill = connectedAgentSkill(action);
@@ -893,29 +891,28 @@ function connectedAgentActionReason(action) {
 function connectedAgentTransitionOpenable(node, index) {
   const t = transitionRecord(node, index), action = t && t.action;
   return !!(connectedAgentActionReady(action) && node && node.type === "feature" && !duplicateNodeIds.has(node.id) &&
-    !duplicateFeatureIds.has(canonicalFeatureId(node)) && t && t.version === 2 && Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action) &&
-    contractMatches(ACTION_CONTRACTS[action], t) &&
+    !duplicateFeatureIds.has(canonicalFeatureId(node)) && t && t.version === 2 && contractMatches(actionContract(action), t) &&
     String(t.feature_id === undefined || t.feature_id === null ? "" : t.feature_id) === String(canonicalFeatureId(node)) &&
     transitionSourceMatches(node, t));
 }
 function transitionRequestOpenable(node, index) {
   const t = transitionRecord(node, index);
-  if (connectedBoardExpected() && t && CONNECTED_AGENT_ACTIONS.has(t.action)) return connectedAgentTransitionOpenable(node, index);
+  if (connectedBoardExpected() && t && connectedAgentActionKnown(t.action)) return connectedAgentTransitionOpenable(node, index);
   return transitionOpenable(node, index);
 }
 function transitionRequestReason(node, index) {
   const t = transitionRecord(node, index);
-  if (connectedBoardExpected() && t && CONNECTED_AGENT_ACTIONS.has(t.action)) return connectedAgentActionReason(t.action);
+  if (connectedBoardExpected() && t && connectedAgentActionKnown(t.action)) return connectedAgentActionReason(t.action);
   return transitionReason(node, index);
 }
 function transitionDragOpenable(node, index) {
   const t = transitionRecord(node, index);
-  if (connectedBoardExpected() && t && CONNECTED_AGENT_ACTIONS.has(t.action)) return connectedAgentTransitionOpenable(node, index);
+  if (connectedBoardExpected() && t && connectedAgentActionKnown(t.action)) return connectedAgentTransitionOpenable(node, index);
   return transitionRunnable(node, index);
 }
 function legacyTransitionEntries(node) {
   return transitionRecords(node).map((action, index) => ({ action, index }))
-    .filter(entry => !connectedBoardExpected() || !CONNECTED_HUMAN_ACTIONS.has(entry.action && entry.action.action));
+    .filter(entry => !connectedBoardExpected() || !connectedHumanActionKnown(entry.action && entry.action.action));
 }
 function connectedButtonHtml(node, action, context) {
   const ready = connectedActionReady(action);
@@ -927,36 +924,11 @@ function connectedButtonHtml(node, action, context) {
     <span class="transition-hint">${escapeHtml(reason || "Preview the exact changes before applying. No agent is dispatched.")}</span>
   </div>`;
 }
-const ACTION_COMMANDS = {
-  "po-specify": "po-specify",
-  "po-handoff": "po-handoff",
-  "design-start": "design-start",
-  "design-ui-done": "design-ui-done",
-  "tech-design-done": "tech-design-done",
-  "design-handoff": "design-handoff",
-  "dev-start": "dev-start",
-  "dev-done": "dev-done",
-  "qa-verify": "qa-verify",
-  "qa-pass": "qa-pass",
-  "qa-fail": "qa-fail",
-  "release-done": "release-done",
-  "release-return-dev": "release-done",
-  "reopen-spec": "feature-reopen",
-  "reopen-design": "feature-reopen",
-  "reopen-dev": "feature-reopen",
-};
-// The route a command takes beyond the feature ID (the registry's `arguments`).
-const ACTION_ARGUMENTS = {
-  "release-return-dev": " --return in-dev",
-  "reopen-spec": " specified",
-  "reopen-design": " in-design",
-  "reopen-dev": " in-dev",
-};
 function capabilityActionKnown(t) {
   const cap = transitionCapability(), action = t && t.action;
-  if (!cap || !t || typeof action !== "string" || !Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action) || t.version !== 2) return false;
+  if (!cap || !t || typeof action !== "string" || !actionMeta(action) || t.version !== 2) return false;
   if (cap.version !== 3) return false;
-  return contractMatches(ACTION_CONTRACTS[action], t);
+  return contractMatches(actionContract(action), t);
 }
 function capabilityActionAdvertised(t) {
   const cap = transitionCapability();
@@ -990,12 +962,11 @@ function transitionRunnable(node, index) {
 }
 function expectedTransitionInvocation(node, t, surface) {
   const action = t && t.action;
-  if (!node || !t || (surface !== "codex" && surface !== "claude") ||
-      !Object.prototype.hasOwnProperty.call(ACTION_COMMANDS, action) || !capabilityActionKnown(t)) return "";
+  const meta = actionMeta(action);
+  if (!node || !t || (surface !== "codex" && surface !== "claude") || !meta || !capabilityActionKnown(t)) return "";
   const featureId = canonicalFeatureId(node);
   if (!featureId || String(t.feature_id === undefined || t.feature_id === null ? "" : t.feature_id) !== featureId) return "";
-  const command = ACTION_COMMANDS[action];
-  return (surface === "codex" ? "$" : "/") + command + " " + featureId + (ACTION_ARGUMENTS[action] || "");
+  return (surface === "codex" ? "$" : "/") + meta.skill + " " + featureId + (meta.arguments ? " " + meta.arguments : "");
 }
 function transitionInvocationFor(node, surface, index) {
   const t = transitionRecord(node, index);
@@ -1481,7 +1452,7 @@ function renderConnectedTransitionDialog(focus) {
     <div class="transition-head"><div class="eyebrow">CONNECTED BOARD · HUMAN ACTION</div><h2 id="transition-dialog-title" tabindex="-1">Review ${escapeHtml(transitionActionLabel({ action: preview.action }))}</h2>
       <p id="transition-dialog-description">The local board service checks the current wiki and shows every exact write. It applies only after your explicit confirmation; no agent is dispatched.</p></div>
     <div class="transition-body">${statusHtml}${dirtyHtml}
-      <div class="transition-grid">${transitionFact("Human action", preview.action)}${transitionFact("Feature ID", preview.featureId)}${transitionFact("Source status", preview.sourceStatus)}${transitionFact("Source owner", preview.sourceOwner)}${transitionFact("Target status", ACTION_CONTRACTS[preview.action] && ACTION_CONTRACTS[preview.action].target_status)}${transitionFact("Participant", state.boardActor && state.boardActor.name)}</div>
+      <div class="transition-grid">${transitionFact("Human action", preview.action)}${transitionFact("Feature ID", preview.featureId)}${transitionFact("Source status", preview.sourceStatus)}${transitionFact("Source owner", preview.sourceOwner)}${transitionFact("Target status", actionContract(preview.action) && actionContract(preview.action).target_status)}${transitionFact("Participant", state.boardActor && state.boardActor.name)}</div>
       <div class="transition-section"><h4>Current service checks and blockers</h4>${checksHtml}${reviewHtml}</div>
       ${skipHtml}
       ${skipAvailable && (preview.skipAdvisory || preview.proposalDirty) ? `<button type="button" class="copy-btn" data-connected-repreview${requiresReason || preview.loading ? " disabled" : ""}>${preview.skipAdvisory ? "Preview this skip proposal" : "Preview without skip"}</button>` : ""}
@@ -1578,7 +1549,7 @@ function connectedSourcePathMatches(node, sourcePath) {
 }
 function connectedAgentPayloadMatchesCurrent(preview, transition) {
   const current = connectedAgentCurrent(preview);
-  const contract = transition && ACTION_CONTRACTS[transition.action];
+  const contract = transition && actionContract(transition.action);
   return !!(current.node && current.node.type === "feature" && current.current &&
     current.current.action === preview.action && transition && transition.version === 2 && transition.action === preview.action &&
     String(transition.feature_id || "") === String(current.canonicalId || "") &&
@@ -1984,8 +1955,8 @@ function appliedStageExpectation(preview) {
   const receipt = preview.receipt || {};
   const featureId = preview.kind === "connected" ? preview.featureId : receipt.feature_id;
   const action = preview.kind === "connected" ? preview.action : receipt.action;
-  if (typeof featureId !== "string" || !featureId || typeof action !== "string" || !Object.prototype.hasOwnProperty.call(ACTION_CONTRACTS, action)) return null;
-  return { featureId, status: ACTION_DROP_STAGE[action] };
+  if (typeof featureId !== "string" || !featureId || typeof action !== "string" || !actionDropStage(action)) return null;
+  return { featureId, status: actionDropStage(action) };
 }
 function envelopeShowsStage(envelope, expectation) {
   const nodes = envelope && envelope.facts && Array.isArray(envelope.facts.nodes) ? envelope.facts.nodes : [];
@@ -2586,7 +2557,7 @@ function onBoardDragOver(e) {
   e.preventDefault();
   const stage = e.currentTarget.dataset.stage;
   const node = nodesById[state.drag.featureId];
-  const connectedDrop = !!(state.drag.connectedAction && ACTION_DROP_STAGE[state.drag.connectedAction] === stage);
+  const connectedDrop = !!(state.drag.connectedAction && actionDropStage(state.drag.connectedAction) === stage);
   const targetIndex = connectedDrop ? -1 : transitionIndexForTarget(node, stage);
   const valid = !!(node && stage !== state.drag.sourceStatus && (connectedDrop || (targetIndex >= 0 && transitionDragOpenable(node, targetIndex))));
   state.drag.hover = { stage, valid };
@@ -2611,7 +2582,7 @@ function onBoardDrop(e) {
     return;
   }
   if (drag.connectedAction) {
-    if (ACTION_DROP_STAGE[drag.connectedAction] === stage) {
+    if (actionDropStage(drag.connectedAction) === stage) {
       showConnectedTransitionPreview(drag.featureId, drag.element, drag.connectedAction);
     } else {
       announce("No connected human action targets this destination; the card stayed in its source stage.");
@@ -3416,6 +3387,59 @@ function focusNode(id) {
   graph.zoom(Math.max(2.2, graph.zoom()), REDUCED ? 0 : 700);
 }
 
+/* ==================== per-app stages, design tracks and operations ==================== */
+// The apps of a feature's scope with the stage of each: the active apps carry a stage, a retired app is marked as retired.
+function featureAppRows(node) {
+  const stages = Array.isArray(node && node.app_stages) ? node.app_stages : null;
+  if (!stages) return [];
+  const rows = stages.map(entry => ({ app: String(entry.app), stage: String(entry.stage), retired: false }));
+  const listed = new Set(rows.map(row => row.app));
+  const retired = state.data.facts.edges
+    .filter(edge => edge.kind === "targets" && edge.source === node.id && String(edge.target).startsWith("app:"))
+    .map(edge => ({ app: String(edge.target).slice("app:".length), appNode: nodesById[edge.target] }))
+    .filter(item => !listed.has(item.app) && item.appNode && item.appNode.status === "retired")
+    .map(item => ({ app: item.app, stage: "", retired: true }));
+  return rows.concat(retired);
+}
+function appStageHtml(row) {
+  if (row.retired) return `<div class="app-stage retired"><span>${escapeHtml(boundedText(row.app, 80))}</span><span class="sep">·</span><span>retired</span></div>`;
+  const color = C[STAGE_PHASE[row.stage]] || C.muted;
+  return `<div class="app-stage"><i style="background:${color}"></i><span>${escapeHtml(boundedText(row.app, 80))}</span><span class="sep">·</span><span>${escapeHtml(boundedText(row.stage, 40))}</span></div>`;
+}
+// A card lists the active apps of a feature in development or later; the panel adds the retired ones.
+function cardAppStagesHtml(node) {
+  const rows = featureAppRows(node).filter(row => !row.retired);
+  return rows.length ? `<div class="app-stages" data-app-stages="${escapeHtml(node.id)}">${rows.map(appStageHtml).join("")}</div>` : "";
+}
+function designTrackStates(node) {
+  const tracks = node && node.design_tracks;
+  if (!tracks || typeof tracks !== "object") return [];
+  return ["ui", "technical"].filter(track => typeof tracks[track] === "string").map(track => ({ track, state: tracks[track] }));
+}
+function designTracksHtml(node) {
+  const tracks = designTrackStates(node);
+  return tracks.length
+    ? `<div class="design-tracks" data-design-tracks="${escapeHtml(node.id)}">${tracks.map(item => `<div class="design-track"><span>${escapeHtml(item.track)}</span><span class="sep">·</span><span>${escapeHtml(boundedText(item.state, 40))}</span></div>`).join("")}</div>`
+    : "";
+}
+function appOperationsRow(appId) {
+  const rows = state.data.facts.app_operations;
+  return Array.isArray(rows) ? rows.find(row => row && row.app === appId) || null : null;
+}
+function appOperationsHtml(appId) {
+  const row = appOperationsRow(appId);
+  if (!row) return '<div class="ops-grid" data-app-operations="' + escapeHtml(appId) + '"><span class="none">Nothing released, recorded or open for this app.</span></div>';
+  const latest = row.latest_release && row.latest_release !== "—" ? `${row.latest_release} (${row.latest_outcome || "—"})` : "—";
+  const facts = [
+    ["Released features", row.released_features],
+    ["Latest release", latest],
+    ["Open bugs", row.open_bugs],
+    ["Open incidents", row.open_incidents],
+  ];
+  return `<div class="ops-grid" data-app-operations="${escapeHtml(appId)}">${facts.map(([k, v]) =>
+    `<div class="ops-fact"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(boundedText(v || "—", 200))}</div></div>`).join("")}</div>`;
+}
+
 /* ==================== board ==================== */
 function renderBoard() {
   const feats = featureNodes();
@@ -3453,7 +3477,7 @@ function renderBoard() {
       const cardLabel = `Feature ${boundedText(canonicalFeatureId(f), 140)}: ${boundedText(f.title || "untitled", 180)}; status ${boundedText(f.status || "missing", 80)}`;
       return `<div class="card" data-id="${escapeHtml(f.id)}" tabindex="0" role="group" aria-label="${escapeHtml(cardLabel)}" style="--stage-color:${stageColor};--stagger:${REDUCED ? 0 : i * 0.05}s">
         <div class="cid">${escapeHtml(f.id)}</div><div class="ctitle">${escapeHtml(f.title)}</div>
-        <div class="badges">${badges.join("")}</div>${transitionButtonHtml(f, "card")}</div>`;
+        <div class="badges">${badges.join("")}</div>${cardAppStagesHtml(f)}${DESIGN_STATUSES.has(f.status) ? designTracksHtml(f) : ""}${transitionButtonHtml(f, "card")}</div>`;
     }).join("");
     return `<div class="column" data-stage="${escapeHtml(stage)}"><h3><i style="background:${stageColor};opacity:${READY_STAGES.has(stage) ? .55 : 1}"></i>${escapeHtml(stage)}<span class="count">${items.length}</span></h3>${cards}</div>`;
   }).join("");
@@ -3492,10 +3516,13 @@ function renderApps() {
       const req = reqEdge ? nodesById[reqEdge.target] : null;
       const reqStatus = req ? (req.status || "unknown") : "no requirement";
       const reqColor = reqStatus === "done" ? C.done : reqStatus === "in-progress" ? C.dev : C.muted;
+      const stageRow = featureAppRows(f).find(row => row.app === appId);
+      const stageLabel = stageRow ? (stageRow.retired ? "retired" : stageRow.stage) : "";
       return `<div class="fchip" data-id="${escapeHtml(fid)}" tabindex="0" role="button" aria-label="Open feature ${escapeHtml(boundedText(fid, 120))}: ${escapeHtml(boundedText(f.title, 180))}"><i style="background:${phaseColor(f)}"></i>${escapeHtml(fid)} · ${escapeHtml(f.title)}
-        <span class="req" style="color:${reqColor}">req: ${escapeHtml(reqStatus)}</span></div>`;
+        ${stageLabel ? `<span class="req">${escapeHtml(boundedText(stageLabel, 40))}</span>` : ""}<span class="req" style="color:${reqColor}">req: ${escapeHtml(reqStatus)}</span></div>`;
     }).join("");
     return `<div class="lane" style="animation-delay:${REDUCED ? 0 : i * 0.07}s"><h3><i></i>${escapeHtml(p.title)}${p.status === "retired" ? ' <span class="retired">(retired)</span>' : ""}<span class="count">${featureIds.length} FEATURE${featureIds.length === 1 ? "" : "S"}</span></h3>
+      ${appOperationsHtml(p.id.slice("app:".length))}
       <div class="features">${chips || '<span class="none">No features target this app yet.</span>'}</div></div>`;
   }).join("");
   const view = document.getElementById("app-view");
@@ -3551,6 +3578,14 @@ function renderPanel(node) {
     ? `<div class="section"><h4>Workflow request</h4>${transitionButtonHtml(node, "panel")}</div>`
     : "";
 
+  const appRows = node.type === "feature" ? featureAppRows(node) : [];
+  const appStagesPanelHtml = appRows.length
+    ? `<div class="section" data-panel-app-stages><h4>App stages - ${appRows.length}</h4><div class="app-stages">${appRows.map(appStageHtml).join("")}</div></div>`
+    : "";
+  const trackPanelHtml = designTrackStates(node).length && DESIGN_STATUSES.has(node.status)
+    ? `<div class="section" data-panel-design-tracks><h4>Design tracks</h4>${designTracksHtml(node)}</div>`
+    : "";
+
   const blockers = blockersByFeature[node.id] || [];
   const blockerHtml = blockers.length
     ? `<div class="section"><h4>BLOCKERS - action required</h4>${blockers.map(b => {
@@ -3600,6 +3635,8 @@ function renderPanel(node) {
     <div class="panel-body">
       <div class="meta-grid">${metaHtml}</div>
       ${transitionPanelHtml}
+      ${appStagesPanelHtml}
+      ${trackPanelHtml}
       ${blockerHtml}
       ${questionsHtml}
       <div class="section"><h4>Connections — ${connEdges.length}</h4>${conns || '<span style="font-size:12px;color:var(--muted)">No connections.</span>'}</div>
