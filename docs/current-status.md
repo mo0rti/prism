@@ -106,7 +106,7 @@ The entry is removed when `braces` or the Next.js lint plugin ships a fix: the g
 
 ## Public release
 
-Prism 0.7.1 is released under the MIT license, copyright 2026 Mortitech: `prism-kit` on [PyPI](https://pypi.org/project/prism-kit/), with the wheel, source distribution and `SHA256SUMS.txt` attached to the [GitHub release](https://github.com/mo0rti/prism/releases/tag/v0.7.1). Releases are published by `.github/workflows/release.yml` from a `v*` tag through TestPyPI to PyPI with trusted publishing. An installed CLI generates from the template tag that matches its version (`v0.7.1`). The npm launcher [`@mortitech/prism`](https://www.npmjs.com/package/@mortitech/prism) 0.7.1 is on npm and runs `prism-kit==0.7.1` through uv.
+Prism 0.7.2 is released under the MIT license, copyright 2026 Mortitech: `prism-kit` on [PyPI](https://pypi.org/project/prism-kit/), with the wheel, source distribution and `SHA256SUMS.txt` attached to the [GitHub release](https://github.com/mo0rti/prism/releases/tag/v0.7.2). Releases are published by `.github/workflows/release.yml` from a `v*` tag through TestPyPI to PyPI with trusted publishing. An installed CLI generates from the template tag that matches its version (`v0.7.2`). The npm launcher [`@mortitech/prism`](https://www.npmjs.com/package/@mortitech/prism) 0.7.2 is on npm and runs `prism-kit==0.7.2` through uv.
 
 ## Evaluating application generation
 

@@ -4,7 +4,15 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.7.2]
+
+Release date: 2026-10-13
+
+Prism 0.7.2 makes the board page explain a feature's progress: each app's stage, the design tracks and each app's release and incident state, with every action rule taken from the transition registry, including the returns from implementation and from QA. The standard wiki files are listed once, documented error codes are returned where they apply, the unused-contract warning covers every status, and the board keeps keyboard focus when it updates.
+
 ### Changed
+
+- The packaged skills and `AGENTS.md` require `prism-kit>=0.7.2`, because the `feature-reopen` skill runs the QA returns' transition preflight, which 0.7.2 accepts.
 
 - **The board page explains a feature's status.** A card lists each active app with its stage (`backend · released`, `worker · in-qa`) from `in-dev` on, and the panel lists every app in scope with a retired app marked as retired. A released feature keeps its whole scope as history on every surface, as the status board does: its graph node and `prism status` list an app retired later with its stage, and the page shows it as `released · retired`. A feature that waits for design or is in design shows its `ui` and `technical` track states on the card and in the panel. The Apps view shows every app that has an Operations row, with its released features, latest release record and outcome, open bugs and open incidents, derived by the code that writes and lints the status board's Operations table; an app with only a standalone bug or incident (`feature: none`) is shown too, and the graph keeps its app node. The graph envelope carries `design_tracks` on a feature node, `facts.app_operations` and `facts.action_registry`; the graph schema describes them.
 - **The board page takes its action rules from the transition registry.** The server generates the metadata of every feature action from `ACTION_SPECS` (sources, targets, owners, skill, arguments, human-direct or agent proposal, drop column) and sends it with the graph; the page's hand-written tables (`ACTION_CONTRACTS`, `ACTION_DROP_STAGE`, the connected action sets and skills, the command and argument tables) are gone. The drop column is set only where it is certain, for an action with a concrete target status; an action that targets the minimum over the app stages or leaves the status unchanged has none. The page offers the return requests of the registry: a feature in development opens `dev-return-spec` and `dev-return-design`, and a feature in QA opens `qa-return-spec` and `qa-return-design`. `release-rollback`, `release-redeploy` and `scope-edit` are not offered on the page: the first two need a release record ID and the scope edit needs the new scope, which a copy-only request cannot carry. The static export and the legacy dashboard stay copy-only.
