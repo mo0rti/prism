@@ -8,7 +8,7 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 Release date: 2026-10-13
 
-Prism 0.7.1 fixes the defects found by the full Fable 5.1 and GPT-6 Astra review of the 0.7 line and by real agents taking a feature from QA through release. It accepts a new bug page written exactly as its format shows, lets a consumer feature share another feature's API contract, applies a release approved on a later day, and makes an abandoned operation repairable from the browser.
+Prism 0.7.1 fixes the defects found in a full review of the 0.7 line and in end-to-end runs that take a feature from QA through release. It accepts a new bug page written exactly as its format shows, lets a consumer feature share another feature's API contract, applies a release approved on a later day, and makes an abandoned operation repairable from the browser.
 
 ### Added
 
