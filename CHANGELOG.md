@@ -15,6 +15,7 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 - **A scope edit that removes the last app answers `scope_empty`.** The generic `invalid_feature_output` rule for an empty `apps` list answered first, at every stage, so the documented code was never returned. The edit is refused as before, now with the code that names it.
 - **`unsupported_source_pair` is returned where it can arise.** `release-done` on a feature that is not in development, in QA or `ready-for-release` answers it, and a feature skill proposed from another status answers `lifecycle_action_required`. The two feature-level source checks that the action selection always answers first (the transition source and the reopen route) stay as guards for an internal path that bypasses the selection, and `docs/troubleshooting.md` names the code each case returns.
 - **`unused-api-contract` in every status.** Lint warns about a feature's own `draft` API contract whenever its one `## API surface` section declares no API work, not only from `ready-for-dev` to `ready-for-release`. It stays a warning that does not gate.
+- **The board keeps keyboard focus when it re-renders.** A live update, a refresh after an apply or a reconnect no longer drops focus to the page body: it returns to the same control, or else to its card, the card's column or the region. Focus inside an open dialog is untouched.
 
 ## [0.7.1]
 
