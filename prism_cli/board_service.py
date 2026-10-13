@@ -59,7 +59,7 @@ from prism_cli.wiki_index import (
     remove_index_lines,
     render_index_lines,
 )
-from prism_cli.wiki_bugs import bug_listing_digest, parse_fix_rows
+from prism_cli.wiki_bugs import FIX_COLUMNS, bug_listing_digest
 from prism_cli.wiki_releases import release_listing_digest
 from prism_cli.wiki_incidents import is_incident_path
 from prism_cli.wiki_log import VERIFY_OPERATION, append_log_entry, format_verification_entry
@@ -81,7 +81,9 @@ from prism_cli.wiki_model import (
     APP_STAGE_ORDER,
     DESIGN_OWNERS,
     DESIGN_TRACKS,
+    DELIVERY_EVIDENCE_COLUMNS,
     EVIDENCE_SECTIONS,
+    SINGLE_FEATURE_SECTIONS,
     FEATURE_REVALIDATION_DOMAINS,
     DesignTracks,
     EvidenceProblem,
@@ -97,6 +99,7 @@ from prism_cli.wiki_model import (
     VALID_OPEN_QUESTION_OWNERS,
     active_scope,
     api_surface_declared,
+    api_surface_declares_no_work,
     app_stage,
     app_stages,
     app_stages_text,
@@ -120,6 +123,7 @@ from prism_cli.wiki_model import (
     parse_criteria,
     parse_design_tracks,
     parse_evidence_history,
+    parse_evidence_table,
     parse_iso_date,
     processed_source_path,
     read_feature_evidence,
@@ -1718,19 +1722,25 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         )
 
     @staticmethod
-    def _evidence_row_digests(kind: str, app: str, text: str, relative: str) -> set[str] | None:
-        """The digests of the evidence rows of ``kind`` for ``app`` that a page holds, or None for a page that does not parse."""
+    def _evidence_row_digests(kind: str, text: str, relative: str) -> set[str] | None:
+        """The digests of every row of the evidence section of ``kind`` that a page holds, whatever app the row names.
 
+        None when the page does not establish its rows: it does not parse, the section is repeated or indented, or its table has a
+        header or a row of the wrong shape. A reader of a page like that may take rows the table parser skipped.
+        """
+
+        sections = {"delivery": ("Delivery evidence", DELIVERY_EVIDENCE_COLUMNS), "fix": ("Fix", FIX_COLUMNS)}
+        if kind not in sections:
+            return None
+        heading, columns = sections[kind]
         try:
             body = _parse_markdown(text, relative)[1]
-            if kind == "delivery":
-                row = read_feature_evidence(body).delivery_row(app)
-                return {row_digest(row.cells)} if row is not None else set()
-            if kind == "fix":
-                return {row_digest(row.cells) for row in parse_fix_rows(body)[0] if row.app == app}
+            if section_ambiguities(body, (heading,)):
+                return None
+            rows, problems = parse_evidence_table(body, heading, columns, "evidence_table_invalid")
         except (BoardError, ValueError):
             return None
-        return set()
+        return None if problems else {row_digest(cells) for cells in rows}
 
     def _evidence_shown_absent(self, produced: Mapping[str, Any], paths: Iterable[str]) -> bool:
         """Whether every page that was to hold the evidence row can be read and no longer holds it.
@@ -1746,7 +1756,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 return False
             if text is None:
                 continue
-            held = self._evidence_row_digests(str(produced["kind"]), str(produced["app"]), text, relative)
+            held = self._evidence_row_digests(str(produced["kind"]), text, relative)
             if held is None or str(produced["row_digest"]) in held:
                 return False
         return True
@@ -1775,7 +1785,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 for write in intent.get("writes", [])
                 if write.get("role") not in {*_ROW_ROLES, "log"}
                 and isinstance(write.get("after"), str)
-                and digest in (self._evidence_row_digests(str(produced["kind"]), str(produced["app"]), write["after"], write["path"]) or ())
+                and digest in (self._evidence_row_digests(str(produced["kind"]), write["after"], write["path"]) or ())
             ]
             if producing and not landed.intersection(producing) and self._evidence_shown_absent(produced, producing):
                 released.append(produced)
@@ -4201,11 +4211,11 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         """
 
         frontmatter, body = _parse_markdown(content, relative)
-        ambiguities = section_ambiguities(body, _LIFECYCLE_SECTIONS)
+        ambiguities = section_ambiguities(body, SINGLE_FEATURE_SECTIONS)
         if ambiguities:
             raise BoardError(
                 "ambiguous_lifecycle_section",
-                f"Feature page `{relative}` has an ambiguous lifecycle section: {' '.join(ambiguities)} Keep one `## Delivery evidence`, `## QA verification`, `## Release` and `## Evidence history` heading, each in column zero.",
+                f"Feature page `{relative}` has an ambiguous lifecycle section: {' '.join(ambiguities)} Keep one `## Delivery evidence`, `## QA verification`, `## Release`, `## Evidence history` and `## API surface` heading, each in column zero.",
                 409,
                 {"path": relative, "problems": ambiguities},
             )
@@ -6381,17 +6391,17 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             {"path": canonical, "feature_id": feature_id, "status": "agreed", "sections": sections},
         )
 
-    def _own_api_contract_paths(self, feature: Mapping[str, Any], supplied: Mapping[str, str]) -> set[str]:
+    def _own_api_contract_paths(self, feature: Mapping[str, Any], supplied: Mapping[str, str], *, current: bool = False) -> set[str]:
         """The API contracts of the feature itself: those among its covering contracts whose `feature-id` is the feature's.
 
         A feature changes and requires the status of only these. A contract it links but another feature owns is still read
-        for the binding and digest checks (`_feature_api_contract_paths`).
+        for the binding and digest checks (`_feature_api_contract_paths`). With ``current`` the contracts are read as they are on disk.
         """
 
         feature_id = str(feature["id"]).casefold()
         own: set[str] = set()
-        for relative in self._feature_api_contract_paths(feature, supplied):
-            text = supplied.get(relative)
+        for relative in self._feature_api_contract_paths(feature, supplied, current=current):
+            text = None if current else supplied.get(relative)
             if text is None:
                 text = self._optional_text(self._safe_path(relative, allow_missing=True))
             if text is None:
@@ -6401,14 +6411,18 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 own.add(relative)
         return own
 
-    def _feature_api_contract_paths(self, feature: Mapping[str, Any], supplied: Mapping[str, str]) -> set[str]:
-        """Workspace paths of the API contracts that cover a feature: its own pages, pages it links and pages in the proposal."""
+    def _feature_api_contract_paths(self, feature: Mapping[str, Any], supplied: Mapping[str, str], *, current: bool = False) -> set[str]:
+        """Workspace paths of the API contracts that cover a feature: its own pages, pages it links and pages in the proposal.
+
+        With ``current`` the contract pages are judged as they are on disk, before the changes of the proposal: a write that sends a
+        feature back must lower the contracts it holds now, and the draft it writes is not what decides which they are.
+        """
 
         from prism_cli.wiki_transitions import api_contract_link_targets
 
         feature_id = str(feature["id"]).casefold()
         wiki_root = self.root / "knowledge" / "wiki"
-        found = {path for path in supplied if path.startswith("knowledge/wiki/api-contracts/")}
+        found = set() if current else {path for path in supplied if path.startswith("knowledge/wiki/api-contracts/")}
         directory = wiki_root / "api-contracts"
         if directory.is_dir():
             for path in sorted(directory.glob("*.md")):
@@ -6425,12 +6439,12 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                         found.add(target.relative_to(resolved_root).as_posix())
                     except ValueError:
                         continue
-        if not api_surface_declared(section_text(_parse_markdown(supplied[feature["path"]], feature["path"])[1], "API surface")):
+        if api_surface_declares_no_work(_parse_markdown(supplied[feature["path"]], feature["path"])[1]):
             # A draft of the feature's own that a re-specification no longer needs is no obligation: it is not required to be
             # `implemented`, bound to a delivery or lowered by a return. Lint warns (`unused-api-contract`) so a human deletes it.
             unused: set[str] = set()
             for relative in found:
-                text = supplied.get(relative)
+                text = None if current else supplied.get(relative)
                 if text is None:
                     text = self._optional_text(self._safe_path(relative, allow_missing=True))
                 if text is None:

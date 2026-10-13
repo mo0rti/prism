@@ -178,6 +178,52 @@ class AbandonedDevDoneTests(lifecycle.FlowTests):
         (self.root / LIFECYCLE_FEATURE).unlink()
         self.assertEqual(produced, self.service._unlanded_provenance(intent, []), "a page that is missing holds no row")
 
+    def assert_binding_kept_after_abandon(self, produced: dict, original_page: str) -> None:
+        self.abandon("dev-done-1")
+        self.assertEqual([("dev-done-1", "delivery", "F-001", "backend", 1)], self.provenance(), "the page still holds the row: the binding stays")
+        # The original table comes back: the evidence still resolves to the operation that produced it, and its approver stays excluded.
+        self.put_page(original_page)
+        found = self.service._separation_lookup({"kind": "delivery", "item_id": "F-001", "app": "backend", "generation": 1, "row_digest": produced["row_digest"]})
+        self.assertEqual(("match", "dev-done-1", [self.human.participant_id]), (found["status"], found["operation_id"], found["excluded"]))
+        self.assertEqual({self.human.participant_id}, self.service._excluded_approvers("dev-done-1"))
+
+    def test_a_changed_delivery_header_does_not_release_the_binding(self) -> None:
+        self.walk_to_dev()
+        preview = self.interrupt_after_the_page_write("dev-done-1")
+        original = self.read(LIFECYCLE_FEATURE)
+        self.assertIn("| App | Artifact | Contract |", original)
+        self.put_page(original.replace("| App | Artifact | Contract |", "| App | Build | Contract |", 1))
+        self.assert_binding_kept_after_abandon(preview["produces_evidence"][0], original)
+
+    def test_another_delivery_row_for_the_same_app_does_not_release_the_binding(self) -> None:
+        self.walk_to_dev()
+        preview = self.interrupt_after_the_page_write("dev-done-1")
+        original = self.read(LIFECYCLE_FEATURE)
+        row = "| backend | `build:backend#1` | none | Reviewed source record | Review check passed | checked |"
+        self.assertIn(row, original)
+        other = "| backend | `build:backend#2` | none | Another source record | Another check passed | checked |"
+        self.put_page(original.replace(row, f"{other}\n{row}", 1))
+        evidence = read_feature_evidence(lifecycle._parse_markdown(self.read(LIFECYCLE_FEATURE))[1])
+        self.assertEqual(2, len(evidence.delivery))
+        self.assertNotEqual(preview["produces_evidence"][0]["row_digest"], row_digest(evidence.delivery_row("backend").cells), "the first row is not the produced one")
+        self.assert_binding_kept_after_abandon(preview["produces_evidence"][0], original)
+
+    def test_a_repeated_section_or_a_malformed_row_keeps_the_binding_and_a_clean_page_without_the_row_releases(self) -> None:
+        self.walk_to_dev()
+        preview = self.interrupt_after_the_page_write("dev-done-1")
+        intent = json.loads(self.service.store.connection.execute("SELECT intent_json FROM operations WHERE operation_id = 'dev-done-1'").fetchone()[0])
+        original = self.read(LIFECYCLE_FEATURE)
+        row = "| backend | `build:backend#1` | none | Reviewed source record | Review check passed | checked |"
+        for label, page in (
+            ("a repeated section", original + "\n## Delivery evidence\nNone.\n"),
+            ("a short row", original.replace(row, f"| backend | `build:backend#2` |\n{row}", 1)),
+        ):
+            with self.subTest(label):
+                self.put_page(page)
+                self.assertEqual([], self.service._unlanded_provenance(intent, []))
+        self.put_page(original.replace(row + "\n", "", 1))
+        self.assertEqual(preview["produces_evidence"], self.service._unlanded_provenance(intent, []), "a table that parses cleanly and lacks the row releases")
+
     def put_page(self, content: str) -> None:
         (self.root / LIFECYCLE_FEATURE).write_bytes(content.encode("utf-8"))
 

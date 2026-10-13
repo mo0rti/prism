@@ -264,7 +264,8 @@ class QaActionsMixin:
 
         A requirement page of a returned app that is `done` becomes `in-progress`; an API contract that is `implemented`
         becomes `agreed`, and on a route to `specified` every contract that is not a draft becomes `draft`. Only the feature's own
-        contracts change; one it links and another feature owns stays as it is.
+        contracts change; one it links and another feature owns stays as it is. The contracts are judged as they are on disk, before
+        the proposal's changes: a draft the feature has no use for is no obligation, whether or not the proposal writes it.
         """
 
         feature_id = pages["feature_id"]
@@ -276,7 +277,7 @@ class QaActionsMixin:
             frontmatter = bs._parse_markdown(self._read_text(requirement), relative)[0]  # type: ignore[attr-defined]
             if str(frontmatter.get("feature-id", "")).casefold() == feature_id.casefold() and frontmatter.get("app") in named and frontmatter.get("status") == "done":
                 expected[relative] = "in-progress"
-        for contract in sorted(self._own_api_contract_paths({"id": feature_id, "path": pages["path"]}, supplied)):  # type: ignore[attr-defined]
+        for contract in sorted(self._own_api_contract_paths({"id": feature_id, "path": pages["path"]}, supplied, current=True)):  # type: ignore[attr-defined]
             text = self._optional_text(self._safe_path(contract, allow_missing=True))  # type: ignore[attr-defined]
             if text is None:
                 continue

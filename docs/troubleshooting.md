@@ -289,7 +289,7 @@ The codes below are the checks the board runs on a lifecycle proposal. Each reje
 
 | Code (status) | Cause | Fix |
 | --- | --- | --- |
-| `ambiguous_lifecycle_section` (409) | A feature proposal repeats a lifecycle heading or indents it, making the evidence sections ambiguous. | Keep exactly one `## Delivery evidence`, `## QA verification`, `## Release` and `## Evidence history` heading, each in column zero, then preview again. |
+| `ambiguous_lifecycle_section` (409) | A feature proposal repeats a lifecycle heading or indents it, making the evidence sections ambiguous. | Keep exactly one `## Delivery evidence`, `## QA verification`, `## Release`, `## Evidence history` and `## API surface` heading, each in column zero, then preview again. |
 | `lifecycle_evidence_changed` (409) | An intake proposal creates a feature with evidence rows, or a question skill changes a delivery, QA, release or Evidence history section. | Create intake features with empty evidence tables. For a question skill, restore the evidence sections exactly as `read_workspace` returned them; use the lifecycle action to record or archive evidence. |
 
 ### Intake and specification
@@ -501,7 +501,7 @@ The codes below are the checks the board runs on a lifecycle proposal. Each reje
 | `design-tracks-missing`, `design-tracks-invalid`, `design-track-pending`, `design-coverage-incomplete`, `ui-exemption-reason-required`, `technical-track-required` | Settle the tracks with `design-ui-done` and `tech-design-done`; a design page covers every app with a UI; an exemption carries a reason; a technical track is `not-applicable` only without API work. |
 | `missing-technical-design`, `technical-design-feature-mismatch`, `test-strategy-incomplete` | One technical design page per feature, named for it, whose Test strategy names every criterion ID. |
 | `api-contract-required`, `api-contract-not-ready`, `delivered-api-contract` | Create the contract with `tech-design-done`; agree a `draft` before development; `dev-done` marks it `implemented`. |
-| `unused-api-contract` | The feature's API surface declares no API work any more, so its `draft` contract blocks nothing; delete the page. |
+| `unused-api-contract` | The feature's one `## API surface` section declares no API work any more, so its `draft` contract blocks nothing; delete the page. A page with two `## API surface` sections establishes no absence of API work: `ambiguous-lifecycle-section` gates and the contract stays an obligation. |
 | `missing-app-requirements`, `pending-board-review`, `unresolved-open-questions`, `done-app-requirement`, `done-advisory-actions` | Create the requirement pages with `design-handoff`; run `board-review` or skip it with a reason; resolve open questions with the clarify skills; a released feature has `done` requirements and no unchecked advisory actions. |
 | `bug-page-invalid`, `invalid-bug-status-owner`, `bug-close-reason-required`, `duplicate-target-invalid`, `promoted-bug-unreopened`, `bug-feature-missing` | Correct the bug page as `bugs/_FORMAT.md` says; change a bug with `bug-update`, not by hand. |
 | `open-bug-blocks-qa` | Return the app with `qa-fail` citing the bug, or verify, close or (for a non-blocking bug) defer the bug. |

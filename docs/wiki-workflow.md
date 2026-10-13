@@ -261,7 +261,7 @@ otherwise. [Troubleshooting](troubleshooting.md#lint-reports-a-lifecycle-finding
 | `missing-technical-design`, `technical-design-feature-mismatch` | The technical track is `done` and the feature has no technical design page, or it has more than one or one that names another feature. |
 | `test-strategy-incomplete` | The Test strategy of the technical design does not name every acceptance criterion. |
 | `api-contract-required`, `api-contract-not-ready`, `delivered-api-contract` | The technical track is `done` with declared API work and no contract, the contract is still a `draft` from `ready-for-dev` on, or it is not `implemented` after every app delivered. `delivered-api-contract` covers only the contracts that carry the feature's own `feature-id`. |
-| `unused-api-contract` | A warning: a `draft` contract of a feature whose API surface declares no API work (a re-specification dropped it). It blocks nothing; delete the page. |
+| `unused-api-contract` | A warning: a `draft` contract of a feature whose one `## API surface` section declares no API work (a re-specification dropped it). It blocks nothing; delete the page. |
 | `missing-app-requirements`, `pending-board-review`, `unresolved-open-questions` | From `ready-for-dev` on: an app has no requirement page, the advisory review is still `pending`, or a `po`, `designer`, `tech-lead` or `dev` question is open. |
 | `done-app-requirement`, `done-advisory-actions` | A released feature has a requirement page that is not `done`, or its advisory review has unchecked required actions. |
 

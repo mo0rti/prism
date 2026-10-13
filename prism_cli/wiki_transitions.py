@@ -48,6 +48,7 @@ from prism_cli.wiki_model import (
     FeaturePage,
     active_scope,
     api_surface_declared,
+    api_surface_declares_no_work,
     app_stages,
     clean_cell,
     contract_page_citation,
@@ -2442,7 +2443,7 @@ def _contract_owner(page: Any) -> str | None:
 def matching_contract_pages(feature: FeaturePage, wiki_pages: list[Any]) -> list[Any]:
     """The API contract pages that cover a feature: its own, those with its `feature-id`, and those its pages link.
 
-    A `draft` contract of the feature's own does not cover it while its API surface declares no API work.
+    A `draft` contract of the feature's own does not cover it while its one `## API surface` section declares no API work.
     """
 
     path = feature.page.path
@@ -2481,7 +2482,7 @@ def matching_contract_pages(feature: FeaturePage, wiki_pages: list[Any]) -> list
             for page in wiki_pages:
                 if page.path.resolve() == target and page not in matching:
                     matching.append(page)
-    if not api_surface_declared(section_text(feature.page.body, "API surface")):
+    if api_surface_declares_no_work(feature.page.body):
         # A draft of the feature's own that a re-specification no longer needs is no obligation: nothing waits for it, requires it
         # to be `implemented` or binds a delivery to it. Lint warns (`unused-api-contract`) so a human deletes the page.
         feature_id = normalize_feature_id(feature.feature_id)
