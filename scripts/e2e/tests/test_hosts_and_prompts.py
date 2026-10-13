@@ -44,10 +44,10 @@ class ClaudeCommandTests(unittest.TestCase):
         self.assertNotIn("--max-budget-usd", command)
         self.assertFalse([part for part in command if "max" in part.lower() and "token" in part.lower()], "the output limit is never capped")
 
-    def test_haiku_has_no_effort_flag(self):
+    def test_haiku_at_medium(self):
         command = hosts.claude_command(EXE, config.TIERS["smoke"]["claude"], Path("cfg.json"))
-        self.assertIn("claude-haiku-4-5", command)
-        self.assertNotIn("--effort", command)
+        self.assertIn("claude-haiku-5-5", command)
+        self.assertEqual(command[command.index("--effort") + 1], "medium")
 
     def test_mcp_config_reads_the_token_from_the_environment(self):
         text = json.dumps(hosts.claude_mcp_config(8123))

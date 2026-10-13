@@ -1024,6 +1024,7 @@ if (checkConnectedBoard) {
   closedDuringApply.status = "in-design";
   const previewFeatureById = {};
   let dataRefreshEnvelope = beforeEnvelope;
+  let dataRefreshVersion = null;
   let failGraphRefresh = false;
   let staleDataReads = 0;
   let lostOperationId = "";
@@ -1070,7 +1071,8 @@ if (checkConnectedBoard) {
         closeTransitionPreview("The dialog closed while Apply was in flight.");
         dataRefreshEnvelope = closedApplyEnvelope;
       } else dataRefreshEnvelope = afterEnvelope;
-      return reply({ schema_version: 1, operation_id: body.operation_id, state: "applied", applied_paths: ["knowledge/wiki/features/F-apply.md", "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"], recovery_available: false });
+      const resulting = previewFeatureById[body.preview_id] === "F-close" ? { "F-close": { status: "in-design", owner: "designer", app_stages: {} } } : { "F-apply": { status: "ready-for-design", owner: "designer", app_stages: {} } };
+      return reply({ schema_version: 1, operation_id: body.operation_id, state: "applied", applied_paths: ["knowledge/wiki/features/F-apply.md", "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"], resulting_features: resulting, recovery_available: false });
     }
     if (url === "/api/board/v1/operations/" + opListId) {
       if (failNextOperationInspection) { failNextOperationInspection = false; return reply({ error: { code: "temporarily_unavailable", message: "Inspection response was unavailable." } }, 503); }
@@ -1101,7 +1103,7 @@ if (checkConnectedBoard) {
     if (url === "/data.json") {
       if (failGraphRefresh) return reply({ error: { code: "graph_unavailable", message: "Snapshot is not ready." } }, 503);
       if (staleDataReads > 0) { staleDataReads -= 1; return reply({ epoch: "board-epoch", version: 1, envelope: beforeEnvelope }); }
-      const version = dataRefreshEnvelope === closedApplyEnvelope ? 3 : dataRefreshEnvelope === afterEnvelope ? 2 : 1;
+      const version = dataRefreshVersion !== null ? dataRefreshVersion : dataRefreshEnvelope === closedApplyEnvelope ? 3 : dataRefreshEnvelope === afterEnvelope ? 2 : 1;
       return reply({ epoch: "board-epoch", version, envelope: dataRefreshEnvelope });
     }
     return reply({ error: { code: "not_found", message: "Fixture route is unavailable." } }, 404);
@@ -1305,7 +1307,7 @@ if (checkConnectedBoard) {
   assert(calls.filter(item => item.path === "/api/board/v1/apply").length === applyCallsAfterRetry + 1, "the fallback case did not submit exactly one apply");
   for (let index = 0; index < 5; index += 1) fireRetry();
   assert(JSON.stringify(retryDelays()) === "[150,300,600,900,1200]" && state.boardViewStale && state.liveRefreshError && closeStage() === "ready-for-design", "exhausted retries did not mark the view stale: " + JSON.stringify(retryDelays()));
-  assert(waitingPreview.operationMessage.includes("view stale") && waitingPreview.operationMessage.includes("live update stream") && !waitingPreview.operationMessage.includes("refreshed and validated") && state.pendingAppliedStage && state.pendingAppliedStage.featureId === "F-close", "exhausted retries did not say the board is waiting for the event stream: " + waitingPreview.operationMessage);
+  assert(waitingPreview.operationMessage.includes("view stale") && waitingPreview.operationMessage.includes("live update stream") && !waitingPreview.operationMessage.includes("refreshed and validated") && state.pendingAppliedStage && state.pendingAppliedStage.expectation.features[0].id === "F-close", "exhausted retries did not say the board is waiting for the event stream: " + waitingPreview.operationMessage);
   assert(calls.filter(item => item.path === "/api/board/v1/apply").length === applyCallsAfterRetry + 1, "exhausted retries resubmitted the apply");
   staleDataReads = 0;
   adoptData(beforeEnvelope);
@@ -1313,22 +1315,86 @@ if (checkConnectedBoard) {
   adoptData(closedApplyEnvelope);
   assert(waitingPreview.operationMessage.includes("refreshed and validated") && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && closeStage() === "in-design", "the event stream snapshot did not settle the waiting state");
 
-  // A minimum-of-stages action has no certain drop column: recovering a partial dev-done leaves the feature at any status the
-  // action's targets allow, so the refreshed view settles on it instead of waiting for a column that may never come.
+  // A minimum-of-stages action has no certain drop column, so the view is validated against what the receipt of the operation itself
+  // reports: the status, owner and app stages of each feature page it wrote. A snapshot that predates the writes is never validated,
+  // and a partial dev-done that leaves the aggregate status where it was validates once its app stage is visible.
   assert(actionDropStage("dev-done") === "" && actionDropStage("qa-pass") === "" && actionDropStage("qa-verify") === "" && actionDropStage("release-done") === "", "a minimum-of-stages action kept a drop column");
   assert(actionDropStage("po-handoff") === "ready-for-design", "a concrete-target action lost its drop column");
-  const recoveredExpectation = appliedStageExpectation({ kind: "connected", featureId: "F-close", action: "dev-done" });
-  assert(recoveredExpectation && recoveredExpectation.featureId === "F-close" && ["in-dev", "ready-for-qa"].every(status => recoveredExpectation.statuses.includes(status)) && !recoveredExpectation.statuses.includes("released"), "the recovery of dev-done did not expect any status of its targets: " + JSON.stringify(recoveredExpectation));
-  assert(appliedStageExpectation({ kind: "connected", featureId: "F-close", action: "po-handoff" }).statuses.join() === "ready-for-design", "a concrete-target action did not expect its drop column");
-  const partialEnvelope = JSON.parse(JSON.stringify(beforeEnvelope));
-  partialEnvelope.facts.nodes.find(node => node.id === "F-close").status = "in-dev";
-  adoptData(beforeEnvelope);
+  const cloneEnvelope = envelope => JSON.parse(JSON.stringify(envelope));
+  const withClose = (envelope, fields) => { const copy = cloneEnvelope(envelope); Object.assign(copy.facts.nodes.find(node => node.id === "F-close"), fields); return copy; };
+  const stagesOf = (backend, worker) => [{ app: "backend", stage: backend }, { app: "worker", stage: worker }];
+  assert(appliedStageExpectation({ kind: "connected", featureId: "F-close", action: "dev-done", receipt: { state: "applied" } }) === null, "a receipt without the operation's resulting features produced an expectation");
+  const releaseReceipt = { state: "applied", resulting_features: { "F-close": { status: "released", owner: "none", app_stages: { backend: "released", worker: "released" } } } };
+  const releaseExpectation = appliedStageExpectation({ kind: "connected", featureId: "F-close", action: "release-done", receipt: releaseReceipt });
+  assert(releaseExpectation && releaseExpectation.features.length === 1 && releaseExpectation.features[0].id === "F-close" && releaseExpectation.features[0].status === "released", "the receipt of release-done did not give the released feature as the expectation: " + JSON.stringify(releaseExpectation));
+  const staleReleaseEnvelope = withClose(beforeEnvelope, { status: "ready-for-release", owner: "release", app_stages: stagesOf("ready-for-release", "ready-for-release") });
+  const releasedEnvelope = withClose(beforeEnvelope, { status: "released", owner: "none", app_stages: stagesOf("released", "released") });
+  assert(!envelopeShowsStage(staleReleaseEnvelope, releaseExpectation), "a release-done refresh still at ready-for-release was validated");
+  assert(envelopeShowsStage(releasedEnvelope, releaseExpectation), "a release-done refresh that shows the released feature was not validated");
+  assert(!envelopeShowsStage(withClose(releasedEnvelope, { app_stages: stagesOf("released", "ready-for-release") }), releaseExpectation), "a refresh that shows the status but not every app stage was validated");
+
+  const beforeDevEnvelope = withClose(beforeEnvelope, { status: "in-dev", owner: "dev", app_stages: stagesOf("in-dev", "in-dev") });
+  const partialEnvelope = withClose(beforeEnvelope, { status: "in-dev", owner: "dev", app_stages: stagesOf("ready-for-qa", "in-dev") });
+  const partialReceipt = { state: "applied", resulting_features: { "F-close": { status: "in-dev", owner: "dev", app_stages: { backend: "ready-for-qa", worker: "in-dev" } } } };
+  const partialExpectation = appliedStageExpectation({ kind: "connected", featureId: "F-close", action: "dev-done", receipt: partialReceipt });
+  assert(partialExpectation && partialExpectation.features[0].stages.map(item => item.join(":")).join() === "backend:ready-for-qa,worker:in-dev", "the receipt of a partial dev-done did not give its app stages: " + JSON.stringify(partialExpectation));
+  assert(!envelopeShowsStage(beforeDevEnvelope, partialExpectation) && envelopeShowsStage(partialEnvelope, partialExpectation), "a partial dev-done was matched on the aggregate status alone");
+  const partialPreview = () => ({ kind: "connected", featureId: "F-close", action: "dev-done", receipt: partialReceipt, operationState: "applied", operationMessage: "" });
+
+  // A stale snapshot of the partial dev-done (its status is already in-dev) is retried, then waits for the live stream; the fresh one settles it.
+  adoptData(beforeDevEnvelope);
+  state.liveVersion = 1;
+  dataRefreshEnvelope = beforeDevEnvelope;
+  retryTimers.length = 0;
+  const staleDevPreview = partialPreview();
+  refreshBoardGraphAfterApply(staleDevPreview);
+  assert(staleDevPreview.operationMessage.includes("Refreshing and validating") && !staleDevPreview.operationMessage.includes("refreshed and validated") && !state.boardViewStale && JSON.stringify(retryDelays()) === "[150]", "a stale snapshot of a partial dev-done was validated or not retried: " + staleDevPreview.operationMessage);
+  for (let index = 0; index < 5; index += 1) fireRetry();
+  assert(state.boardViewStale && state.pendingAppliedStage && staleDevPreview.operationMessage.includes("view stale") && !staleDevPreview.operationMessage.includes("refreshed and validated"), "exhausted retries of a partial dev-done did not leave the view stale: " + staleDevPreview.operationMessage);
+  adoptData(beforeDevEnvelope);
+  assert(state.boardViewStale && state.pendingAppliedStage && staleDevPreview.operationMessage.includes("view stale"), "an older snapshot settled a partial dev-done");
+  adoptData(partialEnvelope);
+  assert(staleDevPreview.operationMessage.includes("refreshed and validated") && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && closeStage() === "in-dev", "the snapshot that shows the partial dev-done did not settle it");
+
+  // The fresh snapshot validates at once although the aggregate status did not change.
+  adoptData(beforeDevEnvelope);
   state.liveVersion = 1;
   dataRefreshEnvelope = partialEnvelope;
   retryTimers.length = 0;
-  const recoveredPreview = { kind: "connected", featureId: "F-close", action: "dev-done", receipt: { state: "applied" }, operationState: "applied", operationMessage: "" };
+  const recoveredPreview = partialPreview();
   refreshBoardGraphAfterApply(recoveredPreview);
   assert(recoveredPreview.operationMessage.includes("refreshed and validated") && closeStage() === "in-dev" && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && retryDelays().length === 0, "the recovery of a partial dev-done ended in a stale view: " + recoveredPreview.operationMessage);
+  assert(state.data.facts.nodes.find(node => node.id === "F-close").app_stages.map(item => item.stage).join() === "ready-for-qa,in-dev", "the validated refresh did not adopt the partial dev-done's app stages");
+
+  // A later change supersedes the wait. A graph version newer than the one current when the operation applied is the truth even when
+  // it no longer shows the operation's result: another actor changed the feature, so the view is current and not stale.
+  const otherEnvelope = withClose(beforeEnvelope, { status: "ready-for-qa", owner: "qa", app_stages: stagesOf("ready-for-qa", "ready-for-qa") });
+  assert(!envelopeShowsStage(otherEnvelope, partialExpectation), "the later state was expected to differ from the applied result");
+  adoptData(beforeDevEnvelope);
+  state.liveEpoch = "board-epoch";
+  state.liveVersion = 1;
+  dataRefreshEnvelope = beforeDevEnvelope;
+  retryTimers.length = 0;
+  const supersededLive = partialPreview();
+  refreshBoardGraphAfterApply(supersededLive);
+  for (let index = 0; index < 5; index += 1) fireRetry();
+  assert(state.boardViewStale && state.pendingAppliedStage && state.pendingAppliedStage.baseVersion === 1 && supersededLive.operationMessage.includes("view stale"), "a stale snapshot did not keep waiting: " + supersededLive.operationMessage);
+  adoptData(otherEnvelope, 1);
+  assert(state.boardViewStale && state.pendingAppliedStage && supersededLive.operationMessage.includes("view stale"), "a snapshot of the same version ended the wait");
+  adoptData(otherEnvelope, 2);
+  assert(state.pendingAppliedStage === null && !state.boardViewStale && !state.liveRefreshError && closeStage() === "ready-for-qa" && supersededLive.operationMessage.includes("a later change") && !supersededLive.operationMessage.includes("stale") && !supersededLive.operationMessage.includes("validated"), "a newer envelope with a different state did not end the wait: " + supersededLive.operationMessage);
+
+  // The same on the refresh after the apply: the first newer snapshot is adopted without retries and without a stale label.
+  adoptData(beforeDevEnvelope);
+  state.liveEpoch = "board-epoch";
+  state.liveVersion = 1;
+  dataRefreshEnvelope = otherEnvelope;
+  dataRefreshVersion = 2;
+  retryTimers.length = 0;
+  const supersededRefresh = partialPreview();
+  refreshBoardGraphAfterApply(supersededRefresh);
+  assert(supersededRefresh.operationMessage.includes("a later change") && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && retryDelays().length === 0 && state.liveVersion === 2 && closeStage() === "ready-for-qa", "a newer snapshot with a different state was not adopted as current: " + supersededRefresh.operationMessage);
+  dataRefreshVersion = null;
   dataRefreshEnvelope = beforeEnvelope;
   globalThis.setTimeout = priorSetTimeout;
   staleDataReads = 0;
@@ -1486,7 +1552,7 @@ if (checkBoardDefects) {
   let sessionStatus = 200;
   let dataStatus = 200;
   let previewCount = 0;
-  const receiptFor = operationId => ({ schema_version: 1, operation_id: operationId, state: "applied", action: "po-handoff", feature_id: "F-live", applied_paths: ["knowledge/wiki/features/F-live.md", "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"], recovery_available: false, actor });
+  const receiptFor = operationId => ({ schema_version: 1, operation_id: operationId, state: "applied", action: "po-handoff", feature_id: "F-live", applied_paths: ["knowledge/wiki/features/F-live.md", "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"], resulting_features: { "F-live": { status: "ready-for-design", owner: "designer", app_stages: {} } }, recovery_available: false, actor });
   globalThis.fetch = (path, options = {}) => {
     const url = String(path);
     calls.push({ path: url, options });

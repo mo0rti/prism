@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="journey.py",
         description="Run the Prism lifecycle journey with real agent hosts and a headless browser, and write a comparable report.",
     )
-    parser.add_argument("--tier", required=True, choices=sorted(config.TIERS), help="smoke: Claude Haiku 4.5 and GPT-6 Luna. full: Claude Sonnet 5.5 and GPT-6.1 Sol, both at medium effort.")
+    parser.add_argument("--tier", required=True, choices=sorted(config.TIERS), help="smoke: Claude Haiku 5.5 and GPT-6 Luna. full: Claude Sonnet 5.5 and GPT-6.1 Sol. All at medium effort.")
     parser.add_argument("--out", required=True, type=Path, help="Folder for the report, transcripts and logs. It must not hold an earlier report.")
     parser.add_argument("--steps", help=f"Comma-separated subset of: {', '.join(config.STEP_IDS)}. Earlier state is seeded from recorded fixtures. Default: every step.")
     parser.add_argument("--hosts", default=",".join(config.HOSTS), help="Comma-separated hosts to use (claude, codex). A step whose fixed host is not listed runs on the first listed host.")

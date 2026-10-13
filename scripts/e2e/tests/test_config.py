@@ -133,7 +133,8 @@ class TableTests(unittest.TestCase):
         self.assertIsNone(config.host_for(config.STEPS_BY_ID["dev-start"], ["claude"]))
 
     def test_tiers_name_explicit_models_for_both_hosts(self):
-        self.assertEqual(config.TIERS["smoke"]["claude"].model, "claude-haiku-4-5")
+        self.assertEqual(config.TIERS["smoke"]["claude"].model, "claude-haiku-5-5")
+        self.assertEqual(config.TIERS["smoke"]["claude"].effort, "medium")
         self.assertEqual(config.TIERS["smoke"]["codex"].model, "gpt-6-luna")
         self.assertEqual(config.TIERS["full"]["claude"], config.HostModel("claude-sonnet-5-5", "medium"))
         self.assertEqual(config.TIERS["full"]["codex"], config.HostModel("gpt-6.1-sol", "medium"))

@@ -2280,13 +2280,13 @@ def app_stages_text(
     apps: Iterable[str],
     body: str,
     model: WorkspaceModel | None,
-    feature_id: str = "",
-    participation: "ReleaseParticipation | None" = None,
+    feature_id: str,
+    participation: "ReleaseParticipation",
 ) -> str:
     """The `App stages` cell of the status board (CONTRACTS 8.2): `app: stage; ...` for the apps in the scope, or `—` before `in-dev`.
 
-    `participation` is the release records' view of which apps shipped `feature_id`; without it a retired app is judged by the
-    feature page alone.
+    `participation` is the release records' view of which apps shipped `feature_id`. A caller always supplies it, so a retired app is
+    never judged by the feature page alone by accident.
     """
 
     if status_rank(status) < status_rank("in-dev"):
@@ -2342,7 +2342,7 @@ def release_participants(
     feature_id: str,
     body: str,
     evidence: FeatureEvidence,
-    participation: ReleaseParticipation | None,
+    participation: ReleaseParticipation,
 ) -> frozenset[str]:
     """The retired apps of a `released` feature that took part in its release: the one rule behind `stage_scope`.
 
@@ -2357,7 +2357,7 @@ def release_participants(
     took_part = {app for app in retired if evidence.names_app(app)}
     unresolved = [app for app in retired if app not in took_part]
     if unresolved:
-        shipped = participation.apps(feature_id) if participation is not None else frozenset()
+        shipped = participation.apps(feature_id)
         archived = _archived_apps(parse_evidence_history(body))
         took_part.update(app for app in unresolved if app in shipped or app in archived)
     return frozenset(took_part)

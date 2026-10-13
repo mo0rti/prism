@@ -61,7 +61,7 @@ from prism_cli.wiki_index import (
     render_index_lines,
 )
 from prism_cli.wiki_bugs import FIX_COLUMNS, bug_listing_digest
-from prism_cli.wiki_releases import release_listing_digest
+from prism_cli.wiki_releases import release_listing_digest, release_participation
 from prism_cli.wiki_incidents import is_incident_path
 from prism_cli.wiki_log import VERIFY_OPERATION, append_log_entry, format_verification_entry
 from prism_cli.wiki_operations import (
@@ -74,6 +74,7 @@ from prism_cli.wiki_operations import (
     design_tracks_text,
     format_bug_row,
     format_operation_row,
+    parse_app_stages_cell,
     row_kind,
     table_text,
 )
@@ -7715,6 +7716,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                 "action": intent.get("action"),
                 "feature_id": intent.get("feature_id"),
                 "applied_paths": [write["path"] for write in intent.get("writes", [])],
+                "resulting_features": self._resulting_features(intent),
                 "moved_folders": moved,
                 "applied_at": now,
                 "recovery_available": False,
@@ -7729,6 +7731,31 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
                     (operation_id, actor.participant_id, _json({"type": "operation-applied", "receipt": receipt}), now),
                 )
             return receipt
+
+    def _resulting_features(self, intent: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+        """The status, owner and app stages each feature page of an applied operation shows, keyed by feature ID.
+
+        These are the values the graph reports for the feature once the writes are visible. The board page compares them with a
+        refreshed graph and calls the view current only when it shows them, so a snapshot that predates the writes is never
+        validated. An app stage can change while the status stays the same (a partial `dev-done`), so the stages are part of it.
+        """
+
+        participation = release_participation(self.root / "knowledge" / "wiki")
+        result: dict[str, dict[str, Any]] = {}
+        for write in intent.get("writes", []):
+            relative, after = str(write.get("path", "")), write.get("after")
+            if write.get("role") != "canonical" or not relative.startswith("knowledge/wiki/features/") or not isinstance(after, str):
+                continue
+            try:
+                frontmatter, body = _parse_markdown(after, relative)
+            except (BoardError, ValueError, yaml.YAMLError):
+                continue
+            feature_id, status, owner = frontmatter.get("id"), frontmatter.get("status"), frontmatter.get("owner")
+            if not all(isinstance(value, str) and value.strip() for value in (feature_id, status, owner)):
+                continue
+            cell = app_stages_text(status.strip(), _scope_of(frontmatter) or [], body, self._model, feature_id.strip(), participation)
+            result[feature_id.strip()] = {"status": status.strip(), "owner": owner.strip(), "app_stages": parse_app_stages_cell(cell)}
+        return result
 
     def _abandon_operation(self, actor: Actor, operation_id: str, intent: Mapping[str, Any]) -> dict[str, Any]:
         """Close an operation that can no longer be rolled forward, recording what was and was not written.
@@ -8505,10 +8532,10 @@ def _validate_no_placeholders(body: str, relative: str) -> None:
 
 def _status_row(
     frontmatter: Mapping[str, Any],
-    body: str = "",
-    model: WorkspaceModel | None = None,
-    open_bugs: str = "—",
-    participation: ReleaseParticipation | None = None,
+    body: str,
+    model: WorkspaceModel | None,
+    open_bugs: str,
+    participation: ReleaseParticipation,
 ) -> dict[str, str]:
     """The status-board row of a feature page. `open_bugs` is the `Open bugs` cell, which the bug pages decide (CONTRACTS 8.2).
 

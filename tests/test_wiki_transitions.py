@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from prism_cli.wiki_model import app_stages_text, parse_advisory_required_actions, parse_delivery_rows, read_feature_pages
+from prism_cli.wiki_releases import release_participation
 from prism_cli.workspace import inspect_workspace
 from prism_cli.wiki_graph import build_graph
 from prism_cli.cli import build_parser
@@ -168,7 +169,7 @@ class WikiTransitionTests(unittest.TestCase):
         path.write_text(ensure_tracks(body, status), encoding="utf-8")
         index_path = self.wiki_root / "status-board.md"
         lines = index_path.read_text(encoding="utf-8").splitlines()
-        stages = app_stages_text(status, [platforms], path.read_text(encoding="utf-8"), inspect_workspace(self.root).model)
+        stages = app_stages_text(status, [platforms], path.read_text(encoding="utf-8"), inspect_workspace(self.root).model, "F-001", release_participation(self.wiki_root))
         tracks = design_tracks_text(read_feature_pages(self.wiki_root)[0].page.frontmatter)
         lines = [
             (

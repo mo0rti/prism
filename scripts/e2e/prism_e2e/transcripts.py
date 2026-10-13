@@ -297,7 +297,7 @@ def codex_rollout_model_effort(thread_id: str | None, home: Path | None = None) 
 
 
 def model_matches(expected: str, recorded: Iterable[str]) -> bool:
-    """True when every recorded model is the expected one or a dated build of it (``claude-haiku-4-5-20251001``)."""
+    """True when every recorded model is the expected one or a dated build of it (``claude-haiku-5-5-20260601``)."""
 
     recorded = [model for model in recorded if model]
     if not recorded:
@@ -306,7 +306,7 @@ def model_matches(expected: str, recorded: Iterable[str]) -> bool:
 
 
 def collapse_models(models: Iterable[str]) -> list[str]:
-    """Sorted model IDs without an alias that a dated build in the same set already names (``claude-haiku-4-5`` next to ``claude-haiku-4-5-20251001``)."""
+    """Sorted model IDs without an alias that a dated build in the same set already names (``claude-haiku-5-5`` next to ``claude-haiku-5-5-20260601``)."""
 
     unique = sorted({model for model in models if model})
     return [model for model in unique if not any(other != model and re.fullmatch(re.escape(model) + r"-\d{8}", other) for other in unique)]

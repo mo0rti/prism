@@ -21,7 +21,7 @@ from prism_cli.workflow_assets import list_skills
 from prism_cli.workflow_assets import _load as load_workflow_asset
 from tests import app_model_baseline
 from tests import real_temp  # noqa: F401
-from prism_cli.wiki_model import app_stages_text
+from prism_cli.wiki_model import ReleaseParticipation, app_stages_text
 from tests.design_tracks import ensure_tracks
 from tests.wiki_files import evidence_tables, write_index, write_status_board
 from tests.test_app_model_workspace import declare_two_apps, install_workflow
@@ -398,7 +398,7 @@ class RenamedFieldTests(WikiWorkspaceCase):
         self.write_requirement("partner-android", "done")
         text = released.read_text(encoding="utf-8")
         both = ["customer-android", "partner-android"]
-        self.assertEqual("customer-android: released; partner-android: released", app_stages_text("released", both, text + "\n" + evidence_tables(both), None))
+        self.assertEqual("customer-android: released; partner-android: released", app_stages_text("released", both, text + "\n" + evidence_tables(both), None, "F-001", ReleaseParticipation(lambda: [])))
 
         released.write_text(text + "\n" + evidence_tables(both), encoding="utf-8")
         write_status_board(self.root, "| F-001 | Payout summary | released | none | not-needed |\n")

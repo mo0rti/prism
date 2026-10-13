@@ -39,7 +39,7 @@ Every launch sets the model and effort explicitly. The report reads what actuall
 
 | Tier | Claude Code | Codex | Use |
 | --- | --- | --- | --- |
-| `smoke` | `claude-haiku-4-5` (no effort setting; its session records carry none) | `gpt-6-luna`, medium | A cheap check after each change. Weaker models expose guidance regressions first, so a failed step is a finding, not noise. |
+| `smoke` | `claude-haiku-5-5`, medium | `gpt-6-luna`, medium | A cheap check after each change. Weaker models expose guidance regressions first, so a failed step is a finding, not noise. |
 | `full` | `claude-sonnet-5-5`, medium | `gpt-6.1-sol`, medium | Before a release. |
 
 Cost comes from the hosts' own reports. A gated agent step is one host run (the preview); an ungated one is two (preview and apply). The journey has 20 agent steps, ten on each host: 14 gated steps with one host run each and six ungated steps with two, so 26 host runs, plus the browser. The report records the actual tokens, cost and time of every step and a total for each host. A host run takes 1 to 6 minutes.

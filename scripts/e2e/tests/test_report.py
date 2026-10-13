@@ -16,8 +16,8 @@ USAGE_B = {"input_tokens": 1, "cached_input_tokens": 2, "cache_creation_tokens":
 
 
 def sample_results():
-    one = report.StepResult(step="po-intake", kind="agent", host="claude", status="passed", expected_model="claude-haiku-4-5")
-    one.models, one.efforts = ["claude-haiku-4-5-20251001"], []
+    one = report.StepResult(step="po-intake", kind="agent", host="claude", status="passed", expected_model="claude-haiku-5-5", expected_effort="medium")
+    one.models, one.efforts = ["claude-haiku-5-5-20260601"], ["medium"]
     one.preview_attempts, one.first_attempt_success = 1, True
     one.apply_state, one.elapsed_s = "applied", 40.0
     one.add_usage(USAGE_A, 0.25)
@@ -75,7 +75,7 @@ class RenderTests(unittest.TestCase):
 
     def test_markdown_has_the_per_step_table_failures_seeds_and_totals(self):
         text = report.render_markdown(self.build())
-        self.assertIn("| 1 | po-intake | claude | claude-haiku-4-5-20251001 |", text)
+        self.assertIn("| 1 | po-intake | claude | claude-haiku-5-5-20260601 |", text)
         self.assertIn("none set", text, "an agent step with no effort setting says so")
         self.assertIn("missing_read_revisions, clarify_scope_exceeded", text)
         self.assertIn("check `stage_and_owner` failed: expected raw/po, found raw/designer", text)

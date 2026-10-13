@@ -153,6 +153,60 @@ class StagesAndReturnsTests(BrowserCase):
             run.effect("Apps view: backend lists its standalone bug and worker its open incident although no feature targets either")
             self.assertEqual([], self.page_errors)
 
+    def test_scenario_l_an_app_stage_line_never_breaks_inside_the_app_id_or_the_stage(self) -> None:
+        with self.scenario("L-app-stage-narrow") as run:
+            page = self.page
+            self.start_trace()
+            with two_app_workspace("in-dev") as root:
+                address = self.export(root, "narrow-in-dev")
+            page.goto(address)
+            board = BoardPage(page, address)
+            board.open_board()
+            card = board.card_in("in-dev", "F-001")
+            expect(card).to_have_count(1)
+            lines = """elements => elements.map(element => {
+                const style = getComputedStyle(element);
+                const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
+                return Math.round(element.getBoundingClientRect().height / lineHeight);
+            })"""
+
+            def assert_whole_words(rows, label: str) -> None:
+                words = rows.locator(".as-name, .as-stage")
+                self.assertEqual([1] * words.count(), words.evaluate_all(lines), f"{label}: an app ID or a stage wrapped inside itself")
+
+            # 1. A card narrower than `backend · ready-for-qa`: the line wraps at the separator, and no word is split.
+            page.add_style_tag(content=".card { width: 104px !important; max-width: 104px !important; }")
+            rows = card.locator("[data-app-stages] .app-stage")
+            expect(rows).to_have_count(2)
+            assert_whole_words(rows, "card")
+            tops = rows.first.evaluate("row => [...row.querySelectorAll('.as-name, .as-stage')].map(item => Math.round(item.getBoundingClientRect().top))")
+            self.assertGreater(tops[1], tops[0], "the stage moves to its own line when the card is too narrow for both")
+            run.screenshot(page, "narrow-card-app-stages")
+
+            # 2. A card narrower than a word: the value is cut with an ellipsis and its full text stays in a title.
+            page.add_style_tag(content=".card { width: 60px !important; max-width: 60px !important; }")
+            assert_whole_words(rows, "narrower card")
+            cut = rows.first.locator(".as-stage")
+            self.assertEqual("ellipsis", cut.evaluate("item => getComputedStyle(item).textOverflow"))
+            self.assertEqual("ready-for-qa", cut.get_attribute("title"))
+            self.assertEqual("backend", rows.first.locator(".as-name").get_attribute("title"))
+            self.assertTrue(cut.evaluate("item => item.scrollWidth > item.clientWidth"), "the stage is wider than the card, so it is cut")
+
+            # 3. The panel keeps the same rule at a phone width, and the Apps view chip keeps its stage label on one line.
+            page.set_viewport_size({"width": 320, "height": 800})
+            card.locator(".ctitle").click()
+            panel_rows = page.locator("#panel [data-panel-app-stages] .app-stage")
+            expect(panel_rows).to_have_count(2)
+            assert_whole_words(panel_rows, "panel")
+            page.locator('.views button[data-view="app"]').click()
+            expect(page.locator("#app-view")).to_have_css("opacity", "1")
+            page.add_style_tag(content=".lane { width: 150px !important; }")
+            chips = page.locator("#app-view .fchip .req")
+            self.assertGreater(chips.count(), 0)
+            self.assertEqual([1] * chips.count(), chips.evaluate_all(lines), "an Apps view chip label wrapped inside itself")
+            run.effect("a narrow card, the panel at a phone width and an Apps view chip keep each app ID and stage on one line")
+            self.assertEqual([], self.page_errors)
+
     def test_scenario_l_a_released_feature_keeps_a_retired_app_with_its_stage(self) -> None:
         with self.scenario("L-released-feature-retired-app") as run:
             page = self.page

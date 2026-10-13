@@ -20,6 +20,7 @@ from prism_cli.board_service import BoardError, BoardService, _parse_markdown
 from prism_cli.roles import RolePredicate, required_roles
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_model import (
+    ReleaseParticipation,
     _split_table_row,
     api_surface_declared,
     app_stage,
@@ -520,8 +521,8 @@ class StageTests(unittest.TestCase):
 
     def test_the_status_board_cell(self) -> None:
         body = body_of([f"AC-1 [backend, worker] {TEXT_ONE}"], delivery=[delivery_row("backend")])
-        self.assertEqual("—", app_stages_text("in-design", ["backend", "worker"], body, None))
-        self.assertEqual("backend: ready-for-qa; worker: in-dev", app_stages_text("in-dev", ["backend", "worker"], body, None))
+        self.assertEqual("—", app_stages_text("in-design", ["backend", "worker"], body, None, "F-001", ReleaseParticipation(lambda: [])))
+        self.assertEqual("backend: ready-for-qa; worker: in-dev", app_stages_text("in-dev", ["backend", "worker"], body, None, "F-001", ReleaseParticipation(lambda: [])))
 
 
 class RegistryTests(unittest.TestCase):
@@ -1187,6 +1188,35 @@ class FlowTests(_Workspace):
             ],
         )
         self.human_action("dev-start")
+
+    def graph_node(self) -> dict:
+        return next(item for item in build_graph(self.root)["facts"]["nodes"] if item["id"] == "F-001")
+
+    def test_the_receipt_of_an_applied_operation_reports_what_the_graph_shows_for_its_feature(self) -> None:
+        # The board page validates a refreshed view against this: a snapshot that predates the writes does not show it.
+        specified = _set_feature_stage(self.read(FEATURE), "specified", "po", self.service)
+        self.apply_skill("po-specify", [{"path": FEATURE, "content": specified}])
+        handoff = self.service.preview_transition(self.human, "F-001", "po-handoff", {"semantic_review_acknowledged": True})
+        receipt = apply_preview(self.service, self.human, handoff, str(uuid4()))
+        self.assertEqual("applied", receipt["state"], receipt)
+        node = self.graph_node()
+        self.assertEqual("ready-for-design", node["status"])
+        self.assertEqual({"F-001": {"status": node["status"], "owner": node["owner"], "app_stages": {}}}, receipt["resulting_features"])
+        self.assertNotIn("app_stages", node)
+
+    def test_a_partial_dev_done_reports_its_app_stage_while_the_status_stays_in_dev(self) -> None:
+        self.walk_to_dev()
+        before = self.graph_node()
+        self.assertEqual("in-dev", before["status"])
+        preview = self.skill("dev-done", self.deliver("backend", "in-dev", "dev"))
+        receipt = apply_preview(self.service, self.agent, preview, str(uuid4()), approver=self.human)
+        self.assertEqual("applied", receipt["state"], receipt)
+        expected = {"status": "in-dev", "owner": "dev", "app_stages": {"backend": "ready-for-qa", "worker": "in-dev"}}
+        self.assertEqual({"F-001": expected}, receipt["resulting_features"])
+        node = self.graph_node()
+        self.assertEqual(before["status"], node["status"], "the aggregate status did not change")
+        self.assertEqual(expected, {"status": node["status"], "owner": node["owner"], "app_stages": {item["app"]: item["stage"] for item in node["app_stages"]}})
+        self.assertNotEqual(before["app_stages"], node["app_stages"], "the app stage is what tells a refreshed view from a stale one")
 
     def test_the_scope_edit_of_f26_removes_a_retired_app_and_archives_its_evidence(self) -> None:
         self.walk_to_dev()

@@ -4,6 +4,16 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- **The journey's smoke tier runs Claude Haiku 5.5** (`claude-haiku-5-5`) at medium effort, like the other hosts: `claude.exe` lists the effort capability for it, with medium as its default. The report still accepts a dated build of the model.
+- **`app_stages_text` takes the release participation as a required argument**, with `_status_row` of the board service. A caller can no longer judge a released feature's retired apps from the feature page alone by leaving it out; every caller already passed it.
+
+### Fixed
+
+- **An app-stage line never breaks inside an app ID or a stage.** On a narrow card, `backend · ready-for-release` wrapped as `backen` / `d`. The line now wraps only between the app and its stage, a value wider than the row is cut with an ellipsis and keeps its full text in a title, and the Apps view chip keeps its stage label on one line.
+- **The applied-view check confirms the operation's own result.** After an apply the page accepted any status among a minimum-of-stages action's targets, so a stale refresh could be labelled validated (`release-done` still at `ready-for-release`). The applied receipt now carries `resulting_features`, the status, owner and app stages of each feature page the operation wrote, and the page validates a refresh only when its graph shows them. A partial `dev-done` that leaves the feature `in-dev` still validates once its app stage is visible. A graph version newer than the one current when the operation applied ends the wait and is shown as current, because another change replaced the result.
+
 ## [0.7.2]
 
 Release date: 2026-10-13

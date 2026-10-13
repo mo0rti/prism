@@ -39,11 +39,11 @@ class HostModel:
 
 # Exact model IDs and effort values come from `claude.exe --help` (effort: low,
 # medium, high, xhigh, max) and `codex debug models` (slugs gpt-6-luna and
-# gpt-6.1-sol; effort low to max). Claude Haiku 4.5 has no effort setting: its
-# session records carry none.
+# gpt-6.1-sol; effort low to max). Claude Haiku 5.5 takes the effort flag: the
+# catalog of claude.exe lists the effort capability for it, with medium as its default.
 TIERS: dict[str, dict[str, HostModel]] = {
     "smoke": {
-        "claude": HostModel("claude-haiku-4-5", None),
+        "claude": HostModel("claude-haiku-5-5", "medium"),
         "codex": HostModel("gpt-6-luna", "medium"),
     },
     "full": {

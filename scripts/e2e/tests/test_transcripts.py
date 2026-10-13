@@ -39,7 +39,7 @@ def claude_stream():
             "type": "result", "subtype": "success", "is_error": False, "result": f"Preview {PREVIEW_ID} is ready.", "total_cost_usd": 0.5,
             "usage": {"input_tokens": 10, "output_tokens": 20, "cache_read_input_tokens": 300, "cache_creation_input_tokens": 40,
                       "output_tokens_details": {"thinking_tokens": 7}},
-            "modelUsage": {"claude-sonnet-5-5": {}, "claude-haiku-4-5": {}},
+            "modelUsage": {"claude-sonnet-5-5": {}, "claude-haiku-5-5": {}},
         },
     )
 
@@ -71,7 +71,7 @@ class ClaudeTests(unittest.TestCase):
     def test_models_come_from_messages_and_billed_models_stay_separate(self):
         parsed = t.parse_claude_stream(claude_stream())
         self.assertEqual(parsed.models, {"claude-sonnet-5-5"})
-        self.assertEqual(parsed.billed_models, ["claude-haiku-4-5", "claude-sonnet-5-5"])
+        self.assertEqual(parsed.billed_models, ["claude-haiku-5-5", "claude-sonnet-5-5"])
         self.assertEqual(parsed.session_id, "sess-1")
 
     def test_usage_and_cost_are_the_hosts_own_report(self):
@@ -143,7 +143,7 @@ class SessionRecordTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             base = Path(folder)
             (base / "projects" / "p").mkdir(parents=True)
-            record = {"type": "assistant", "message": {"model": "claude-haiku-4-5-20251001"}}
+            record = {"type": "assistant", "message": {"model": "claude-haiku-5-5-20260601"}}
             (base / "projects" / "p" / "s.jsonl").write_text(json.dumps(record), encoding="utf-8")
             self.assertEqual(t.claude_session_efforts("s", base), set())
 
@@ -162,22 +162,22 @@ class SessionRecordTests(unittest.TestCase):
 
 class ModelMatchTests(unittest.TestCase):
     def test_exact_and_dated_builds_match(self):
-        self.assertTrue(t.model_matches("claude-haiku-4-5", ["claude-haiku-4-5-20251001", "claude-haiku-4-5"]))
+        self.assertTrue(t.model_matches("claude-haiku-5-5", ["claude-haiku-5-5-20260601", "claude-haiku-5-5"]))
         self.assertTrue(t.model_matches("gpt-6-luna", ["gpt-6-luna"]))
 
     def test_another_model_or_none_does_not_match(self):
-        self.assertFalse(t.model_matches("claude-haiku-4-5", ["claude-haiku-4-5-20251001", "claude-sonnet-5-5"]))
+        self.assertFalse(t.model_matches("claude-haiku-5-5", ["claude-haiku-5-5-20260601", "claude-sonnet-5-5"]))
         self.assertFalse(t.model_matches("gpt-6-luna", ["gpt-6.1-sol"]))
         self.assertFalse(t.model_matches("gpt-6-luna", []))
-        self.assertFalse(t.model_matches("claude-haiku-4-5", ["claude-haiku-4-5-latest"]))
+        self.assertFalse(t.model_matches("claude-haiku-5-5", ["claude-haiku-5-5-latest"]))
 
 
 class CollapseModelsTests(unittest.TestCase):
     def test_an_alias_is_dropped_when_its_dated_build_is_present(self):
-        self.assertEqual(t.collapse_models(["claude-haiku-4-5", "claude-haiku-4-5-20251001"]), ["claude-haiku-4-5-20251001"])
-        self.assertEqual(t.collapse_models(["claude-haiku-4-5"]), ["claude-haiku-4-5"])
+        self.assertEqual(t.collapse_models(["claude-haiku-5-5", "claude-haiku-5-5-20260601"]), ["claude-haiku-5-5-20260601"])
+        self.assertEqual(t.collapse_models(["claude-haiku-5-5"]), ["claude-haiku-5-5"])
         self.assertEqual(t.collapse_models(["gpt-6-luna", "", "gpt-6-luna"]), ["gpt-6-luna"])
-        self.assertEqual(t.collapse_models(["claude-sonnet-5-5", "claude-haiku-4-5-20251001"]), ["claude-haiku-4-5-20251001", "claude-sonnet-5-5"])
+        self.assertEqual(t.collapse_models(["claude-sonnet-5-5", "claude-haiku-5-5-20260601"]), ["claude-haiku-5-5-20260601", "claude-sonnet-5-5"])
 
 
 class ReportedIdTests(unittest.TestCase):

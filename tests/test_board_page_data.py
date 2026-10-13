@@ -147,6 +147,41 @@ class ActionRegistryTests(unittest.TestCase):
         self.assertIn("facts.action_registry", text)
 
 
+class AppStageLayoutTests(unittest.TestCase):
+    """An app-stage line never breaks inside an app ID or a stage: the row wraps only between them, and a value wider than the row is cut with an ellipsis."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.html = TEMPLATE.read_text(encoding="utf-8")
+
+    def rule(self, selector: str) -> str:
+        found = re.search(rf"(?m)^{re.escape(selector)} \{{([^}}]*)\}}", self.html)
+        self.assertIsNotNone(found, f"no rule for {selector}")
+        return found.group(1)
+
+    def test_the_row_wraps_between_the_app_and_its_stage_and_never_inside_a_word(self) -> None:
+        row = self.rule(".app-stage")
+        self.assertIn("flex-wrap: wrap", row)
+        self.assertNotIn("overflow-wrap", row, "a break anywhere splits `backend` into `backen` and `d`")
+        for selector in (".app-stage .as-name, .app-stage .as-stage",):
+            rule = self.rule(selector)
+            self.assertIn("white-space: nowrap", rule)
+            self.assertIn("text-overflow: ellipsis", rule)
+            self.assertIn("max-width: 100%", rule)
+
+    def test_the_card_the_panel_and_the_apps_chip_cut_a_long_value_and_keep_its_full_text_in_a_title(self) -> None:
+        start = self.html.index("function appStageHtml(")
+        shown = self.html[start : self.html.index("\n}", start)]
+        self.assertIn('class="as-name" title="${escapeHtml(row.app)}"', shown)
+        self.assertIn('class="as-stage" title="${escapeHtml(row.stage)}"', shown)
+        # The card and the panel render the same rows; the Apps view chip carries its own stage label.
+        self.assertGreaterEqual(self.html.count("appStageHtml"), 3)
+        chip = self.rule(".fchip .req")
+        self.assertIn("white-space: nowrap", chip)
+        self.assertIn("text-overflow: ellipsis", chip)
+        self.assertIn('<span class="req" title="${escapeHtml(stageLabel)}">', self.html)
+
+
 class BoardPageEnvelopeTests(TwoAppWorkspace):
     def feature_node(self, graph: dict, feature_id: str = "F-001") -> dict:
         return next(node for node in graph["facts"]["nodes"] if node["id"] == feature_id)

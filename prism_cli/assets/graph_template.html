@@ -356,8 +356,13 @@ main { position: relative; flex: 1; overflow: hidden; }
 .badge.advisory { color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 55%, transparent); }
 .badge.broken { color: var(--muted); border: 1px dashed var(--muted); }
 .app-stages, .design-tracks { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font: 10px/1.35 ui-monospace, Consolas, monospace; color: var(--ink-2); }
-.app-stage, .design-track { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.design-track { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+/* An app ID and a stage each stay on one line: the row wraps only between the app and its stage, and a value wider than the row is cut with an ellipsis (its full value is in the title). */
+.app-stage { display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; min-width: 0; }
 .app-stage i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.app-stage .as-head { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.app-stage .as-name, .app-stage .as-stage { white-space: nowrap; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.app-stage .sep { flex: none; }
 .app-stage .sep, .design-track .sep { color: var(--muted); }
 .app-stage.retired { color: var(--muted); }
 .card.intake { --stage-color: var(--muted); }
@@ -378,7 +383,7 @@ main { position: relative; flex: 1; overflow: hidden; }
 }
 .fchip:hover { transform: translateY(-1px); }
 .fchip i { width: 8px; height: 8px; border-radius: 50%; }
-.fchip .req { font-size: 8.5px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; font-family: ui-monospace, Consolas, monospace; }
+.fchip .req { font-size: 8.5px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; font-family: ui-monospace, Consolas, monospace; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .lane .none { color: var(--muted); font-size: 12px; }
 .ops-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 14px; margin-bottom: 10px; }
 .ops-fact .k { font-size: 8.5px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
@@ -1950,33 +1955,48 @@ function createBoardOperationId() {
 }
 const APPLY_REFRESH_RETRY_MS = [150, 300, 600, 900, 1200];
 const APPLY_STALE_VIEW_ERROR = "Dashboard view is stale after the applied board operation; wait for a refreshed and validated snapshot before another action.";
-// The statuses the feature may show once the applied action is visible: the drop column when the action has a certain one,
-// otherwise any status in the action's target statuses (a minimum over the app stages depends on the other apps).
+// What the applied operation left on each feature page it wrote: the status, owner and app stages its receipt reports
+// (`resulting_features`). A refreshed view is current only when its graph shows these, so a snapshot that predates the writes is
+// never validated. The aggregate status can stay the same (a partial `dev-done`), so the app stages are part of the match.
 function appliedStageExpectation(preview) {
-  if (!preview) return null;
-  const receipt = preview.receipt || {};
-  const featureId = preview.kind === "connected" ? preview.featureId : receipt.feature_id;
-  const action = preview.kind === "connected" ? preview.action : receipt.action;
-  if (typeof featureId !== "string" || !featureId || typeof action !== "string") return null;
-  const drop = actionDropStage(action);
-  const meta = actionMeta(action);
-  const statuses = drop ? [drop] : meta && Array.isArray(meta.target_status) ? meta.target_status.map(String) : [];
-  return statuses.length ? { featureId, statuses } : null;
+  const written = preview && preview.receipt ? preview.receipt.resulting_features : null;
+  if (!written || typeof written !== "object" || Array.isArray(written)) return null;
+  const features = Object.keys(written).filter(id => written[id] && typeof written[id] === "object").map(id => {
+    const entry = written[id];
+    const stages = entry.app_stages && typeof entry.app_stages === "object" && !Array.isArray(entry.app_stages) ? entry.app_stages : {};
+    return { id, status: String(entry.status || ""), owner: String(entry.owner || ""), stages: Object.keys(stages).sort().map(app => [app, String(stages[app])]) };
+  });
+  return features.length ? { features } : null;
+}
+function nodeShowsApplied(node, feature) {
+  if (!node || node.status !== feature.status || node.owner !== feature.owner) return false;
+  const shown = Array.isArray(node.app_stages) ? node.app_stages.map(entry => [String(entry && entry.app), String(entry && entry.stage)]).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0) : [];
+  return shown.length === feature.stages.length && shown.every((entry, index) => entry[0] === feature.stages[index][0] && entry[1] === feature.stages[index][1]);
 }
 function envelopeShowsStage(envelope, expectation) {
   const nodes = envelope && envelope.facts && Array.isArray(envelope.facts.nodes) ? envelope.facts.nodes : [];
-  const matches = nodes.filter(node => node && node.id === expectation.featureId);
-  return matches.length === 1 && expectation.statuses.includes(matches[0].status);
+  return expectation.features.every(feature => {
+    const matches = nodes.filter(node => node && node.id === feature.id);
+    return matches.length === 1 && nodeShowsApplied(matches[0], feature);
+  });
 }
-function confirmPendingAppliedStage() {
+// A graph version newer than the one current when the operation applied supersedes the wait: another change was made after the
+// operation, so the newer state is the truth even when it no longer shows the operation's own result.
+function supersedesApplied(pending, epoch, version) {
+  return pending.baseVersion !== null && pending.baseEpoch === epoch && Number.isFinite(version) && version > pending.baseVersion;
+}
+const APPLY_SUPERSEDED_MESSAGE = "Operation applied. Dashboard view refreshed; a later change replaced the applied result.";
+function confirmPendingAppliedStage(version) {
   const pending = state.pendingAppliedStage;
   if (!pending) return;
-  const node = nodesById[pending.featureId];
-  if (!node || !pending.statuses.includes(node.status)) return;
+  const shown = pending.expectation.features.every(feature => nodeShowsApplied(nodesById[feature.id], feature));
+  const replaced = !shown && supersedesApplied(pending, state.liveEpoch, version);
+  if (!shown && !replaced) return;
   state.pendingAppliedStage = null;
   state.boardViewStale = false;
+  state.liveRefreshError = null;
   if (pending.preview) {
-    pending.preview.operationMessage = "Operation applied. Dashboard view refreshed and validated.";
+    pending.preview.operationMessage = shown ? "Operation applied. Dashboard view refreshed and validated." : APPLY_SUPERSEDED_MESSAGE;
     if (state.transitionPreview === pending.preview) renderTransitionDialog(false);
   }
 }
@@ -1985,6 +2005,7 @@ function refreshBoardGraphAfterApply(preview) {
   renderTransitionDialog(false);
   state.pendingAppliedStage = null;
   const expectation = appliedStageExpectation(preview);
+  const baseEpoch = state.liveEpoch, baseVersion = state.liveVersion;
   const refreshId = preview ? (preview.graphRefreshId = (preview.graphRefreshId || 0) + 1) : 0;
   const superseded = () => !!preview && preview.graphRefreshId !== refreshId;
   const requestSnapshot = attempt => {
@@ -1993,12 +2014,13 @@ function refreshBoardGraphAfterApply(preview) {
       const version = Number(payload && payload.version);
       if (!payload || !payload.envelope || !Number.isFinite(version) || typeof payload.epoch !== "string") throw new Error("The refreshed graph response could not be validated.");
       if (state.liveEpoch === payload.epoch && state.liveVersion !== null && version < state.liveVersion) throw new Error("The refreshed graph was older than the current dashboard snapshot.");
-      if (expectation && !envelopeShowsStage(payload.envelope, expectation)) {
+      const replaced = !!expectation && !envelopeShowsStage(payload.envelope, expectation) && supersedesApplied({ baseEpoch, baseVersion }, payload.epoch, version);
+      if (expectation && !replaced && !envelopeShowsStage(payload.envelope, expectation)) {
         // The snapshot predates the applied write. Retry briefly, then wait for the live event stream.
         if (attempt < APPLY_REFRESH_RETRY_MS.length) { setTimeout(() => requestSnapshot(attempt + 1), APPLY_REFRESH_RETRY_MS[attempt]); return; }
         state.boardViewStale = true;
         state.liveRefreshError = APPLY_STALE_VIEW_ERROR;
-        state.pendingAppliedStage = { preview, featureId: expectation.featureId, statuses: expectation.statuses };
+        state.pendingAppliedStage = { preview, expectation, baseEpoch, baseVersion };
         if (preview) preview.operationMessage = "Operation applied. Dashboard view stale: the board has not received the applied change yet; waiting for the live update stream.";
         renderAll(false);
         return;
@@ -2008,7 +2030,7 @@ function refreshBoardGraphAfterApply(preview) {
       state.liveVersion = version;
       state.liveRefreshError = null;
       state.boardViewStale = false;
-      if (preview) preview.operationMessage = "Operation applied. Dashboard view refreshed and validated.";
+      if (preview) preview.operationMessage = replaced ? APPLY_SUPERSEDED_MESSAGE : "Operation applied. Dashboard view refreshed and validated.";
       renderAll(false);
     }).catch(() => {
       if (superseded()) return;
@@ -3473,11 +3495,11 @@ function featureAppRows(node) {
   return rows.concat(retired);
 }
 function appStageHtml(row) {
-  const name = `<span>${escapeHtml(boundedText(row.app, 80))}</span>`;
-  if (row.retired && !row.stage) return `<div class="app-stage retired">${name}<span class="sep">·</span><span>retired</span></div>`;
+  const head = `<span class="as-head"><span class="as-name" title="${escapeHtml(row.app)}">${escapeHtml(boundedText(row.app, 80))}</span><span class="sep">·</span></span>`;
+  if (row.retired && !row.stage) return `<div class="app-stage retired">${head}<span class="as-stage">retired</span></div>`;
   const color = C[STAGE_PHASE[row.stage]] || C.muted;
-  const retiredMark = row.retired ? '<span class="sep">·</span><span>retired</span>' : "";
-  return `<div class="app-stage${row.retired ? " retired" : ""}"><i style="background:${color}"></i>${name}<span class="sep">·</span><span>${escapeHtml(boundedText(row.stage, 40))}</span>${retiredMark}</div>`;
+  const retiredMark = row.retired ? '<span class="sep">·</span><span class="as-stage">retired</span>' : "";
+  return `<div class="app-stage${row.retired ? " retired" : ""}"><i style="background:${color}"></i>${head}<span class="as-stage" title="${escapeHtml(row.stage)}">${escapeHtml(boundedText(row.stage, 40))}</span>${retiredMark}</div>`;
 }
 // A card lists the apps that carry a stage in a feature in development or later; the panel adds the retired apps without one.
 function cardAppStagesHtml(node) {
@@ -3592,7 +3614,7 @@ function renderApps() {
       const stageRow = featureAppRows(f).find(row => row.app === appId);
       const stageLabel = stageRow ? (stageRow.stage ? (stageRow.retired ? stageRow.stage + " · retired" : stageRow.stage) : "retired") : "";
       return `<div class="fchip" data-id="${escapeHtml(fid)}" tabindex="0" role="button" aria-label="Open feature ${escapeHtml(boundedText(fid, 120))}: ${escapeHtml(boundedText(f.title, 180))}"><i style="background:${phaseColor(f)}"></i>${escapeHtml(fid)} · ${escapeHtml(f.title)}
-        ${stageLabel ? `<span class="req">${escapeHtml(boundedText(stageLabel, 40))}</span>` : ""}<span class="req" style="color:${reqColor}">req: ${escapeHtml(reqStatus)}</span></div>`;
+        ${stageLabel ? `<span class="req" title="${escapeHtml(stageLabel)}">${escapeHtml(boundedText(stageLabel, 40))}</span>` : ""}<span class="req" style="color:${reqColor}">req: ${escapeHtml(reqStatus)}</span></div>`;
     }).join("");
     return `<div class="lane" style="animation-delay:${REDUCED ? 0 : i * 0.07}s"><h3><i></i>${escapeHtml(p.title)}${p.status === "retired" ? ' <span class="retired">(retired)</span>' : ""}<span class="count">${featureIds.length} FEATURE${featureIds.length === 1 ? "" : "S"}</span></h3>
       ${appOperationsHtml(p.id.slice("app:".length))}
@@ -3875,7 +3897,7 @@ function markLiveRefreshUnavailable(version) {
   announce(message);
   toast(message);
 }
-function adoptData(envelope) {
+function adoptData(envelope, version = null) {
   const previousData = state.data;
   const previousLiveError = state.liveRefreshError;
   const hadFeatures = featureNodes().length > 0;
@@ -3898,7 +3920,7 @@ function adoptData(envelope) {
     } else if (state.selected) closePanel();
     reconcileTransitionPreview();
     pulseSpectrum();
-    confirmPendingAppliedStage();
+    confirmPendingAppliedStage(version);
   } catch (error) {
     state.data = previousData;
     state.liveRefreshError = previousLiveError;
@@ -3960,7 +3982,7 @@ function initLive() {
         scheduleRetry();
         return;
       }
-      adoptData(payload.envelope);
+      adoptData(payload.envelope, payloadVersion);
       if (refreshInFlight !== request) return;
       refreshInFlight = null;
       lastVersion = payloadVersion;
