@@ -295,7 +295,7 @@ class AuditGateFailsClosedTests(unittest.TestCase):
         self.assertIn("allowed: GHSA-vfj7-8cjw-p6xm", text)
 
     def test_a_report_whose_totals_disagree_with_its_entries_fails_whatever_the_exit_status(self) -> None:
-        # Astra's case: exit 0, no advisory, and a high vulnerability only in the metadata.
+        # The case: exit 0, no advisory, and a high vulnerability only in the metadata.
         declared_only = {"auditReportVersion": 2, "vulnerabilities": {}, "metadata": {"vulnerabilities": {"high": 1, "total": 1}}}
         code, text = self.run_gate("npm", json.dumps(declared_only), 0)
         self.assertEqual(1, code, text)
@@ -342,7 +342,7 @@ class AuditGateFailsClosedTests(unittest.TestCase):
         self.assertIn("exited with status 0", text)
 
     def test_an_entry_vulnerable_through_a_package_the_report_does_not_list_fails(self) -> None:
-        # Astra's case: one allow-listed high advisory, and a critical entry whose only `via` names a package without an entry.
+        # The case: one allow-listed high advisory, and a critical entry whose only `via` names a package without an entry.
         braces = NPM_REPORT["vulnerabilities"]["braces"]
         chain = {"name": "evil", "severity": "critical", "via": ["missing"]}
         report = {"auditReportVersion": 2, "vulnerabilities": {"braces": braces, "evil": chain}, "metadata": {"vulnerabilities": {"high": 1, "critical": 1, "total": 2}}}
@@ -355,7 +355,7 @@ class AuditGateFailsClosedTests(unittest.TestCase):
         self.assertIn("`missing`", audit_gate.npm_entries_problem({"braces": braces, "evil": chain}, {"high": 1, "critical": 1, "total": 2}, 1, "high"))
 
     def test_an_entry_without_an_advisory_that_leads_to_none_fails(self) -> None:
-        # Astra's case: one allow-listed high advisory, and a critical entry whose `via` is empty, names only itself or loops.
+        # The case: one allow-listed high advisory, and a critical entry whose `via` is empty, names only itself or loops.
         braces = NPM_REPORT["vulnerabilities"]["braces"]
         declared = {"high": 1, "critical": 1, "total": 2}
         for label, via in (("an empty via", []), ("a self reference", ["evil"])):
