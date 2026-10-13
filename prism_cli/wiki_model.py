@@ -2136,6 +2136,26 @@ def contract_page_citation(frontmatter: Mapping[str, Any], body: str) -> str | N
     return contract_citation(feature, number, body)
 
 
+def contract_without_citation_message(feature_id: str, paths: Iterable[str]) -> str:
+    """Why no Delivery row of a feature can be current while an API contract that applies to it has no citation (CONTRACTS 3.4).
+
+    The binding checks of the board, the transitions and lint use this one text. ``paths`` are the contract pages whose
+    `contract_page_citation` is ``None``.
+    """
+
+    named = sorted(paths)
+    listed = ", ".join(f"`{path}`" for path in named)
+    if len(named) == 1:
+        subject, verb, possessive, pages = f"The API contract {listed}", "has", "its", "page"
+    else:
+        subject, verb, possessive, pages = f"The API contracts {listed}", "have", "their", "pages"
+    return (
+        f"{subject} of {feature_id} {verb} no citation because {possessive} `version` or `feature-id` is not usable, "
+        f"so no Delivery row of {feature_id} can cite the contract, `none` included. "
+        f"Correct the contract {pages}: `version` is an integer from 1 and `feature-id` is `F-` and at most {MAX_RECORD_NUMBER_DIGITS} digits."
+    )
+
+
 # --- Acceptance criteria -------------------------------------------------------------------------------------------
 
 _CRITERION_ITEM = re.compile(r"^(?P<indent>[ \t]*)(?:[-*+]|\d+[.)])[ \t]+(?:\[(?P<check>[ xX])\][ \t]+)?(?P<rest>.*)$")

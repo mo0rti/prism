@@ -56,6 +56,7 @@ from prism_cli.wiki_model import (
     clean_cell,
     contract_feature_id_too_long,
     contract_page_citation,
+    contract_without_citation_message,
     contract_version,
     criteria_high_water,
     expected_owner,
@@ -1189,16 +1190,34 @@ def _lint_contract_bindings(
         if not evidence.delivery:
             continue
         stages = app_stages(active_scope(feature.apps, model), evidence)
-        current = {
-            citation
-            for contract in _api_contract_pages_for_feature(feature, requirement_pages, pages, wiki_root)
-            if (citation := contract_page_citation(contract.frontmatter, contract.body)) is not None
-        }
+        current: set[str] = set()
+        unusable: list[str] = []
+        for contract in _api_contract_pages_for_feature(feature, requirement_pages, pages, wiki_root):
+            citation = contract_page_citation(contract.frontmatter, contract.body)
+            if citation is not None:
+                current.add(citation)
+                continue
+            try:
+                unusable.append(_resolve(contract.path).relative_to(_resolve(wiki_root).parent.parent).as_posix())
+            except ValueError:
+                unusable.append(contract.path.as_posix())
         for row in evidence.delivery:
             if stages.get(row.app) is None:
                 continue
             if stages[row.app] == "released":
                 diagnostics.extend(_released_binding_diagnostics(feature, evidence, row, records))
+                continue
+            if unusable:
+                # A contract that applies and has no citation leaves no current contract to cite, so `none` is not an answer either.
+                diagnostics.append(
+                    _diag(
+                        "stale-delivery-evidence",
+                        "error",
+                        feature.page.path,
+                        f"The delivery row of `{row.app}` cannot be current. " + contract_without_citation_message(feature.feature_id, unusable),
+                        feature.feature_id,
+                    )
+                )
                 continue
             cited = clean_cell(row.contract)
             if cited.lower() == "none":
