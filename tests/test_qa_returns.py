@@ -6,6 +6,7 @@ import unittest
 
 import yaml
 
+from prism_cli.board_service import BoardError
 from prism_cli.wiki_lint import lint_wiki
 from tests.qa_support import (
     FEATURE,
@@ -20,6 +21,12 @@ from tests.qa_support import (
 from tests.test_board_service import _set_requirement_status
 from tests.test_lifecycle_model import DELIVERY_HEADER, table
 
+CONTRACT = "knowledge/wiki/api-contracts/F-001.md"
+CONTRACT_TEXT = (
+    "---\nfeature-id: F-001\nversion: 1\nstatus: implemented\n---\n\n"
+    "## Endpoints\n- `GET /api/v1/reviews/:reviewId/summary` returns the summary.\n\n"
+    "## Data models\n```\nReviewSummary\n```\n\n## Authentication requirements\nBearer token.\n\n## Notes\nNone.\n"
+)
 ALL_DOMAINS = ["implementation", "tests", "qa", "release"]
 TRACKS = {"ui": "not-applicable", "ui-reason": "No app in scope has a UI.", "technical": "done"}
 
@@ -190,6 +197,66 @@ class ReturnTests(QaBoard):
         for action in ("qa-return-spec", "qa-return-design"):
             with self.subTest(action=action):
                 self.assertEqual("partial_release_requires_new_feature", self.refused("feature-reopen", self.return_changes(action)).code)
+
+    def contract_changes(self, action: str, status: str, written: str | None) -> list[dict[str, str]]:
+        """The return with the feature's contract on disk at `status` (the feature declares no API work); `written` is the status the proposal gives it."""
+
+        self.seed_tracks()
+        self.put(CONTRACT, CONTRACT_TEXT.replace("status: implemented", f"status: {status}"))
+
+        def mutate(changes: list[dict[str, str]]) -> None:
+            if written is None:
+                return
+            content = changes[0]["content"]
+            marker = "- Requirement/API invalidations: "
+            end = content.index(chr(10), content.index(marker))
+            if status != written:
+                changes[0]["content"] = content[:end] + f", {CONTRACT}: {status} -> {written}" + content[end:]
+            changes.append({"path": CONTRACT, "content": CONTRACT_TEXT.replace("status: implemented", f"status: {written}")})
+
+        return self.return_changes(action, mutate=mutate)
+
+    def expected_pages(self) -> dict[str, str]:
+        return self.service._d3_expected_pages({"feature_id": "F-001", "path": FEATURE}, "qa-return-spec", ("backend", "worker"), {FEATURE: self.read(FEATURE)})
+
+    def test_an_implemented_contract_of_a_feature_without_api_work_is_still_lowered_by_the_return(self) -> None:
+        from prism_cli.wiki_model import api_surface_declared, section_text
+
+        self.assertFalse(api_surface_declared(section_text(self.feature()[1], "API surface")))
+        # The contract is judged as it is on disk: leaving it out of the return is refused, and lowering it is accepted.
+        error = self.refused("feature-reopen", self.contract_changes("qa-return-spec", "implemented", None))
+        self.assertEqual("lifecycle_write_scope", error.code)
+        self.assertEqual("draft", self.expected_pages().get(CONTRACT))
+        self.assertIn(CONTRACT, error.message)
+        preview = self.apply("feature-reopen", self.contract_changes("qa-return-spec", "implemented", "draft"))
+        self.assertEqual("qa-return-spec", preview["action"])
+        self.assertEqual(("specified", "po"), self.status())
+        self.assertIn("status: draft", self.read(CONTRACT))
+        # After the return the draft is unused: no obligation for the feature, and lint only warns.
+        self.assertEqual(set(), self.service._feature_api_contract_paths({"id": "F-001", "path": FEATURE}, {FEATURE: self.read(FEATURE)}))
+        self.assertNotIn("api-contract-not-ready", self.errors())
+
+    def test_an_unused_draft_contract_is_neither_required_nor_accepted_as_a_write_of_the_return(self) -> None:
+        self.assertEqual(
+            "ready",
+            self.propose("feature-reopen", self.contract_changes("qa-return-spec", "draft", None))["classification"],
+            "the return does not need the unused draft",
+        )
+        self.assertNotIn(CONTRACT, self.expected_pages())
+        error = self.refused("feature-reopen", self.contract_changes("qa-return-spec", "draft", "draft"))
+        self.assertIn(error.code, {"lifecycle_write_scope", "reopen_invalidation_mismatch"})
+        # A draft that the return lowers to nothing is not among the pages it changes.
+        with self.assertRaises(BoardError) as raised:
+            changes = self.contract_changes("qa-return-spec", "draft", "draft")
+            supplied = {change["path"]: change["content"] for change in changes}
+            before = {path: self.read(path) for path in supplied}
+            self.service._d3_related({"feature_id": "F-001", "path": FEATURE}, "qa-return-spec", ("backend", "worker"), supplied, before)
+        self.assertEqual("lifecycle_write_scope", raised.exception.code)
+        self.assertIn("Not changed by this action", raised.exception.message)
+        self.assertIn(CONTRACT, raised.exception.message)
+        self.apply("feature-reopen", self.contract_changes("qa-return-spec", "draft", None))
+        self.assertEqual(("specified", "po"), self.status())
+        self.assertIn("status: draft", self.read(CONTRACT))
 
     def test_a_feature_in_development_returns_by_qa_only_when_an_app_is_in_qa(self) -> None:
         # worker is sent back, so the feature is in-dev while backend is still ready-for-qa.

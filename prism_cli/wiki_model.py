@@ -95,6 +95,8 @@ FEATURE_SECTIONS = (
 # The five sections `po-intake` writes; `po-specify` adds the rest.
 INTAKE_SECTIONS = ("Summary", "User story", "Acceptance criteria", "Open questions", "App scope")
 EVIDENCE_SECTIONS = ("Delivery evidence", "QA verification", "Release")
+# The feature sections that appear once: the evidence sections, their history and the API surface that decides whether API work exists.
+SINGLE_FEATURE_SECTIONS = (*EVIDENCE_SECTIONS, "Evidence history", "API surface")
 DELIVERY_EVIDENCE_COLUMNS = ("app", "artifact", "contract", "implementation", "tests", "basis")
 QA_VERIFICATION_COLUMNS = ("row", "criteria", "method", "artifact", "environment", "attempt", "result", "evidence", "basis")
 RELEASE_COLUMNS = ("app", "target", "version", "attempt", "outcome", "record", "basis")
@@ -742,6 +744,20 @@ def api_surface_declared(section: str) -> bool:
 
     normalized = re.sub(r"\s+", " ", section).strip().lower().rstrip(".").strip()
     return bool(normalized) and normalized not in _NO_API_SURFACE
+
+
+def api_surface_declares_no_work(body: str) -> bool:
+    """Whether a feature body establishes that it has no API work: exactly one `## API surface` section, and it declares none.
+
+    A repeated or indented `## API surface` heading leaves more than one text for the name, so the page establishes nothing and a
+    reader that takes the first section must not take its `None.` for the answer.
+    """
+
+    return (
+        not section_ambiguities(body, ("API surface",))
+        and has_section(body, "API surface")
+        and not api_surface_declared(section_text(body, "API surface"))
+    )
 
 
 _SECTION_FENCE_OPEN = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})(?P<info>[^`]*)$")

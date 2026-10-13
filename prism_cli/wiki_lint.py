@@ -34,7 +34,7 @@ from prism_cli.wiki_operations import (
 from prism_cli.wiki_releases import ReleaseRecord, read_all_release_records, read_release_records, record_id_of_cell
 from prism_cli.wiki_model import (
     APP_STAGE_ORDER,
-    EVIDENCE_SECTIONS,
+    SINGLE_FEATURE_SECTIONS,
     FEATURE_FRONTMATTER_FIELDS,
     FEATURE_STATUS_ORDER,
     VALID_ADVISORY_REVIEW_STATES,
@@ -75,6 +75,7 @@ from prism_cli.wiki_model import (
     parse_open_question_rows,
     parse_release_rows,
     api_surface_declared,
+    api_surface_declares_no_work,
     parse_advisory_required_actions,
     parse_revalidation,
     read_feature_pages,
@@ -938,7 +939,7 @@ def _api_contract_pages_for_feature(
             target = _reference_path(source.path, raw_target, wiki_root, "api-contracts")
             if target is not None and target in by_path and by_path[target] not in result:
                 result.append(by_path[target])
-    if not api_surface_declared(section_text(feature.page.body, "API surface")):
+    if api_surface_declares_no_work(feature.page.body):
         # A draft of the feature's own that a re-specification no longer needs is no obligation (`unused-api-contract`).
         result = [page for page in result if not (page.frontmatter.get("status") == "draft" and _contract_feature_id(page) == feature_id)]
     return sorted(result, key=lambda page: page.path.as_posix())
@@ -1313,11 +1314,11 @@ def _lint_api_contract_blockers(
         for contract in api_by_feature.get(feature.feature_id, []):
             if contract not in references:
                 references.append(contract)
-        api_declared = api_surface_declared(section_text(feature.page.body, "API surface"))
+        no_api_work = api_surface_declares_no_work(feature.page.body)
         for contract in sorted(references, key=lambda page: page.path.as_posix()):
             if contract.frontmatter.get("status") == "draft":
                 contract_name = contract.path.name
-                if not api_declared and _contract_feature_id(contract) == feature_id:
+                if no_api_work and _contract_feature_id(contract) == feature_id:
                     # A re-specification dropped the API work this draft was written for: a human deletes the page.
                     diagnostics.append(
                         _diag(
@@ -2615,7 +2616,7 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
     for message in feature.page.parse_errors:
         diagnostics.append(_diag("malformed-frontmatter", "error", path, message, feature_id))
 
-    for message in section_ambiguities(feature.page.body, (*EVIDENCE_SECTIONS, "Evidence history")):
+    for message in section_ambiguities(feature.page.body, SINGLE_FEATURE_SECTIONS):
         diagnostics.append(_diag("ambiguous-lifecycle-section", "error", path, message, feature_id))
 
     frontmatter = feature.page.frontmatter

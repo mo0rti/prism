@@ -56,6 +56,7 @@ from prism_cli.wiki_transitions import (
     TRANSITION_CAPABILITY_VERSION,
     WRITE_SCOPES,
     build_board_transition_preflight,
+    build_transition_preflight,
     capability_marker,
     lookup_action,
 )
@@ -1128,6 +1129,42 @@ class FlowTests(_Workspace):
         for code in ("api-contract-not-ready", "delivered-api-contract", "stale-delivery-evidence"):
             self.assertEqual([], lint(code), code)
         self.assertIn("status: draft", self.read(contract))
+
+    def test_a_second_api_surface_section_never_establishes_that_there_is_no_api_work(self) -> None:
+        self.walk_to_dev()
+        contract = "knowledge/wiki/api-contracts/F-001.md"
+        (self.root / contract).parent.mkdir(parents=True, exist_ok=True)
+        (self.root / contract).write_bytes(b"---\nfeature-id: F-001\nversion: 1\nstatus: draft\n---\n\n## Endpoints\n- `GET /reviews` lists reviews.\n")
+        feature = {"id": "F-001", "path": FEATURE}
+
+        def lint(code: str) -> list:
+            return [item for item in lint_wiki(self.root).diagnostics if item.code == code]
+
+        # One section that declares none: the draft is no obligation anywhere.
+        original = self.read(FEATURE)
+        self.assertEqual(set(), self.service._feature_api_contract_paths(feature, {FEATURE: original}))
+        self.assertEqual([], lint("api-contract-not-ready"))
+        self.assertEqual(["warning"], [item.severity for item in lint("unused-api-contract")])
+        # A second `## API surface` section declares the API work under the first one's `None.`.
+        duplicated = original.rstrip("\n") + "\n\n## API surface\n`GET /reviews` lists reviews.\n"
+        (self.root / FEATURE).write_bytes(duplicated.encode("utf-8"))
+        self.assertEqual({contract}, self.service._feature_api_contract_paths(feature, {FEATURE: duplicated}), "the board keeps the obligation")
+        self.assertEqual({contract}, self.service._own_api_contract_paths(feature, {FEATURE: duplicated}))
+        ambiguous = lint("ambiguous-lifecycle-section")
+        self.assertEqual([("error", True)], [(item.severity, item.gates) for item in ambiguous], "the duplicate is reported and gates")
+        self.assertIn("`## API surface` appears 2 times", ambiguous[0].message)
+        self.assertEqual(["error"], [item.severity for item in lint("api-contract-not-ready")], "lint keeps the obligation")
+        self.assertEqual([], lint("unused-api-contract"))
+        preflight = build_transition_preflight(self.root, "F-001", action="dev-done")["facts"]["transition"]
+        self.assertEqual("blocked", next(check for check in preflight["checks"] if check["code"] == "api-contract")["status"], "preflight keeps the obligation")
+        self.assertEqual("unknown", preflight["classification"])
+        # The connected dev-done, whose delivery names Contract `none`, is refused at preview and the duplicate is named.
+        changes = self.deliver("backend", "in-dev", "dev")
+        error = self.rejection("dev-done", changes)
+        self.assertEqual(("ambiguous_lifecycle_section", 409), (error.code, error.status))
+        self.assertIn("`## API surface` appears 2 times", error.message)
+        self.assertEqual(duplicated, self.read(FEATURE), "a refused preview writes nothing")
+        self.assertEqual(("in-dev", "dev"), self.status())
 
     def test_a_dev_done_status_must_be_the_minimum_of_the_stages(self) -> None:
         self.walk_to_dev()
