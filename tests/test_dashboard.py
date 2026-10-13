@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from prism_cli.wiki_graph import action_registry
 from prism_cli.wiki_graph_html import render_html
 from tests import real_temp  # noqa: F401
 
@@ -27,6 +28,7 @@ def _fresh_envelope(root: Path) -> dict:
             "dangling_references": [],
             "setup_state": "initialized",
             "intake": {"pending": ["first-brief.md"], "quarantined": []},
+            "action_registry": action_registry(),
         },
         "blocker_facts": [],
         "required_obligations": [],

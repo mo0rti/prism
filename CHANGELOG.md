@@ -4,6 +4,11 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- **The board page explains a feature's status.** A card lists each active app with its stage (`backend · released`, `worker · in-qa`) from `in-dev` on, and the panel lists every app in scope with a retired app marked as retired. A feature that waits for design or is in design shows its `ui` and `technical` track states on the card and in the panel. The Apps view shows each app's released features, latest release record and outcome, open bugs and open incidents, derived by the code that writes and lints the status board's Operations table. The graph envelope carries `design_tracks` on a feature node, `facts.app_operations` and `facts.action_registry`; the graph schema describes them.
+- **The board page takes its action rules from the transition registry.** The server generates the metadata of every feature action from `ACTION_SPECS` (sources, targets, owners, skill, arguments, human-direct or agent proposal, drop column) and sends it with the graph; the page's hand-written tables (`ACTION_CONTRACTS`, `ACTION_DROP_STAGE`, the connected action sets and skills, the command and argument tables) are gone. The page knows every return action of the registry (`dev-return-spec`, `dev-return-design`, `qa-return-spec`, `qa-return-design`), so a feature in development can open its `dev-return-spec` and `dev-return-design` requests. The static export and the legacy dashboard stay copy-only.
+
 ## [0.7.1]
 
 Release date: 2026-10-13

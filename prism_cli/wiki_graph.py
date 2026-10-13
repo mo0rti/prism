@@ -5,33 +5,48 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from prism_cli.app_model import WorkspaceModel
 from prism_cli.status import detect_setup_state, list_queue_items
+from prism_cli.wiki_bugs import read_bug_pages
+from prism_cli.wiki_incidents import read_incident_pages
 from prism_cli.wiki_lint import FRESHNESS_CODES, WIKI_BLOCKER_CODES, lint_wiki
 from prism_cli.wiki_index import general_page_kind, is_page_path
 from prism_cli.wiki_links import NON_PAGE_FILENAMES, markdown_files, page_references_feature
 from prism_cli.wiki_model import (
+    DESIGN_OWNERS,
+    DESIGN_TRACKS,
     FEATURE_STATUS_ORDER,
+    OWNER_BY_STATUS,
     active_scope,
     app_stages,
+    app_stages_text,
     extract_markdown_links,
     load_markdown_page,
     resolve_relative_markdown_link,
+    parse_design_tracks,
     parse_open_question_rows,
     read_feature_evidence,
     read_feature_pages,
     read_app_requirement_pages,
     read_wiki_pages,
+    read_wiki_settings,
     section_text,
     status_rank,
     within_wiki_read_scope,
 )
+from prism_cli.wiki_operations import bug_board_row, operation_row
 from prism_cli.wiki_query import build_envelope
+from prism_cli.wiki_releases import read_release_records
 from prism_cli.qa_rules import QA_FAIL_STAGES
 from prism_cli.wiki_transitions import (
     ACTION_BY_ID,
+    ACTION_SPECS,
+    DESIGN_OWNER,
+    MINIMUM,
+    MODE_AGENT_PROPOSED,
+    UNCHANGED,
     evaluate_transition_summaries,
     finalize_transition_envelope,
     workspace_fingerprint,
@@ -60,6 +75,99 @@ def _offered_transitions(node: GraphNode, records: list[dict[str, Any]]) -> tupl
     if node.status == "in-dev" and not in_qa:
         offered = [record for record in offered if getattr(ACTION_BY_ID.get(str(record.get("action"))), "package", None) != "D3"]
     return tuple(offered)
+
+
+def _statuses_in_order(statuses: Iterable[str]) -> list[str]:
+    wanted = set(statuses)
+    return [status for status in FEATURE_STATUS_ORDER if status in wanted]
+
+
+def _unique(values: Iterable[Any]) -> list[Any]:
+    return list(dict.fromkeys(values))
+
+
+def _action_metadata(spec: Any) -> dict[str, Any]:
+    """The page's view of one registry action: the values a transition record may carry, who runs it, and its drop column.
+
+    Every list is a set of allowed values, one per field. A design owner symbol resolves to both design owners. An action that
+    targets the minimum over the app stages can leave the feature at any stage from `in-dev` (the first stage with app stages)
+    up to the one after the highest stage it starts from; its owner follows the stage. The drop column is the stage the card
+    moves to when the action completes: a concrete target after every source, or the stage after the highest source.
+    """
+
+    sources = _unique(pair for owner in DESIGN_OWNERS for pair in spec.resolved_sources(owner))
+    source_ranks = [status_rank(status) for status, _owner in sources]
+    source_status = _statuses_in_order(status for status, _owner in sources)
+    source_owner = _unique(owner for _status, owner in sources)
+    drop_stage: str | None = None
+    if spec.target_status == MINIMUM:
+        first = max(min(source_ranks), status_rank("in-dev"))
+        last = min(max(source_ranks) + 1, len(FEATURE_STATUS_ORDER) - 1)
+        target_status = list(FEATURE_STATUS_ORDER[first : last + 1])
+        target_owner = _unique(OWNER_BY_STATUS[status] for status in target_status)
+        if max(source_ranks) + 1 < len(FEATURE_STATUS_ORDER):
+            drop_stage = FEATURE_STATUS_ORDER[max(source_ranks) + 1]
+    elif spec.target_status == UNCHANGED:
+        target_status, target_owner = source_status, source_owner
+    else:
+        target_status = [spec.target_status]
+        target_owner = list(DESIGN_OWNERS) if spec.target_owner == DESIGN_OWNER else [spec.target_owner]
+        if status_rank(spec.target_status) > max(source_ranks):
+            drop_stage = spec.target_status
+    return {
+        "action": spec.action,
+        "skill": spec.command,
+        "arguments": spec.arguments,
+        "human_direct": spec.human_direct,
+        "agent_proposal": MODE_AGENT_PROPOSED in spec.modes,
+        "source_status": source_status,
+        "source_owner": source_owner,
+        "target_status": target_status,
+        "target_owner": target_owner,
+        "drop_stage": drop_stage,
+    }
+
+
+def action_registry() -> list[dict[str, Any]]:
+    """The feature actions of the transition registry, in registry order, for the board page.
+
+    The page reads these instead of keeping its own action rules, so a registry change reaches the page without a second edit.
+    """
+
+    return [_action_metadata(spec) for spec in ACTION_SPECS if spec.subject == "feature" and spec.available]
+
+
+def app_operations(wiki_root: Path, model: WorkspaceModel, feature_pages: list[Any]) -> list[dict[str, str]]:
+    """The status board's Operations rows, derived from the pages by the same function that writes and lints them.
+
+    An app with nothing released, recorded or open has no row, as on the status board.
+    """
+
+    bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
+    stage_cells = {
+        feature.feature_id: app_stages_text(feature.status, feature.apps, feature.page.body, model) for feature in feature_pages
+    }
+    incidents, releases = read_incident_pages(wiki_root), read_release_records(wiki_root)
+    try:
+        targets = {app: str(entry["target"]) for app, entry in read_wiki_settings(wiki_root, model).delivery_targets.items()}
+    except (OSError, ValueError):
+        targets = {}
+    return [
+        row
+        for app in model.apps
+        if (
+            row := operation_row(
+                app.id,
+                delivery_target=targets.get(app.id),
+                feature_stage_cells=stage_cells,
+                bug_rows=bug_rows,
+                incidents=incidents,
+                releases=releases,
+            )
+        )
+        is not None
+    ]
+
 
 LIFECYCLE_STAGES = list(FEATURE_STATUS_ORDER)
 
@@ -115,6 +223,8 @@ class GraphNode:
     transitions: tuple[dict[str, Any], ...] | None = None
     # app ID -> app stage for a feature at `in-dev` or later (CONTRACTS 4.2); the feature's status is the minimum.
     app_stages: tuple[tuple[str, str], ...] | None = None
+    # The state of each design track (`ui`, `technical`) of a feature that has `design-tracks` front matter (CONTRACTS 3.1).
+    design_tracks: tuple[tuple[str, str], ...] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {"id": self.id, "type": self.type, "title": self.title, "path": self.path, "health": self.health}
@@ -133,6 +243,8 @@ class GraphNode:
             data["transitions"] = list(self.transitions)
         if self.app_stages is not None:
             data["app_stages"] = [{"app": app, "stage": stage} for app, stage in self.app_stages]
+        if self.design_tracks is not None:
+            data["design_tracks"] = dict(self.design_tracks)
         return data
 
 
@@ -202,6 +314,7 @@ def build_graph(root: Path) -> dict[str, Any]:
             health=health_by_path.get(node.path or "", "ok"),
             open_questions=node.open_questions,
             app_stages=node.app_stages,
+            design_tracks=node.design_tracks,
             transitions=(
                 _offered_transitions(node, transition_evaluation.transitions_list_by_path.get(node.path or "", []))
                 if node.path in transition_evaluation.transitions_list_by_path
@@ -227,6 +340,8 @@ def build_graph(root: Path) -> dict[str, Any]:
             "quarantined": list_queue_items(intake_root / "quarantined"),
         },
         "transition_capability": transition_evaluation.capability,
+        "action_registry": action_registry(),
+        "app_operations": app_operations(wiki_root, inspection.model, feature_pages),
     }
     sources = [str(wiki_root), *transition_evaluation.sources] + sorted(node.path for node in sorted_nodes if node.path)
     diagnostics = [*lint_result.diagnostics, *transition_evaluation.diagnostics]
@@ -254,6 +369,7 @@ def _collect_nodes(
 
     for feature in feature_pages if feature_pages is not None else read_feature_pages(wiki_root):
         question_rows, _question_errors = parse_open_question_rows(feature.page.body)
+        design_tracks, _track_problems = parse_design_tracks(feature.page.frontmatter)
         node_id = _unique_node_id(nodes, feature.feature_id, feature.page.path)
         node = GraphNode(
             id=node_id,
@@ -270,6 +386,9 @@ def _collect_nodes(
                 tuple(app_stages(active_scope(feature.apps, model), read_feature_evidence(feature.page.body)).items())
                 if status_rank(feature.status) >= status_rank("in-dev")
                 else None
+            ),
+            design_tracks=(
+                tuple((track, design_tracks.state(track)) for track in DESIGN_TRACKS) if design_tracks is not None else None
             ),
         )
         nodes[node.id] = node

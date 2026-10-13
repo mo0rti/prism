@@ -145,9 +145,66 @@
           },
           "additionalProperties": true
         },
-        "transition_capability": { "$ref": "#/$defs/transition_capability" }
+        "transition_capability": { "$ref": "#/$defs/transition_capability" },
+        "action_registry": {
+          "type": "array",
+          "description": "The feature actions of the transition registry, in registry order. The board page reads its action rules from here.",
+          "items": { "$ref": "#/$defs/action_metadata" }
+        },
+        "app_operations": {
+          "type": "array",
+          "description": "The status board's Operations rows: one per app that has released features, a release record, open bugs or open incidents.",
+          "items": { "$ref": "#/$defs/app_operation" }
+        }
       },
       "additionalProperties": true
+    },
+    "action_metadata": {
+      "type": "object",
+      "required": [
+        "action",
+        "skill",
+        "arguments",
+        "human_direct",
+        "agent_proposal",
+        "source_status",
+        "source_owner",
+        "target_status",
+        "target_owner",
+        "drop_stage"
+      ],
+      "properties": {
+        "action": { "type": "string", "minLength": 1 },
+        "skill": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "string" },
+        "human_direct": { "type": "boolean" },
+        "agent_proposal": { "type": "boolean" },
+        "source_status": { "$ref": "#/$defs/string_list" },
+        "source_owner": { "$ref": "#/$defs/string_list" },
+        "target_status": { "$ref": "#/$defs/string_list" },
+        "target_owner": { "$ref": "#/$defs/string_list" },
+        "drop_stage": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "string_list": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "app_operation": {
+      "type": "object",
+      "required": ["app", "delivery_target", "released_features", "latest_release", "latest_outcome", "open_bugs", "open_incidents"],
+      "properties": {
+        "app": { "type": "string", "minLength": 1 },
+        "delivery_target": { "type": "string" },
+        "released_features": { "type": "string" },
+        "latest_release": { "type": "string" },
+        "latest_outcome": { "type": "string" },
+        "open_bugs": { "type": "string" },
+        "open_incidents": { "type": "string" }
+      },
+      "additionalProperties": false
     },
     "graph_node": {
       "type": "object",
@@ -203,6 +260,16 @@
             },
             "additionalProperties": false
           }
+        },
+        "design_tracks": {
+          "type": "object",
+          "description": "The state of each design track of a feature whose front matter has design-tracks.",
+          "required": ["ui", "technical"],
+          "properties": {
+            "ui": { "enum": ["pending", "done", "not-applicable"] },
+            "technical": { "enum": ["pending", "done", "not-applicable"] }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": true

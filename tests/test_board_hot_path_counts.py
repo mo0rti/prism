@@ -67,6 +67,8 @@ METRICS = (
 # A transition also fingerprints ACTIONS.md with the rest of its context, which `apply` reads on each of its snapshots.
 # The release actions add the releases folder and its format page, and the generated instruction files of the release actions and the reopen
 # routes that the copy-only preflight lists. No slope changed.
+# The graph also derives the status board's Operations rows for the board page, which adds two folder listings to `build_graph` and to the
+# `apply` that rebuilds it. No slope changed.
 CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
     "preview_transition": {
         "page_parses": (1, 12),
@@ -93,7 +95,7 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
         "validate_graph_inputs": (0, 0),
         "lint_wiki": (0, 1),
         "build_graph": (0, 1),
-        "scandir": (0, 177),
+        "scandir": (0, 179),
     },
     # An unchanged workspace opens no file: the poller's stat gate trusts every old, unchanged file.
     "idle_scan": {
@@ -116,7 +118,7 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
         "validate_graph_inputs": (0, 16),
         "lint_wiki": (0, 2),
         "build_graph": (0, 1),
-        "scandir": (0, 676),
+        "scandir": (0, 678),
     },
 }
 
