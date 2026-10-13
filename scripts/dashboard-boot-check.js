@@ -2004,6 +2004,8 @@ function recordsViewsCheck() {
   switchView("bugs");
   let bugs = html("bugs-view");
   for (const stage of ["open", "in-fix", "fixed", "verified", "released", "closed", "invalid"]) assert(bugs.includes('data-stage="' + stage + '"'), "bugs view has no " + stage + " column");
+  same(Array.from(bugs.matchAll(/<div class="column" data-stage="([^"]*)"/g)).map(match => match[1]), ["invalid", "open", "in-fix", "fixed", "verified", "released", "closed"], "the invalid column comes first");
+  assert(bugs.includes(">12 bugs, 2 invalid<"), "the toolbar count does not say how many bugs are invalid");
   same(idsIn(column(bugs, "open")), ["BUG-001", "BUG-010", "BUG-012"], "open column");
   same(idsIn(column(bugs, "in-fix")), ["BUG-002"], "in-fix column");
   same(idsIn(column(bugs, "fixed")), ["BUG-003"], "fixed column");
@@ -2049,7 +2051,7 @@ function recordsViewsCheck() {
   // 3. The Releases view: newest first, kinds, outcomes, chains, the current mark, deliveries and filters.
   switchView("releases");
   let releases = html("releases-view");
-  same(idsIn(releases), ["REL-006", "REL-004", "REL-003", "REL-002", "REL-001", "REL-005", "REL-007"], "release order");
+  same(idsIn(releases), ["REL-007", "REL-006", "REL-005", "REL-004", "REL-003", "REL-002", "REL-001"], "release order (the highest record number first)");
   for (const kind of ["release", "retry", "rollback", "redeploy"]) assert(releases.includes("<i></i>" + kind + "<"), "no " + kind + " kind badge");
   for (const outcome of ["released", "failed", "partial", "rolled-back"]) assert(releases.includes('title="Outcome">' + outcome + "<"), "no " + outcome + " outcome badge");
   assert(count(releases, 'class="badge current"') === 2, "the current mark is not on the two current records");
@@ -2195,6 +2197,78 @@ function recordsViewsCheck() {
   adoptData(full);
   switchView("releases");
   assert(!document.getElementById("releases-view").hasAttribute("inert") && document.getElementById("bugs-view").hasAttribute("inert") && document.getElementById("incidents-view").hasAttribute("inert"), "an inactive record view stayed reachable");
+  switchView("graph");
+
+  // 11. A card and a link open exactly their own record, whatever other records declare.
+  const paths = { first: "knowledge/wiki/bugs/BUG-003-reviewer-list-flickers.md", second: "knowledge/wiki/bugs/BUG-003-second-page.md", impostor: "knowledge/wiki/bugs/BUG-020-declares-a-release-id.md" };
+  const identified = clone(full);
+  const firstPage = identified.facts.bugs.find(bug => bug.id === "BUG-003");
+  firstPage.path = paths.first;
+  const secondPage = Object.assign(clone(firstPage), { title: "Second page that claims BUG-003", path: paths.second, valid: false });
+  const impostor = Object.assign(clone(firstPage), { id: "REL-002", title: "Bug page that declares a release ID", path: paths.impostor, valid: false, status: "open" });
+  // The invalid duplicate comes first in the data: a link still goes to the first valid page.
+  identified.facts.bugs.unshift(secondPage, impostor);
+  adoptData(identified);
+  resetFilters();
+  switchView("bugs");
+  const openCardAt = (viewId, kind, path) => {
+    const card = document.getElementById(viewId).querySelectorAll("[data-record-id]").find(item => item.dataset.recordKind === kind && item.dataset.recordPath === path);
+    assert(card, "no " + kind + " card for " + path);
+    card.__listeners.click[0]({ target: { closest() { return null; } } });
+  };
+  openCardAt("bugs-view", "bug", paths.second);
+  assert(state.selectedRecordRef.path === paths.second && panel().includes("Second page that claims BUG-003") && panel().includes(paths.second), "the second BUG-003 page did not open its own panel");
+  openCardAt("bugs-view", "bug", paths.first);
+  assert(state.selectedRecordRef.path === paths.first && panel().includes("Reviewer list flickers on refresh"), "the first BUG-003 page did not open its own panel");
+  openCardAt("bugs-view", "bug", paths.impostor);
+  assert(state.selectedRecordRef.kind === "bug" && panel().includes("Bug page that declares a release ID") && panel().includes(">Bug<"), "a bug that declares a release ID did not open as a bug");
+  switchView("releases");
+  openCardAt("releases-view", "release", "knowledge/wiki/releases/REL-002.md");
+  assert(state.selectedRecordRef.kind === "release" && panel().includes("Review summary export, retry") && panel().includes(">Release<"), "the release card did not open the release");
+  const relLink = /data-record-link="REL-002" data-record-kind="release" data-record-path="knowledge\/wiki\/releases\/REL-002\.md"/;
+  switchView("bugs");
+  openCardAt("bugs-view", "bug", full.facts.bugs.find(bug => bug.id === "BUG-005").path);
+  assert(relLink.test(panel()), "a release link does not name the release record");
+  followLink("data-record-link", "REL-002");
+  assert(state.selectedRecordRef.kind === "release" && panel().includes("Review summary export, retry"), "a release link opened a bug that declares the ID");
+  renderApps();
+  assert(html("app-view").includes('data-record-link="BUG-003" data-record-kind="bug" data-record-path="' + paths.first + '"'), "a bug link does not go to the first valid page of the ID");
+  assert(!html("app-view").includes('data-record-path="' + paths.second + '"'), "a link went to an invalid duplicate");
+
+  // 12. One blocking count: the open blocking bugs, in the tile, the chip and the filter.
+  const blocking = clone(full);
+  blocking.facts.bugs.find(bug => bug.id === "BUG-006").blocking = true;
+  adoptData(blocking);
+  resetFilters();
+  switchView("bugs");
+  assert(/data-records-toggle="bugBlocking"[^>]*>Blocking only<span class="n">1<\/span>/.test(html("bugs-view")), "the Blocking only chip counts a closed blocking bug");
+  assert(/Open bugs<\/div><div class="value alert" data-tick="6">[\s\S]*?1 blocking/.test(html("statrow")), "the Open bugs tile disagrees with the chip");
+  control("bugs-view", "data-records-toggle").__listeners.click[0]();
+  same(idsIn(html("bugs-view")), ["BUG-001"], "the open blocking bugs");
+  resetFilters();
+
+  // 13. A delivery row names its item first, as a link; a capped list says how many more there are.
+  adoptData(full);
+  switchView("releases");
+  releases = html("releases-view");
+  assert(/data-node-link="F-001"[^>]*>F-001<\/button><span class="sep">·<\/span><span class="d-app">backend<\/span>/.test(releases), "a delivery row does not start with its feature");
+  assert(/data-record-link="BUG-005"[^>]*>BUG-005<\/button><span class="sep">·<\/span><span class="d-app">web<\/span>/.test(releases), "a delivery row does not start with its bug");
+  const many = clone(full);
+  many.facts.app_operations[0].open_bugs = Array.from({ length: 45 }, (_unused, index) => "BUG-" + String(index + 1).padStart(3, "0")).join(", ");
+  many.facts.app_operations[1].open_bugs = Array.from({ length: 40 }, (_unused, index) => "BUG-" + String(index + 1).padStart(3, "0")).join(", ");
+  adoptData(many);
+  const manyApps = html("app-view");
+  assert(manyApps.includes('<span class="ops-more">+5 more</span>') && count(manyApps, 'class="ops-more"') === 1, "a list of 45 bugs does not end with +5 more, or a list of 40 does");
+
+  // 14. An ID with thousands of digits sorts after the smaller numbers and breaks no order.
+  const huge = clone(full);
+  for (const digits of [5000, 4000]) huge.facts.bugs.push(Object.assign(clone(huge.facts.bugs.find(bug => bug.id === "BUG-012")), { id: "BUG-" + "9".repeat(digits), title: "Bug with " + digits + " digits", path: "knowledge/wiki/bugs/BUG-big-" + digits + ".md", severity: "low", blocking: false }));
+  adoptData(huge);
+  resetFilters();
+  switchView("bugs");
+  const hugeOrder = idsIn(column(html("bugs-view"), "open")).map(id => id.length);
+  assert(hugeOrder.indexOf(4004) >= 0 && hugeOrder.indexOf(4004) < hugeOrder.indexOf(5004), "an ID with 4000 digits does not sort before one with 5000");
+  adoptData(full);
   switchView("graph");
   globalThis.__recordsViewsChecked = true;
 }

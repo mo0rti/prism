@@ -80,6 +80,12 @@ class RenderTests(unittest.TestCase):
         self.assertEqual({}, read_board_views(text).bugs)
         self.assertEqual(HEADER + FEATURE_ROW, _render_status_board(HEADER + FEATURE_ROW, {}, {"BUG-001": None, "app:worker": None}))
 
+    def test_a_bug_row_with_an_oversized_id_sorts_after_the_others(self) -> None:
+        huge = "BUG-" + "9" * 5000
+        text = _render_status_board(HEADER + FEATURE_ROW, {}, {huge: bug_row(huge), "BUG-010": bug_row("BUG-010"), "BUG-002": bug_row("BUG-002")})
+        text = _render_status_board(text, {}, {"BUG-004": bug_row("BUG-004")})
+        self.assertEqual(["BUG-002", "BUG-004", "BUG-010", huge], list(read_board_views(text).bugs))
+
     def test_a_feature_row_follows_its_key_and_a_crlf_board_keeps_its_line_endings(self) -> None:
         board = (HEADER + FEATURE_ROW).replace("\n", "\r\n")
         after = {

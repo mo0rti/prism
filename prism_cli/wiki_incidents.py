@@ -18,6 +18,8 @@ from typing import Iterable
 from prism_cli.wiki_bugs import BUG_ID_PATTERN, BUG_SEVERITIES, FEATURE_ID_PATTERN
 from prism_cli.wiki_model import (
     MarkdownPage,
+    bounded_number,
+    number_order,
     has_section,
     markdown_sections,
     normalize_feature_id,
@@ -149,7 +151,7 @@ class IncidentPage:
     @property
     def number(self) -> int:
         match = INCIDENT_ID_PATTERN.match(self.incident_id)
-        return int(match.group(1)) if match else 0
+        return (bounded_number(match.group(1)) or 0) if match else 0
 
     @property
     def title(self) -> str:
@@ -192,9 +194,9 @@ def read_incident_pages(wiki_root: Path) -> list[IncidentPage]:
     return [IncidentPage(page) for page in read_markdown_pages(wiki_root / INCIDENT_DIRECTORY)]
 
 
-def incident_sort_key(incident_id: str) -> tuple[int, str]:
+def incident_sort_key(incident_id: str) -> tuple[int, int, str, str]:
     match = INCIDENT_ID_PATTERN.match(incident_id)
-    return (int(match.group(1)) if match else 10**9, incident_id)
+    return number_order(match.group(1) if match else None, incident_id)
 
 
 # --- Lint ----------------------------------------------------------------------------------------------------------
