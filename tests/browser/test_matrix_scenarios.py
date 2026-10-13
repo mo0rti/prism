@@ -7,7 +7,9 @@ each flow the in-app day/night toggle flips the theme and the screen is saved
 again. The tests check visible keyboard focus, the dialog's focus trap, focus
 return, and that neither the page nor the dialog scrolls sideways. Every
 screenshot is saved under the scenario's evidence folder as
-``<viewport>-<scheme>-<step>.png`` for a contact sheet.
+``<viewport>-<scheme>-<step>.png`` for a contact sheet. A second class checks
+that a board re-render (a refresh that lands after a dialog closed, a live
+update) keeps keyboard focus on the element that had it.
 """
 
 from __future__ import annotations
@@ -31,8 +33,25 @@ APPLY_FEATURE = {"light": FEATURES_BY_ID["F-001"], "dark": FEATURES_BY_ID["F-004
 TAB_PRESSES = 14
 
 
+class FocusAssertions:
+    """The focus check both classes make: after a dialog closes or the board re-renders, focus is on the feature's card."""
+
+    def assert_focus_returned(self, board: BoardPage, feature: FixtureFeature, label: str) -> None:
+        """Focus is on the feature's review button or its card (after the dialog closes, and after a re-render)."""
+
+        inside = board.page.evaluate(
+            """id => {
+                const el = document.activeElement;
+                const card = el && el.closest('.card[data-id]');
+                return !!card && card.dataset.id === id;
+            }""",
+            feature.feature_id,
+        )
+        self.assertTrue(inside, f"{label}: focus did not return to {feature.feature_id}'s card: {board.focus_description()}")
+
+
 @requires_browser_e2e
-class MatrixTests(ScenarioCase):
+class MatrixTests(FocusAssertions, ScenarioCase):
     extra_features = (BLOCKED,)
 
     # -- measurements ------------------------------------------------------------
@@ -69,19 +88,6 @@ class MatrixTests(ScenarioCase):
                 page.keyboard.press(key)
                 self.assert_focus_in_dialog(board, f"{label} ({key})")
 
-    def assert_focus_returned(self, board: BoardPage, feature: FixtureFeature, label: str) -> None:
-        """After the dialog closes, focus is on the feature's review button or its card."""
-
-        inside = board.page.evaluate(
-            """id => {
-                const el = document.activeElement;
-                const card = el && el.closest('.card[data-id]');
-                return !!card && card.dataset.id === id;
-            }""",
-            feature.feature_id,
-        )
-        self.assertTrue(inside, f"{label}: focus did not return to {feature.feature_id}'s card: {board.focus_description()}")
-
     # -- flows -------------------------------------------------------------------
 
     def apply_flow(self, run: Any, board: BoardPage, page: Any, prefix: str, feature: FixtureFeature) -> None:
@@ -108,6 +114,11 @@ class MatrixTests(ScenarioCase):
         board.apply_button(dialog).scroll_into_view_if_needed()
         board.apply_button(dialog).click()
         self.wait_applied(board, dialog, feature, "ready-for-design")
+        # The card can appear in its new column from a live update while the apply's own refresh is still in flight.
+        # A refresh or live update that lands after the dialog closed re-renders the board and takes focus off the card
+        # the dialog returned it to, so close only once the refresh is validated and the board holds the newest snapshot.
+        expect(dialog).to_contain_text("Dashboard view refreshed and validated")
+        self.wait_until_current(board)
         self.assert_no_sideways_scroll(page, f"{prefix} applied dialog", dialog=dialog)
         run.screenshot(page, f"{prefix}-applied-dialog")
         dialog.get_by_role("button", name="Close").click()
@@ -230,6 +241,73 @@ class MatrixTests(ScenarioCase):
             dialog.get_by_role("heading", name=re.compile(r"^Review ")).focus()
             page.keyboard.press("Shift+Tab")
             self.assert_focus_in_dialog(board, "after Shift+Tab from the heading")
+
+
+RENAMED = "Renamed while a control had focus"
+
+
+@requires_browser_e2e
+class RenderFocusTests(FocusAssertions, ScenarioCase):
+    """A re-render of the board replaces its markup; keyboard focus stays where the person had it."""
+
+    def test_refresh_landing_after_the_dialog_closed_keeps_focus_on_the_card(self) -> None:
+        """The apply's own refresh is held until the dialog is closed; when it lands the card moves and keeps focus."""
+
+        feature = FEATURES_BY_ID["F-004"]
+        with self.scenario("L-focus-refresh-after-close") as run:
+            page = self.page
+            board = self.sign_in("human")
+            self.open_board(board)
+            self.wait_until_current(board)
+            board.install_graph_gate()
+            board.action_button(feature.feature_id, "handoff").focus()
+            page.keyboard.press("Enter")
+            dialog = board.dialog("po-handoff")
+            expect(dialog.get_by_role("heading", name=re.compile(r"^Exact file changes"))).to_be_visible()
+            self.acknowledge(board, dialog)
+            board.hold_graph_refreshes()
+            board.apply_button(dialog).click()
+            board.wait_for_held_refresh()
+            dialog.get_by_role("button", name="Close").click()
+            expect(dialog).to_have_count(0)
+            self.assert_focus_returned(board, feature, "after Close with the refresh still held")
+            expect(board.card_in("specified", feature.feature_id)).to_have_count(1)
+
+            board.release_graph_refreshes()
+            expect(board.card_in("ready-for-design", feature.feature_id)).to_have_count(1)
+            self.wait_until_current(board)
+            self.assert_focus_returned(board, feature, "after the held refresh landed")
+            expect(board.card_in("ready-for-design", feature.feature_id)).to_have_count(1)
+            run.screenshot(page, "focus-kept-after-late-refresh")
+            run.effect("the apply's refresh landed after the dialog closed: the card moved to ready-for-design and kept keyboard focus")
+            self.assertEqual([], self.page_errors)
+
+    def test_live_update_keeps_focus_on_a_cards_control(self) -> None:
+        """A live update re-renders every card; the Review button that had focus has it afterwards."""
+
+        focused = FEATURES_BY_ID["F-001"]
+        other = FEATURES_BY_ID["F-004"]
+        with self.scenario("L-focus-live-update") as run:
+            page = self.page
+            harness = self.harness
+            board = self.sign_in("human")
+            self.open_board(board)
+            self.wait_until_current(board)
+            button = board.action_button(focused.feature_id, "handoff")
+            button.focus()
+            expect(button).to_be_focused()
+
+            path = other.path.as_posix()
+            text = harness.read(path)
+            self.assertIn("title: Document review\n", text)
+            harness.write(path, text.replace("title: Document review\n", f"title: {RENAMED}\n", 1))
+            expect(board.card(other.feature_id)).to_contain_text(RENAMED)
+            self.wait_until_current(board)
+
+            expect(button).to_be_focused()
+            run.screenshot(page, "focus-kept-after-live-update")
+            run.effect(f"a live update renamed {other.feature_id}: the board re-rendered and {focused.feature_id}'s Review button kept keyboard focus")
+            self.assertEqual([], self.page_errors)
 
 
 if __name__ == "__main__":
