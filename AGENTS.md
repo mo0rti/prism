@@ -90,13 +90,13 @@ Project skills for this template repo live in `.agents/skills/` and are best inv
 
 ```bash
 python -B scripts/run-tests.py                # the Python suite across worker processes (-j N, module names, --shard N/M); same tests as unittest discover
-prism new --preset backend-only --project-name "Test App" --dest C:\temp\template-test --yes
+prism new --preset backend-only --project-name "Test App" --dest $env:TEMP\prism-test\template-test --yes   # delete $env:TEMP\prism-test afterwards
 python scripts/build-skill-layers.py          # after editing template-skills/
 python scripts/build-skill-layers.py --check
 python scripts/build-golden.py                # regenerate golden/ after a change of template/, packs/ or a pin
 python scripts/build-golden.py --check
 python scripts/sync-golden.py                 # after a pin moves: the pack lockfiles, then golden/
-prism new --answers C:\temp\answers.yml --dest C:\temp\template-test-mobile --yes   # an app list of your choice
+prism new --answers $env:TEMP\prism-test\answers.yml --dest $env:TEMP\prism-test\template-test-mobile --yes   # an app list of your choice
 rg -n --hidden --glob '!**/.git/**' "\.agents/skills|AGENTS\.md|CLAUDE\.md" .
 
 # Shared board, in a disposable workspace and never in this repository

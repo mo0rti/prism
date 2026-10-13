@@ -1,5 +1,5 @@
 param(
-    [string]$TargetDir = "C:\temp\prism-runtime-validate"
+    [string]$TargetDir = (Join-Path ([System.IO.Path]::GetTempPath()) "prism-test\prism-runtime-validate")
 )
 
 Set-StrictMode -Version Latest
