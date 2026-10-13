@@ -59,6 +59,7 @@ from prism_cli.wiki_model import (
     initial_design_tracks,
     minimum_stage,
     normalize_feature_id,
+    oversized_number,
     parse_advisory_required_actions,
     parse_app_revalidation,
     parse_criteria,
@@ -1364,6 +1365,7 @@ def _evaluate_po_handoff(
     if (
         not isinstance(frontmatter.get("id"), str)
         or not re.fullmatch(r"F-\d+", str(frontmatter.get("id", "")).strip())
+        or oversized_number(str(frontmatter.get("id", "")))
         or path_feature_id != feature_id
         or normalized_feature_id in duplicate_ids
     ):
@@ -1813,6 +1815,7 @@ def _base_action_checks(
     if (
         not isinstance(feature.page.frontmatter.get("id"), str)
         or not re.fullmatch(r"F-\d+", str(feature.page.frontmatter.get("id", "")).strip())
+        or oversized_number(str(feature.page.frontmatter.get("id", "")))
         or path_feature_id != feature.feature_id
         or normalized_feature_id in duplicate_ids
     ):

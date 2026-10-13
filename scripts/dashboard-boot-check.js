@@ -2268,6 +2268,50 @@ function recordsViewsCheck() {
   switchView("bugs");
   const hugeOrder = idsIn(column(html("bugs-view"), "open")).map(id => id.length);
   assert(hugeOrder.indexOf(4004) >= 0 && hugeOrder.indexOf(4004) < hugeOrder.indexOf(5004), "an ID with 4000 digits does not sort before one with 5000");
+  // 15. A link resolves within the kind its field names: an open bug that declares a feature's ID or a free-form ID opens that bug.
+  const typed = clone(full);
+  const typedBug = (id, title) => Object.assign(clone(typed.facts.bugs.find(bug => bug.id === "BUG-012")), { id, title, path: "knowledge/wiki/bugs/" + id.toLowerCase() + ".md", valid: false, status: "open" });
+  typed.facts.bugs.push(typedBug("F-001", "Bug page that declares a feature ID"), typedBug("custom", "Bug page with a free-form ID"));
+  typed.facts.app_operations[0].open_bugs = "F-001, custom";
+  typed.facts.app_operations[0].released_features = "F-001";
+  // An incident follow-up can name a bug or a feature: its F-001 is the feature, its custom is the bug, and an unknown one is plain text.
+  Object.assign(typed.facts.incidents.find(incident => incident.id === "INC-001"), { follow_ups: ["F-001", "custom", "BUG-404"], releases: ["F-001"] });
+  Object.assign(typed.facts.bugs.find(bug => bug.id === "BUG-005"), { close_reason: "duplicate", duplicate_of: "F-002" });
+  adoptData(typed);
+  resetFilters();
+  renderApps();
+  const cell = (markup, label) => {
+    const start = markup.indexOf('<div class="k">' + label + '</div>');
+    assert(start >= 0, "the Apps view has no " + label + " fact");
+    return markup.slice(start, markup.indexOf("</div></div>", start));
+  };
+  const typedApps = html("app-view").split('data-app-operations="backend"')[1].split('data-app-operations="web"')[0];
+  const openBugsCell = cell(typedApps, "Open bugs");
+  assert(/data-record-link="F-001" data-record-kind="bug" data-record-path="knowledge\/wiki\/bugs\/f-001\.md"/.test(openBugsCell) && !openBugsCell.includes("data-node-link"), "an open bug that declares a feature ID does not link to the bug");
+  assert(/data-record-link="custom" data-record-kind="bug" data-record-path="knowledge\/wiki\/bugs\/custom\.md"/.test(openBugsCell), "an open bug with a free-form ID does not link to the bug");
+  assert(cell(typedApps, "Released features").includes('data-node-link="F-001"'), "a released feature does not link to the feature");
+  const followApps = (id, kind) => {
+    const link = document.getElementById("app-view").querySelectorAll("[data-record-link]").find(item => item.dataset.recordLink === id && item.dataset.recordKind === kind);
+    assert(link, "the Apps view has no " + kind + " link for " + id);
+    link.__listeners.click[0]({ stopPropagation() {} });
+  };
+  followApps("F-001", "bug");
+  assert(state.selectedRecordRef.kind === "bug" && state.selectedRecordRef.id === "F-001" && panel().includes("Bug page that declares a feature ID") && panel().includes(">Bug<"), "the open bug that declares F-001 did not open its own panel");
+  followApps("custom", "bug");
+  assert(state.selectedRecordRef.kind === "bug" && state.selectedRecordRef.id === "custom" && panel().includes("Bug page with a free-form ID"), "the open bug with a free-form ID did not open its own panel");
+  switchView("incidents");
+  openCard("incidents-view", "INC-001");
+  shown = panel();
+  const followUps = shown.slice(shown.indexOf("Follow-ups - 3"));
+  assert(/data-node-link="F-001"/.test(followUps), "a follow-up with a feature prefix does not open the feature");
+  assert(/data-record-link="custom" data-record-kind="bug"/.test(followUps), "a follow-up with a free-form ID does not open the bug");
+  assert(/rlink plain[^>]*>BUG-404</.test(followUps), "a follow-up that names nothing is not plain text");
+  const releasesSection = shown.slice(shown.indexOf("Releases - 1"), shown.indexOf("Follow-ups - 3"));
+  assert(releasesSection.includes("rlink plain") && !releasesSection.includes("data-node-link") && !releasesSection.includes("data-record-link"), "a release field resolved to a feature or a bug");
+  switchView("bugs");
+  openCard("bugs-view", "BUG-005");
+  shown = panel();
+  assert(shown.includes("Duplicate of") && /rlink plain[^>]*>F-002</.test(shown.slice(shown.indexOf("Duplicate of"))), "a duplicate-of field fell back to a feature");
   adoptData(full);
   switchView("graph");
   globalThis.__recordsViewsChecked = true;

@@ -324,6 +324,13 @@ class FeatureThroughIngestTests(IngestCase):
                 self.assertEqual(code, error.code, error.message)
         self.assertFalse((self.root / "knowledge/wiki/features/F-001-document-review.md").exists())
 
+    def test_a_feature_with_more_than_eighteen_digits_in_its_number_is_refused(self) -> None:
+        for number in ("1" + "0" * 18, "9" * 100):
+            with self.subTest(digits=len(number)):
+                page = _journey_feature_page(f"F-{number}", "Document review", "raw", "po", ["knowledge/intake/processed/NAME/note.md"], ["| 1 | Which details should the summary emphasize? | po | open |"])
+                error = self.reject("2026-10-08-over-the-bound", {f"features/F-{number}-document-review.md": page})
+                self.assertEqual("invalid_feature_output", error.code, error.message)
+
     def test_an_existing_feature_is_never_rewritten_by_ingest(self) -> None:
         self.ingest("2026-10-08-first", {"features/F-001-document-review.md": self.feature()})
         error = self.reject("2026-10-09-again", {"features/F-001-document-review.md": self.feature().replace("Which details", "Which points")})

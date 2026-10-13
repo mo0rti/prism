@@ -1034,6 +1034,28 @@ class ModelTests(unittest.TestCase):
         empty = body.replace("An export of a typical review is ready within five seconds.", "")
         self.assertIn("technical-design-incomplete", {code for code, _ in technical_design_problems(frontmatter, empty, feature_id="F-001", scope=["backend", "web"], criteria_ids=CRITERION_IDS)})
 
+    def test_a_test_strategy_criterion_of_thousands_of_digits_is_a_problem_not_an_exception(self) -> None:
+        huge = "AC-" + "9" * 5000
+        page = technical_page(strategy=[
+            "| AC-1 | backend | automated | integration | The export is created |",
+            f"| {huge} | web | manual | end-to-end | |",
+            "| AC-3 | backend, web | manual | end-to-end | Compare the PDF |",
+        ])
+        rows, problems = parse_test_strategy(page)
+        self.assertEqual(["AC-1", "AC-3"], [row.criterion for row in rows])
+        self.assertEqual(1, len(problems))
+        self.assertIn("is not a criterion ID", problems[0])
+        frontmatter, body = _parse_markdown(page)
+        found = technical_design_problems(frontmatter, body, feature_id="F-001", scope=["backend", "web"], criteria_ids=["AC-1", "AC-2", "AC-3"])
+        self.assertEqual({"test-strategy-incomplete"}, {code for code, _message in found})
+        # A criterion the feature does not have is named in number order, whatever its digits.
+        strays = technical_page(strategy=[f"| AC-{number} | backend | automated | integration | Note |" for number in (10, 9, 100000000000000000)])
+        frontmatter, body = _parse_markdown(strays)
+        messages = [message for code, message in technical_design_problems(frontmatter, body, feature_id="F-001", scope=["backend", "web"], criteria_ids=["AC-1"]) if "which the feature does not have" in message]
+        self.assertEqual(1, len(messages))
+        self.assertLess(messages[0].index("`AC-9`"), messages[0].index("`AC-10`"))
+        self.assertLess(messages[0].index("`AC-10`"), messages[0].index("`AC-100000000000000000`"))
+
     def test_the_initial_tracks_follow_the_scope(self) -> None:
         self.assertEqual(DesignTracks("pending", "pending"), initial_design_tracks(["a"], None))
 

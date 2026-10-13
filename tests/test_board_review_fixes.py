@@ -129,6 +129,21 @@ class BoardReviewFixTests(unittest.TestCase):
                 (operation_id, self.agent.participant_id, intent["preview_id"], "x", json.dumps(intent), now, now),
             )
 
+    def test_an_open_question_number_of_thousands_of_digits_is_refused_not_raised(self) -> None:
+        original = self.read(FEATURE)
+        marker = "| 1 | Which points should a review summary highlight? | po | open |"
+        for label, number in (("a new question", "9" * 5000), ("a superscript digit", "\u00b2")):
+            with self.subTest(label):
+                changes = [{"path": FEATURE, "content": original.replace(marker, marker + f"\n| {number} | How should the review be organized? | designer | open |")}]
+                with self.assertRaises(BoardError) as caught:
+                    self.service.preview_skill(self.agent, "ask", changes, read_revisions=_read_revisions(self.service, self.agent, "ask", changes))
+                self.assertIn(caught.exception.code, {"invalid_open_question", "question_number_not_next"})
+        # The same text already on the page is a malformed question, not an exception, for the lifecycle reads of a clarify.
+        poisoned = original.replace(marker, marker + f"\n| {'9' * 5000} | How should the review be organized? | designer | open |")
+        with self.assertRaises(BoardError) as caught:
+            self.service._validate_feature_shape(FEATURE, poisoned, "ask")
+        self.assertEqual("invalid_open_question", caught.exception.code)
+
     def review_revision(self, operation_id: str, actor=None) -> str:
         return self.service.operation(actor or self.human, operation_id)["recovery_review_revision"]
 

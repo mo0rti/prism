@@ -17,10 +17,12 @@ from typing import Any, Iterable, Mapping, Sequence
 from prism_cli.qa_rules import Problem, environments_of
 from prism_cli.wiki_bugs import BugPage, blocks
 from prism_cli.wiki_model import (
+    MAX_RECORD_NUMBER_DIGITS,
     EvidenceProblem,
     FeatureEvidence,
     clean_cell,
     normalize_feature_id,
+    oversized_number,
 )
 from prism_cli.wiki_releases import (
     KIND_REDEPLOY,
@@ -96,10 +98,14 @@ def check_record_page(
     if "id" in frontmatter:
         if not isinstance(record_id, str) or RELEASE_ID_PATTERN.match(record_id.strip()) is None:
             bad("`id` must be `REL-` and the number with at least three digits and no other padding, such as `REL-001` or `REL-1042`.")
+        elif oversized_number(record_id):
+            bad(f"`id` has more than {MAX_RECORD_NUMBER_DIGITS} digits in its number; a release record takes a number of at most {MAX_RECORD_NUMBER_DIGITS} digits.")
         elif file_match is None or file_match.group("id") != record_id.strip():
             bad(f"the file name must be `{record_id.strip()}.md`.")
     elif file_match is None:
         bad("the file name must be `REL-<n>.md`.")
+    elif oversized_number(file_match.group("id")):
+        bad(f"the file name has more than {MAX_RECORD_NUMBER_DIGITS} digits in its number; a release record takes a number of at most {MAX_RECORD_NUMBER_DIGITS} digits.")
     title = frontmatter.get("title")
     if "title" in frontmatter and (not isinstance(title, str) or not title.strip()):
         bad("`title` must be a non-empty string.")

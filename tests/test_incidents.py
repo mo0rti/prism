@@ -260,6 +260,12 @@ class IncidentIngestTests(IncidentCase):
         misnamed = {"incidents/INC-002-other.md": base}
         self.assertEqual("invalid_incident", self.reject("2026-10-09-shape", misnamed).code)
 
+    def test_an_incident_with_more_than_eighteen_digits_in_its_number_is_refused(self) -> None:
+        for number in ("1" + "0" * 18, "9" * 100):
+            with self.subTest(digits=len(number)):
+                path = f"incidents/INC-{number}-reservation-outage.md"
+                self.assertEqual("invalid_incident", self.reject("2026-10-09-over-the-bound", {path: incident(id=f"INC-{number}")}).code)
+
     def test_an_incident_id_is_taken_once(self) -> None:
         self.open_incident()
         other = "incidents/INC-001-second-outage.md"

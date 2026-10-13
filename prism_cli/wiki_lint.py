@@ -34,6 +34,7 @@ from prism_cli.wiki_operations import (
 from prism_cli.wiki_releases import ReleaseRecord, read_all_release_records, read_release_records, record_id_of_cell, release_participation
 from prism_cli.wiki_model import (
     APP_STAGE_ORDER,
+    MAX_RECORD_NUMBER_DIGITS,
     SINGLE_FEATURE_SECTIONS,
     FEATURE_FRONTMATTER_FIELDS,
     FEATURE_STATUS_ORDER,
@@ -68,6 +69,7 @@ from prism_cli.wiki_model import (
     section_ambiguities,
     source_link_parts,
     normalize_feature_id,
+    oversized_number,
     feature_id_from_path,
     history_date_fields,
     parse_conflict_report,
@@ -2634,6 +2636,16 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel, participation: Re
         value = frontmatter["id"]
         if not isinstance(value, str) or not re.fullmatch(r"F-\d+", value.strip()):
             diagnostics.append(_diag("invalid-feature-id", "error", path, "`id` must be a feature ID such as `F-001`.", feature_id))
+        elif oversized_number(value):
+            diagnostics.append(
+                _diag(
+                    "invalid-feature-id",
+                    "error",
+                    path,
+                    f"`id` has more than {MAX_RECORD_NUMBER_DIGITS} digits in its number; a feature takes a number of at most {MAX_RECORD_NUMBER_DIGITS} digits.",
+                    feature_id,
+                )
+            )
     if "title" in frontmatter and (not isinstance(frontmatter["title"], str) or not frontmatter["title"].strip()):
         diagnostics.append(_diag("invalid-feature-title", "error", path, "`title` must be a non-empty string.", feature_id))
 

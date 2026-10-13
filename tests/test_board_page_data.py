@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
 from jsonschema import Draft202012Validator
 
 from prism_cli.board_server import _LiveGraph
@@ -19,9 +20,19 @@ from prism_cli.status import build_status
 from prism_cli.wiki_bugs import BugPage, parse_fix_rows, parse_verification_rows, read_bug_pages
 from prism_cli.wiki_incidents import IncidentPage, read_incident_pages
 from prism_cli.wiki_lint import lint_wiki
+from prism_cli.workspace import inspect_workspace
 from prism_cli.wiki_graph import action_registry, bounded_text, build_graph
 from prism_cli.wiki_graph_html import render_html
-from prism_cli.wiki_model import DESIGN_OWNERS, FEATURE_STATUS_ORDER, bounded_number, number_order, parse_release_rows, section_text, status_rank
+from prism_cli.wiki_model import (
+    DESIGN_OWNERS,
+    FEATURE_STATUS_ORDER,
+    bounded_number,
+    number_order,
+    oversized_number,
+    parse_release_rows,
+    section_text,
+    status_rank,
+)
 from prism_cli.wiki_operations import OPERATION_ROW_KEYS, read_board_views
 from prism_cli.wiki_releases import current_delivery, latest_record, read_all_release_records, read_release_records, record_id_of_cell, record_kinds, record_sections
 from prism_cli.wiki_transitions import (
@@ -36,8 +47,10 @@ from prism_cli.wiki_transitions import (
 from tests import real_temp  # noqa: F401
 from tests.board_page_fixture import BOTH, TwoAppWorkspace
 from tests.browser.harness import EXTRA_FEATURES, build_workspace
-from tests.qa_pages import bug_page, history_entry
-from tests.test_lifecycle_model import delivery_row, release_row
+from tests.qa_pages import bug_page, history_entry, verification_row
+from tests.release_pages import delivery as record_delivery
+from tests.release_pages import record_page
+from tests.test_lifecycle_model import TEXT_ONE, TEXT_TWO, delivery_row, qa_row, ref, release_row
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 TEMPLATE = REPOSITORY / "prism_cli" / "assets" / "graph_template.html"
@@ -878,6 +891,199 @@ class RecordFactsTests(TwoAppWorkspace):
         self.assertEqual(0, bounded_number("000"))
         self.assertIsNone(bounded_number("9" * 19))
         self.assertEqual(10**18 - 1, bounded_number("9" * 18))
+
+    # -- Page text that cannot become an integer ---------------------------------------------------------------------------------
+
+    DIGITS = "9" * 5000
+
+    def lint_codes(self) -> set[str]:
+        return {item.code for item in lint_wiki(self.root).diagnostics}
+
+    def test_a_feature_page_with_numbers_of_thousands_of_digits_is_reported_by_lint_and_the_graph_never_raised(self) -> None:
+        criteria = self.criteria()
+        both_delivered = [delivery_row(app) for app in BOTH]
+        huge_reference = f"AC-{self.DIGITS}@v1:{'0' * 64}"
+        backend_artifact, worker_artifact = "`build:backend#1`", "`build:worker#1`"
+        huge_release = f"| backend | production | `build:backend#1` | release-{self.DIGITS} | released | [REL-001](https://records.example/REL-001) | checked |"
+        cases = {
+            "an acceptance criterion ID": (
+                "criterion-id-required",
+                ("in-dev", "dev", self.page("in-dev", "dev", BOTH, [f"AC-{self.DIGITS} [backend] {TEXT_ONE}", criteria[1]], delivery=[delivery_row("backend")])),
+            ),
+            "a criterion reference of a QA row": (
+                "invalid-evidence-row",
+                (
+                    "in-qa",
+                    "qa",
+                    self.page(
+                        "in-qa", "qa", BOTH, criteria, delivery=both_delivered,
+                        qa=[qa_row("backend", [huge_reference], backend_artifact), qa_row("worker", [ref(1, BOTH, TEXT_ONE)], worker_artifact)],
+                    ),
+                ),
+            ),
+            "the attempt of a QA row": (
+                "invalid-evidence-row",
+                (
+                    "in-qa",
+                    "qa",
+                    self.page(
+                        "in-qa", "qa", BOTH, criteria, delivery=both_delivered,
+                        qa=[
+                            qa_row("backend", [ref(1, BOTH, TEXT_ONE), ref(2, ["backend"], TEXT_TWO)], backend_artifact, attempt=self.DIGITS),  # type: ignore[arg-type]
+                            qa_row("worker", [ref(1, BOTH, TEXT_ONE)], worker_artifact),
+                        ],
+                    ),
+                ),
+            ),
+            "the attempt of a Release row": (
+                "invalid-evidence-row",
+                (
+                    "released",
+                    "none",
+                    self.page("released", "none", BOTH, criteria, delivery=both_delivered, qa=self.covering_qa(), release=[huge_release, release_row("worker", "released")]),
+                ),
+            ),
+            "the version of a contract binding": (
+                "invalid-evidence-row",
+                (
+                    "in-qa",
+                    "qa",
+                    self.page("in-qa", "qa", BOTH, criteria, delivery=[delivery_row("backend", contract=f"F-001@v{self.DIGITS}:c1:{'0' * 64}"), delivery_row("worker")], qa=self.covering_qa()),
+                ),
+            ),
+            "the criteria high-water mark": (
+                None,
+                ("in-qa", "qa", self.page("in-qa", "qa", BOTH, criteria, delivery=both_delivered, qa=self.covering_qa()).replace("criteria-high-water: 2", f"criteria-high-water: {self.DIGITS}")),
+            ),
+        }
+        for name, (code, (status, owner, page)) in cases.items():
+            with self.subTest(name):
+                self.seed(status, owner, page)
+                codes = self.lint_codes()
+                if code is not None:
+                    self.assertIn(code, codes)
+                graph = self.facts()
+                self.assertIn("F-001", [node["id"] for node in build_graph(self.root)["facts"]["nodes"]])
+                self.assertIsInstance(graph["bugs"], list)
+
+    def test_a_bug_verification_attempt_and_a_release_attempt_with_thousands_of_digits_are_reported_not_raised(self) -> None:
+        self.seed_records()
+        verification_header = "| App | Method | Artifact | Environment | Attempt | Result | Evidence | Basis |\n|---|---|---|---|---|---|---|---|"
+        row = verification_row("worker", self.WORKER_BUILD).replace("| qa-1 |", f"| qa-{self.DIGITS} |")
+        self.assertIn(self.DIGITS, row)
+        self.write_wiki_page("bugs/BUG-007-attempt-with-thousands-of-digits.md", bug_page("BUG-007", status="verified", apps=["worker"], feature="none", verification=f"{verification_header}\n{row}"))
+        self.write_wiki_page(
+            "releases/REL-008.md",
+            record_page(8, [record_delivery("BUG-003", "backend", attempt=self.DIGITS, version=self.BACKEND_FIX_BUILD)], features=[], bugs=["BUG-003"], title="Attempt with thousands of digits", day="2026-10-11"),  # type: ignore[arg-type]
+        )
+        self.write_status_board()
+        codes = self.lint_codes()
+        self.assertTrue({"bug-page-invalid", "bug_verification_invalid", "release-record-invalid"} & codes, codes)
+        facts = self.facts()
+        bug = self.by_id(facts["bugs"])["BUG-007"]
+        self.assertEqual([{"app": "worker", "attempt": None, "result": "pass"}], bug["verification"])
+        release = self.by_id(facts["releases"])["REL-008"]
+        self.assertFalse(release["valid"])
+        self.assertEqual([None], [item["attempt"] for item in release["deliveries"]])
+
+    def test_a_manifest_minimum_version_with_thousands_of_digits_is_reported_not_raised(self) -> None:
+        self.seed_in_dev()
+        manifest_path = self.root / "prism.workspace.yml"
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        manifest["min_prism_cli_version"] = f"{self.DIGITS}.0.0"
+        manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
+        self.assertIn("invalid-min-prism-cli-version", {item.code for item in inspect_workspace(self.root).contract_diagnostics} | self.lint_codes())
+        self.facts()
+
+    def test_a_settings_page_with_a_stale_after_value_of_thousands_of_digits_falls_back_with_a_diagnostic(self) -> None:
+        self.seed_in_dev()
+        settings = self.wiki() / "SETTINGS.md"
+        text = settings.read_text(encoding="utf-8")
+        self.assertIn("wiki-stale-after-days: 365", text)
+        settings.write_text(text.replace("wiki-stale-after-days: 365", f'wiki-stale-after-days: "{self.DIGITS}"'), encoding="utf-8")
+        self.assertIn("invalid-wiki-stale-after-days", {item.code for item in lint_wiki(self.root).diagnostics})
+        self.facts()
+
+    # -- Record numbers over the bound ------------------------------------------------------------------------------------------
+
+    def test_a_number_of_more_than_eighteen_digits_is_over_the_bound_and_leading_zeros_do_not_count(self) -> None:
+        self.assertTrue(all(oversized_number(identifier) for identifier in ("BUG-" + "1" + "0" * 18, "INC-" + "9" * 5000, "F-" + "1" * 19, "REL-" + "1" + "0" * 18)))
+        self.assertFalse(any(oversized_number(identifier) for identifier in ("BUG-001", "F-" + "9" * 18, "REL-" + "9" * 18, "INC-" + "0" * 30 + "7", "custom")))
+
+    def test_releases_numbered_over_the_bound_are_invalid_and_leave_the_current_deliveries_and_the_operations_row_unchanged(self) -> None:
+        self.seed_records()
+        before = self.facts()
+        current = sorted(key for key, record in self.by_id(before["releases"]).items() if record["current"])
+        operations = {row["app"]: (row["latest_release"], row["latest_outcome"]) for row in before["app_operations"]}
+        over = [10**18, 10**19, 9 * 10**18]
+        for number in over:
+            rows = [record_delivery("BUG-003", "backend", version=self.BACKEND_FIX_BUILD)]
+            self.write_wiki_page(f"releases/REL-{number}.md", record_page(number, rows, features=[], bugs=["BUG-003"], title="Release over the bound", day="2026-10-11"))
+        self.write_status_board()
+        messages = {}
+        for item in lint_wiki(self.root).diagnostics:
+            if item.code == "release-record-invalid":
+                messages.setdefault(Path(item.path).stem, []).append(item.message)
+        for number in over:
+            self.assertTrue(any("18 digits" in message for message in messages[f"REL-{number}"]), messages.get(f"REL-{number}"))
+        after = self.facts()
+        records = self.by_id(after["releases"])
+        self.assertEqual(current, sorted(key for key, record in records.items() if record["current"]))
+        self.assertEqual([False] * 3, [records[f"REL-{number}"]["valid"] for number in over])
+        self.assertEqual(operations, {row["app"]: (row["latest_release"], row["latest_outcome"]) for row in after["app_operations"]})
+        # A record of eighteen digits is within the bound: valid, the latest of its app and the current delivery.
+        edge = 10**18 - 1
+        rows = [record_delivery("BUG-003", "backend", version=self.BACKEND_FIX_BUILD)]
+        self.write_wiki_page(f"releases/REL-{edge}.md", record_page(edge, rows, features=[], bugs=["BUG-003"], title="Release at the bound", day="2026-10-11"))
+        self.write_status_board()
+        facts = self.facts()
+        records = self.by_id(facts["releases"])
+        self.assertTrue(records[f"REL-{edge}"]["valid"], [item.message for item in lint_wiki(self.root).diagnostics if item.code == "release-record-invalid"])
+        self.assertTrue(records[f"REL-{edge}"]["current"])
+        self.assertFalse(records["REL-006"]["current"])
+        self.assertEqual(f"REL-{edge}", {row["app"]: row for row in facts["app_operations"]}["backend"]["latest_release"])
+
+    def test_bugs_incidents_and_features_with_an_id_over_the_bound_are_invalid_pages(self) -> None:
+        self.seed_records()
+        huge = "1" + "0" * 18
+        edge = "9" * 18
+        self.write_wiki_page(f"bugs/BUG-{huge}-over-the-bound.md", bug_page(f"BUG-{huge}", apps=["backend"], feature="none"))
+        self.write_wiki_page(f"bugs/BUG-{edge}-at-the-bound.md", bug_page(f"BUG-{edge}", apps=["backend"], feature="none"))
+        for number in (huge, edge):
+            self.write_wiki_page(
+                f"incidents/INC-{number}-incident.md",
+                self.incident_page(
+                    f"INC-{number}", title="An incident", status="open", apps=["backend"], releases=[], follow_ups=[], impact="Exports failed.",
+                    timeline=["- 2026-10-10 12:00: It began."], cause="**Unknown:** Not known.",
+                ),
+            )
+        feature = (self.wiki() / "features" / "F-001-document-review.md").read_text(encoding="utf-8")
+        self.write_wiki_page(f"features/F-{huge}-over-the-bound.md", feature.replace("id: F-001", f"id: F-{huge}", 1))
+        self.write_status_board()
+        by_path = {}
+        for item in lint_wiki(self.root).diagnostics:
+            by_path.setdefault(Path(item.path).name, set()).add(item.code)
+        self.assertIn("bug-page-invalid", by_path[f"BUG-{huge}-over-the-bound.md"])
+        self.assertNotIn("bug-page-invalid", by_path.get(f"BUG-{edge}-at-the-bound.md", set()))
+        self.assertIn("incident-record-invalid", by_path[f"INC-{huge}-incident.md"])
+        self.assertNotIn("incident-record-invalid", by_path.get(f"INC-{edge}-incident.md", set()))
+        self.assertIn("invalid-feature-id", by_path[f"F-{huge}-over-the-bound.md"])
+        facts = self.facts()
+        self.assertEqual((False, True), tuple(self.by_id(facts["bugs"])[f"BUG-{number}"]["valid"] for number in (huge, edge)))
+        self.assertEqual((False, True), tuple(self.by_id(facts["incidents"])[f"INC-{number}"]["valid"] for number in (huge, edge)))
+        # Listed after every number within the bound, the invalid one last.
+        self.assertEqual([f"BUG-{edge}", f"BUG-{huge}"], [bug["id"] for bug in facts["bugs"]][-2:])
+
+    def test_an_open_bug_with_an_id_of_another_kind_is_listed_by_the_apps_view_under_its_own_id(self) -> None:
+        self.seed_records()
+        self.write_wiki_page("bugs/BUG-097-declares-a-feature-id.md", bug_page("F-001", apps=["backend"], feature="none", title="Bug page that declares a feature ID"))
+        self.write_wiki_page("bugs/BUG-098-free-form-id.md", bug_page("custom", apps=["backend"], feature="none", title="Bug page with a free-form ID"))
+        self.write_status_board()
+        facts = self.facts()
+        bugs = self.by_id(facts["bugs"])
+        self.assertEqual((False, False), (bugs["F-001"]["valid"], bugs["custom"]["valid"]))
+        operations = {row["app"]: row for row in facts["app_operations"]}
+        self.assertTrue({"F-001", "custom"} <= {item.strip() for item in operations["backend"]["open_bugs"].split(",")}, operations["backend"]["open_bugs"])
 
     def test_a_workspace_without_records_lists_none(self) -> None:
         self.seed_in_dev()

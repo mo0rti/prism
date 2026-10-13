@@ -154,12 +154,13 @@ def parse_record_rows(body: str) -> tuple[list[RecordRow], list[EvidenceProblem]
             continue
         attempt_text = clean_cell(attempt_cell)
         attempt_match = re.fullmatch(r"release-([1-9][0-9]*)", attempt_text)
+        attempt = bounded_number(attempt_match.group(1)) if attempt_match else None
         row = RecordRow(
             item,
             app,
             clean_cell(target),
             clean_cell(version),
-            int(attempt_match.group(1)) if attempt_match else None,
+            attempt,
             clean_cell(outcome).lower(),
             evidence.strip(),
             clean_cell(basis).lower(),
@@ -170,7 +171,7 @@ def parse_record_rows(body: str) -> tuple[list[RecordRow], list[EvidenceProblem]
         def bad(message: str, code: str = "release_record_invalid") -> None:
             problems.append(EvidenceProblem(code, message, subject))
 
-        if attempt_match is None and attempt_text not in {"—", "–", "-", ""}:
+        if attempt is None and attempt_text not in {"—", "–", "-", ""}:
             bad(f"The attempt of `{subject}` must be `release-<n>`, or `—` in a rollback or redeploy record.")
         if row.outcome not in ROW_OUTCOMES:
             bad(f"The outcome of `{subject}` must be one of {', '.join(ROW_OUTCOMES)}.")

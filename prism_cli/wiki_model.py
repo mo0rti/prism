@@ -626,7 +626,7 @@ def read_wiki_settings(wiki_root: Path, model: "WorkspaceModel | None" = None) -
     if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
         parsed = value
     elif isinstance(value, str) and re.fullmatch(r"\d+", value.strip()):
-        parsed = int(value.strip())
+        parsed = bounded_number(value.strip())
     if parsed is None:
         return WikiSettings(
             stale_after_days=DEFAULT_WIKI_STALE_AFTER_DAYS,
@@ -832,10 +832,29 @@ def number_order(digits: str | None, identifier: str) -> tuple[int, int, str, st
 
 
 def bounded_number(digits: str) -> int | None:
-    """The integer value of a record number, or ``None`` when it has more than `MAX_RECORD_NUMBER_DIGITS` digits."""
+    """The integer value of digits read from a page, or ``None`` when they have more than `MAX_RECORD_NUMBER_DIGITS` digits or are not decimal digits.
+
+    Every conversion of page text to an integer goes through this function, so no page can make a conversion raise; a caller
+    reports ``None`` with the diagnostic it already has for a malformed value.
+    """
 
     stripped = digits.lstrip("0")
-    return int(stripped or "0") if len(stripped) <= MAX_RECORD_NUMBER_DIGITS else None
+    if len(stripped) > MAX_RECORD_NUMBER_DIGITS:
+        return None
+    try:
+        return int(stripped or "0")
+    except ValueError:
+        return None
+
+
+def oversized_number(identifier: str) -> bool:
+    """Whether an ID such as `BUG-<n>` ends in a number with more than `MAX_RECORD_NUMBER_DIGITS` digits (leading zeros do not count).
+
+    Such an ID is invalid: lint reports it and the record takes no part in chronology, numbering or release authority.
+    """
+
+    match = re.search(r"([0-9]+)$", identifier.strip())
+    return match is not None and bounded_number(match.group(1)) is None
 
 
 def markdown_sections(body: str) -> list[MarkdownSection]:
@@ -1276,7 +1295,8 @@ class DeliveryRow:
         """(feature ID, version, digest) of the contract cited, or ``None`` for `none`."""
 
         match = _CONTRACT_BINDING.match(clean_cell(self.contract))
-        return (match.group(1), int(match.group(2)), match.group(3)) if match else None
+        version = bounded_number(match.group(2)) if match else None
+        return (match.group(1), version, match.group(3)) if match and version is not None else None
 
 
 def parse_delivery_rows(body: str) -> tuple[list[DeliveryRow], list[EvidenceProblem]]:
@@ -1375,10 +1395,11 @@ def parse_qa_rows(body: str) -> tuple[list[QaRow], list[EvidenceProblem]]:
         bad_refs = False
         for item in criteria_cell.split(","):
             match = _CRITERION_REF.match(clean_cell(item))
-            if match is None:
+            number = bounded_number(match.group(1)) if match else None
+            if match is None or number is None:
                 bad_refs = True
                 break
-            refs.append(CriterionRef(int(match.group(1)), match.group(2)))
+            refs.append(CriterionRef(number, match.group(2)))
         if bad_refs or not refs or len({ref.number for ref in refs}) != len(refs):
             problem(f"The criteria of `{key}` must be distinct `AC-<n>@v1:<64 hex digits>` references joined by commas.", key)
             continue
@@ -1404,6 +1425,7 @@ def parse_qa_rows(body: str) -> tuple[list[QaRow], list[EvidenceProblem]]:
             problems.append(EvidenceProblem("artifact_reference_invalid", artifact_problem, key))
             continue
         attempt_match = re.fullmatch(r"qa-([1-9][0-9]*)", clean_cell(attempt_cell))
+        attempt = bounded_number(attempt_match.group(1)) if attempt_match else None
         row = QaRow(
             key,
             apps,
@@ -1412,7 +1434,7 @@ def parse_qa_rows(body: str) -> tuple[list[QaRow], list[EvidenceProblem]]:
             clean_cell(method).lower(),
             artifacts,
             clean_cell(environment),
-            int(attempt_match.group(1)) if attempt_match else None,
+            attempt,
             clean_cell(result).lower(),
             evidence,
             clean_cell(basis).lower(),
@@ -1469,11 +1491,12 @@ def parse_release_rows(body: str) -> tuple[list[ReleaseRow], list[EvidenceProble
             continue
         attempt_text = clean_cell(attempt_cell)
         attempt_match = re.fullmatch(r"release-([1-9][0-9]*)", attempt_text)
+        attempt = bounded_number(attempt_match.group(1)) if attempt_match else None
         row = ReleaseRow(
             app,
             clean_cell(target),
             clean_cell(version),
-            int(attempt_match.group(1)) if attempt_match else None,
+            attempt,
             clean_cell(outcome).lower(),
             record.strip(),
             clean_cell(basis).lower(),
@@ -1484,7 +1507,7 @@ def parse_release_rows(body: str) -> tuple[list[ReleaseRow], list[EvidenceProble
         def bad(message: str) -> None:
             problems.append(EvidenceProblem("release_row_invalid", message, app))
 
-        if attempt_match is None and attempt_text not in _NO_VALUE:
+        if attempt is None and attempt_text not in _NO_VALUE:
             bad(f"The attempt of `{app}` must be `release-<n>`, or `—` for a staging row.")
         if row.outcome not in RELEASE_OUTCOMES:
             bad(f"The outcome of `{app}` must be one of {', '.join(RELEASE_OUTCOMES)}.")
@@ -1898,7 +1921,8 @@ def parse_test_strategy(body: str) -> tuple[list[StrategyRow], list[str]]:
     rows: list[StrategyRow] = []
     for criterion, applies, method, level, notes in cell_rows:
         criterion = clean_cell(criterion)
-        if not _TEST_STRATEGY_CRITERION.match(criterion):
+        strategy_match = _TEST_STRATEGY_CRITERION.match(criterion)
+        if strategy_match is None or bounded_number(strategy_match.group(1)) is None:
             problems.append(f"The criterion cell `{_clip_text(criterion, 40)}` of the Test strategy is not a criterion ID such as `AC-1`.")
             continue
         listed = re.sub(r"(?i)^\s*\[?\s*integration\s*:", "", applies)
@@ -1977,7 +2001,7 @@ def technical_design_problems(
         absent = [item for item in wanted if item not in named]
         if absent:
             problems.append(("test-strategy-incomplete", f"The Test strategy must name every acceptance criterion; missing {', '.join(f'`{item}`' for item in absent)}."))
-        stray = sorted(named - set(wanted), key=lambda item: int(item.split("-")[1]))
+        stray = sorted(named - set(wanted), key=lambda item: number_order(item.split("-")[1], item))
         if stray:
             problems.append(("test-strategy-incomplete", f"The Test strategy names {', '.join(f'`{item}`' for item in stray)}, which the feature does not have."))
         outside = sorted({app for row in strategy for app in row.applies_to if scope_apps and app not in scope_apps})
@@ -2159,10 +2183,10 @@ def parse_criteria(body: str, feature_id: str) -> list[Criterion]:
         integration = False
         text = ""
         id_match = _CRITERION_ID.match(rest)
-        if id_match is None:
+        number = bounded_number(id_match.group("number")) if id_match else None
+        if id_match is None or number is None:
             problems.append(("criterion-id-required", "A criterion starts with its ID, such as `AC-1 [app] text`."))
         else:
-            number = int(id_match.group("number"))
             scope_match = _CRITERION_SCOPE.match((id_match.group("rest") or "").strip())
             if scope_match is None:
                 problems.append(("invalid-applies-to", f"`AC-{number}` needs an `applies-to` after its ID: `[app, ...]` or `[integration: app, app, ...]`."))

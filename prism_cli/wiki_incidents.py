@@ -17,12 +17,14 @@ from typing import Iterable
 
 from prism_cli.wiki_bugs import BUG_ID_PATTERN, BUG_SEVERITIES, FEATURE_ID_PATTERN
 from prism_cli.wiki_model import (
+    MAX_RECORD_NUMBER_DIGITS,
     MarkdownPage,
     bounded_number,
     number_order,
     has_section,
     markdown_sections,
     normalize_feature_id,
+    oversized_number,
     parse_iso_date,
     read_markdown_pages,
     remove_html_comments,
@@ -247,6 +249,8 @@ def lint_incident_page(
     if "id" in frontmatter:
         if not isinstance(incident_id, str) or not INCIDENT_ID_PATTERN.match(incident_id.strip()):
             add("`id` must be an incident ID such as `INC-001`.")
+        elif oversized_number(incident_id):
+            add(f"`id` has more than {MAX_RECORD_NUMBER_DIGITS} digits in its number; an incident takes a number of at most {MAX_RECORD_NUMBER_DIGITS} digits.")
         else:
             file_match = INCIDENT_FILE_PATTERN.match(path.name)
             if file_match is None or file_match.group(1).casefold() != incident_id.strip().casefold():

@@ -43,6 +43,7 @@ from prism_cli.wiki_bugs import (
 )
 from prism_cli.wiki_model import (
     _ENVIRONMENT_TOKEN,
+    MAX_RECORD_NUMBER_DIGITS,
     RELEASE_COLUMNS,
     active_scope,
     app_stages,
@@ -50,6 +51,7 @@ from prism_cli.wiki_model import (
     evidence_generation,
     has_section,
     normalize_feature_id,
+    oversized_number,
     parse_evidence_history,
     parse_markdown_text,
     read_feature_evidence,
@@ -210,10 +212,16 @@ class BugActionsMixin:
         bug_id = frontmatter["id"]
         name = PurePosixPath(relative).name
         match = BUG_FILE_PATTERN.match(name)
-        if not isinstance(bug_id, str) or not BUG_ID_PATTERN.match(bug_id) or match is None or match.group(1).casefold() != bug_id.casefold():
+        if (
+            not isinstance(bug_id, str)
+            or not BUG_ID_PATTERN.match(bug_id)
+            or oversized_number(bug_id)
+            or match is None
+            or match.group(1).casefold() != bug_id.casefold()
+        ):
             raise bs.BoardError(
                 "invalid_bug",
-                f"Bug page `{relative}` needs `id: BUG-<n>` and the file name `BUG-<n>-<slug>.md` with the same number and a lowercase hyphenated slug.",
+                f"Bug page `{relative}` needs `id: BUG-<n>` and the file name `BUG-<n>-<slug>.md` with the same number (at most {MAX_RECORD_NUMBER_DIGITS} digits) and a lowercase hyphenated slug.",
                 409,
                 {"path": relative},
             )
