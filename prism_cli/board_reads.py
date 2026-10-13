@@ -6,14 +6,17 @@ import base64
 import hashlib
 import json
 import re
+from bisect import bisect_left
 from typing import Any, Callable, Iterable, Mapping
 
 from pathlib import Path
 
 from prism_cli.board_service import BoardError
 from prism_cli.wiki_model import (
+    FRONTMATTER_PATTERN,
     VALID_FEATURE_OWNERS,
     contract_page_citation,
+    markdown_sections,
     parse_criteria,
     parse_markdown_text,
     within_wiki_read_scope,
@@ -354,17 +357,62 @@ _FEATURE_FILE = re.compile(r"^knowledge/wiki/features/F-[0-9]+[^/]*\.md$")
 _CONTRACT_FILE = re.compile(r"^knowledge/wiki/api-contracts/[^/]+\.md$")
 
 
+def _criterion_fact(item: Any) -> dict[str, Any]:
+    return {"id": item.id, "revision": item.revision, "applies_to": list(item.applies_to), "integration": item.integration}
+
+
 def criteria_facts(feature_id: str, body: str) -> list[dict[str, Any]]:
     """The acceptance criteria of a feature page with their revisions: `id`, `revision`, `applies_to` and `integration` (CONTRACTS 4.1).
 
     A criterion that has no valid ID or `applies-to` yet has no revision and is left out.
     """
 
+    return [_criterion_fact(item) for item in parse_criteria(body, feature_id) if item.id is not None and item.revision is not None]
+
+
+def criteria_starts(relative: str, content: str) -> list[tuple[int, dict[str, Any]]] | None:
+    """The criteria of a feature page as `read_annotations` lists them, each with the character offset in `content` where its
+    list item starts (the first character of its line), in page order. ``None`` when the file has no criteria annotation."""
+
+    if not _FEATURE_FILE.match(relative):
+        return None
+    page = parse_markdown_text(Path(relative), content)
+    if page.parse_errors:
+        return None
+    feature_id = page.frontmatter.get("id")
+    if not isinstance(feature_id, str):
+        return None
+    text = content.removeprefix("\ufeff")
+    frontmatter = FRONTMATTER_PATTERN.match(text)
+    if frontmatter is None:
+        return None
+    body_start = len(content) - len(text) + frontmatter.start(2)
+    body = frontmatter.group(2)
+    section = next((item for item in markdown_sections(body) if item.name.casefold() == "acceptance criteria"), None)
+    if section is None:
+        return []
+    line_starts: list[int] = []
+    position = 0
+    for line in body.splitlines(keepends=True):
+        line_starts.append(position)
+        position += len(line)
     return [
-        {"id": item.id, "revision": item.revision, "applies_to": list(item.applies_to), "integration": item.integration}
+        (body_start + line_starts[section.start + item.line], _criterion_fact(item))
         for item in parse_criteria(body, feature_id)
         if item.id is not None and item.revision is not None
     ]
+
+
+def _without_applies_to(fact: dict[str, Any]) -> dict[str, Any]:
+    """A criterion whose `applies_to` list is too long for one result: its exact `id` and `revision`, the number of apps it names and `integration`."""
+
+    return {
+        "id": fact["id"],
+        "revision": fact["revision"],
+        "applies_to_count": len(fact["applies_to"]),
+        "applies_to_omitted": True,
+        "integration": fact["integration"],
+    }
 
 
 def read_annotations(relative: str, content: str) -> dict[str, Any] | None:
@@ -388,6 +436,21 @@ def read_annotations(relative: str, content: str) -> dict[str, Any] | None:
     if not isinstance(feature_id, str):
         return None
     return {"criteria": criteria_facts(feature_id, page.body)}
+
+
+def _criteria_split(item: Mapping[str, Any]) -> tuple[list[int], list[dict[str, Any]]] | None:
+    """The start offsets and the facts of a feature page's criteria, when its annotations can follow its content range.
+
+    ``None`` for any other file, and for annotations that do not match the page's own criteria.
+    """
+
+    annotations = item.get("annotations")
+    if not isinstance(annotations, Mapping) or "criteria" not in annotations:
+        return None
+    found = criteria_starts(item["path"], item["content"])
+    if found is None or [fact for _, fact in found] != annotations["criteria"]:
+        return None
+    return [begin for begin, _ in found], [fact for _, fact in found]
 
 
 def read_request_id(paths: list[str]) -> str:
@@ -454,7 +517,7 @@ def read_files_page(
     def page(records: list[dict[str, Any]], next_cursor: str | None) -> dict[str, Any]:
         return {"schema_version": 1, "files": records, "next_cursor": next_cursor}
 
-    def record(item: dict[str, Any], start: int, content: str) -> dict[str, Any]:
+    def record(item: dict[str, Any], start: int, content: str, annotations: Mapping[str, Any] | None = None) -> dict[str, Any]:
         result = {
             "path": item["path"],
             "content": content,
@@ -463,16 +526,15 @@ def read_files_page(
             "digest": item["digest"],
             "provenance": item["provenance"],
         }
-        # The annotations describe the whole file, so they ride on its first piece.
-        if start == 0 and item.get("annotations"):
-            result["annotations"] = item["annotations"]
+        if annotations:
+            result["annotations"] = annotations
         return result
 
     records: list[dict[str, Any]] = []
     while index < len(files):
         item = files[index]
         if offset == 0:
-            whole = record(item, 0, item["content"])
+            whole = record(item, 0, item["content"], item.get("annotations"))
             if compact_size(page([*records, whole], cursor_for(index + 1, 0))) <= STRUCTURED_BUDGET_CHARS:
                 records.append(whole)
                 index += 1
@@ -482,13 +544,39 @@ def read_files_page(
         # A file that cannot share or fill a page alone is returned in chunks,
         # starting on a page of its own.
         held, start = index, offset
+        current = files[held]
+        total = len(current["content"])
+        split = _criteria_split(current)
+        too_long: dict[int, bool] = {}
+
+        def criterion_too_long(position: int) -> bool:
+            """Whether criterion `position` in full does not fit beside one character of content, on a page of its own."""
+
+            if position not in too_long:
+                begin = split[0][position]
+                following = cursor_for(held, begin + 1) if begin + 1 < total else cursor_for(held + 1, 0)
+                alone = record(current, begin, current["content"][begin : begin + 1], {"criteria": [split[1][position]]})
+                too_long[position] = compact_size(page([alone], following)) > STRUCTURED_BUDGET_CHARS
+            return too_long[position]
+
+        def annotations_in(begin: int, end: int) -> Mapping[str, Any] | None:
+            if split is None:
+                # The annotations describe the whole file, so they ride on its first piece.
+                return current.get("annotations") if begin == 0 else None
+            # A feature page's criteria travel with its content: a piece lists the criteria whose list item starts in it.
+            first, last = bisect_left(split[0], begin), bisect_left(split[0], end)
+            return {
+                "criteria": [
+                    _without_applies_to(split[1][position]) if criterion_too_long(position) else split[1][position]
+                    for position in range(first, last)
+                ]
+            }
 
         def build(content: str, end: int) -> dict[str, Any]:
-            current = files[held]
-            following = cursor_for(held, end) if end < len(current["content"]) else cursor_for(held + 1, 0)
-            return page([record(current, start, content)], following)
+            following = cursor_for(held, end) if end < total else cursor_for(held + 1, 0)
+            return page([record(current, start, content, annotations_in(start, end))], following)
 
-        return chunk_text(files[held]["content"], start, build)
+        return chunk_text(current["content"], start, build)
     return page(records, cursor_for(index, 0))
 
 

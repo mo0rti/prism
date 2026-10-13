@@ -34,6 +34,7 @@ from prism_cli.wiki_model import (
     YamlRangeError,
     bounded_number,
     check_integers_in_range,
+    contract_citation,
     contract_page_citation,
     contract_version,
     number_order,
@@ -1339,6 +1340,27 @@ class FrontMatterNumberTests(TwoAppWorkspace):
         digest = "c1:" + "0" * 64
         row = parse_delivery_rows("## Delivery evidence\n" + table(DELIVERY_HEADER, [delivery_row("backend", contract=f"F-001@v{version}:{digest}")]))[0][0]
         self.assertIsNone(row.contract_binding)
+
+    def test_a_contract_feature_id_longer_than_eighteen_digits_has_no_citation_and_a_contract_diagnostic_and_no_delivery_row_can_cite_it(self) -> None:
+        relative = "knowledge/wiki/api-contracts/F-001.md"
+        for feature_id, usable in (("F-" + "9" * 18, True), ("F-" + "0" * 30 + "1", False)):
+            with self.subTest(feature_id=len(feature_id)):
+                text = self.contract_text("1").replace("feature-id: F-001", f"feature-id: {feature_id}")
+                page = parse_markdown_text(Path(self.CONTRACT), text)
+                # The citation a producer without the rule would write for this page.
+                would_be = contract_citation(feature_id, 1, page.body)
+                self.seed_with_contract("1", contract=would_be)
+                self.write_wiki_page(self.CONTRACT, text)
+                feature = next((self.root / "knowledge" / "wiki" / "features").glob("F-001*.md"))
+                feature.write_bytes((feature.read_text(encoding="utf-8").rstrip("\n") + f"\n\nContract: {self.CONTRACT}\n").encode("utf-8"))
+                citation = contract_page_citation(page.frontmatter, page.body)
+                diagnostics = lint_wiki(self.root).diagnostics
+                at_contract = [item.code for item in diagnostics if Path(item.path).as_posix().endswith(relative)]
+                self.assertEqual(usable, citation is not None)
+                self.assertEqual(usable, read_annotations(relative, text) is not None)
+                self.assertEqual(not usable, "invalid-api-contract-feature-id" in at_contract, at_contract)
+                self.assertEqual(not usable, "stale-delivery-evidence" in {item.code for item in diagnostics})
+                self.facts()
 
     def test_a_contract_version_that_is_not_a_positive_integer_has_the_contract_version_diagnostic(self) -> None:
         for literal in ("0", "-3", '"7"', "true", "1.5"):

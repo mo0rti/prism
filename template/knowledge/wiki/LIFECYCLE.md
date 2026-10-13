@@ -154,7 +154,7 @@ criterion ID, applies-to, evidence label, text]`. The applies-to is a sorted lis
 and whitespace collapsed; the checkbox is not part of it. QA rows cite `AC-<n>@v1:<64 hex
 digits>`. A change to a criterion's applies-to, label, text or link destination changes its revision
 and makes the rows that cite the old one stale (`stale-qa-evidence`). `read_workspace` (as
-`annotations.criteria`), the `show` query and a preview return the revisions, the preview with the QA rows the change makes stale.
+`annotations.criteria`), the `show` query and a preview return the revisions, the preview with the QA rows the change makes stale. A feature page too long for one `read_workspace` result arrives in pieces, and each piece lists the criteria that start in it.
 
 ### Status and owner lifecycle
 
