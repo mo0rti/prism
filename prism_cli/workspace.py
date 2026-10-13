@@ -31,7 +31,7 @@ from prism_cli.app_model import (
     repository_entries,
     resolve_local_repositories,
 )
-from prism_cli.wiki_model import request_fact
+from prism_cli.wiki_model import bounded_number, request_fact
 from prism_cli.wiki_paths import REPARSE, RefusedPath, Resolution, read_confined_bytes
 
 
@@ -48,7 +48,8 @@ GENERATION_ANSWER_FIELDS = (
     "stacks",
 )
 
-_VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?$")
+# Each numeric part has at most 18 digits (`MAX_RECORD_NUMBER_DIGITS`), so every part converts to an integer.
+_VERSION_PATTERN = re.compile(r"^\d{1,18}(?:\.\d{1,18}){0,2}(?:[-+][0-9A-Za-z.-]+)?$")
 
 
 @dataclass(frozen=True)
@@ -807,7 +808,7 @@ def _version_tuple(value: str) -> tuple[int, int, int]:
     numbers: list[int] = []
     for part in value.strip().split(".")[:3]:
         match = re.match(r"\d+", part)
-        numbers.append(int(match.group(0)) if match else 0)
+        numbers.append((bounded_number(match.group(0)) if match else 0) or 0)
     while len(numbers) < 3:
         numbers.append(0)
     return tuple(numbers)  # type: ignore[return-value]

@@ -249,6 +249,34 @@ class RecordsViewsTests(BrowserCase):
             run.effect("a card and a link open exactly their own record: the second BUG-003 page, a bug that declares REL-002 and the release itself each open their own panel")
             self.assertEqual([], self.page_errors)
 
+    def test_scenario_m_a_typed_link_opens_a_record_of_its_own_kind(self) -> None:
+        with self.scenario("M-records-typed-links") as run:
+            page = self.page
+            self.start_trace()
+            parent = self.parent_directory("records-typed-")
+            envelope = records_envelope(parent)
+            template = next(bug for bug in envelope["facts"]["bugs"] if bug["id"] == "BUG-012")
+            for identifier, title in (("F-001", "Bug page that declares a feature ID"), ("custom", "Bug page with a free-form ID")):
+                envelope["facts"]["bugs"].append({**template, "id": identifier, "title": title, "path": f"knowledge/wiki/bugs/{identifier.lower()}.md", "valid": False, "status": "open"})
+            envelope["facts"]["app_operations"][0]["open_bugs"] = "F-001, custom"
+            target = parent / "typed.html"
+            target.write_text(render_html(envelope), encoding="utf-8")
+            page.goto(target.as_uri())
+            panel = self.panel()
+            self.open_view("Apps")
+            open_bugs = page.locator('#app-view [data-app-operations="backend"] .ops-fact', has=page.locator(".k", has_text="Open bugs"))
+
+            # An open bug that declares a feature's ID opens that bug, and so does one with a free-form ID.
+            open_bugs.get_by_role("button", name="Open F-001").click()
+            expect(panel.get_by_role("heading", name="Bug page that declares a feature ID")).to_be_visible()
+            expect(panel.locator(".type-chip")).to_have_text("Bug")
+            page.keyboard.press("Escape")
+            open_bugs.get_by_role("button", name="Open custom").click()
+            expect(panel.get_by_role("heading", name="Bug page with a free-form ID")).to_be_visible()
+            expect(panel.locator(".type-chip")).to_have_text("Bug")
+            run.effect("the open bug that declares F-001 and the open bug with the ID custom each open their own bug panel from the Apps view, not the feature and not a dead link")
+            self.assertEqual([], self.page_errors)
+
     def test_scenario_m_focus_returns_to_the_opener_after_a_live_update(self) -> None:
         with self.scenario("M-records-focus") as run:
             page = self.page

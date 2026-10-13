@@ -81,6 +81,13 @@ class BugCreationTests(BugBoard):
                 changes = [{"path": FEATURE, "content": self.qa_table([app_row("worker", result="fail")])}, {"path": BUG, "content": content}]
                 self.assertIn(self.refused("qa-verify", changes).code, {"invalid_bug", "bug_creation_invalid"})
 
+    def test_a_bug_with_more_than_eighteen_digits_in_its_number_is_refused_at_creation(self) -> None:
+        for number in ("1" + "0" * 18, "9" * 100):
+            with self.subTest(digits=len(number)):
+                path = f"{BUGS}/BUG-{number}-summary-export-drops-comments.md"
+                changes = [{"path": FEATURE, "content": self.qa_table([app_row("worker", result="fail")])}, {"path": path, "content": bug_page(f"BUG-{number}")}]
+                self.assertEqual("invalid_bug", self.refused("qa-verify", changes).code)
+
     def test_a_defect_report_is_ingested_as_a_bug(self) -> None:
         folder = "2026-10-08-defect-report"
         pending = self.root / "knowledge" / "intake" / "pending" / folder

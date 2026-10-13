@@ -85,7 +85,10 @@ from prism_cli.wiki_model import (
     DESIGN_TRACKS,
     DELIVERY_EVIDENCE_COLUMNS,
     EVIDENCE_SECTIONS,
+    MAX_RECORD_NUMBER_DIGITS,
+    bounded_number,
     number_order,
+    oversized_number,
     SINGLE_FEATURE_SECTIONS,
     FEATURE_REVALIDATION_DOMAINS,
     DesignTracks,
@@ -4266,8 +4269,12 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
             )
         self._assert_frontmatter_fields(frontmatter, set(FEATURE_FRONTMATTER_FIELDS), relative)
         feature_id = frontmatter.get("id")
-        if not isinstance(feature_id, str) or not re.fullmatch(r"F-\d+", feature_id):
-            raise BoardError("invalid_feature_output", f"Feature output `{relative}` must have a canonical F-number id.", 409)
+        if not isinstance(feature_id, str) or not re.fullmatch(r"F-\d+", feature_id) or oversized_number(feature_id):
+            raise BoardError(
+                "invalid_feature_output",
+                f"Feature output `{relative}` must have a canonical F-number id with a number of at most {MAX_RECORD_NUMBER_DIGITS} digits.",
+                409,
+            )
         match = re.match(r"^(F-\d+)", PurePosixPath(relative).stem, re.IGNORECASE)
         if not match or match.group(1).lower() != feature_id.lower():
             raise BoardError("feature_path_mismatch", f"Feature output `{relative}` does not match its frontmatter id.", 409)
@@ -6835,7 +6842,8 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         if errors:
             raise BoardError("invalid_open_questions", "; ".join(errors), 409)
         for item in questions:
-            if not isinstance(item.get("number"), str) or not item["number"].isdigit() or int(item["number"]) < 1 or not item.get("question") or item.get("owner") not in VALID_OPEN_QUESTION_OWNERS:
+            number = bounded_number(item["number"]) if isinstance(item.get("number"), str) else None
+            if number is None or number < 1 or not item.get("question") or item.get("owner") not in VALID_OPEN_QUESTION_OWNERS:
                 raise BoardError("invalid_open_question", f"Feature `{relative}` contains a malformed open question.", 409)
         revalidation = frontmatter.get("revalidation", [])
         if not isinstance(revalidation, list) or any(not isinstance(item, str) or item not in REVALIDATION_DOMAINS for item in revalidation) or len(set(revalidation)) != len(revalidation):
@@ -6942,7 +6950,7 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         added = [row for row in new_rows if row["number"] not in old_numbers]
         if skill == "ask" and (len(added) != 1 or resolved_count):
             raise BoardError("question_required", "The ask skill must add exactly one new owned open question and preserve all existing questions.", 409)
-        if skill == "ask" and int(added[0]["number"]) != max([int(row["number"]) for row in old_rows if row["number"].isdigit()] or [0]) + 1:
+        if skill == "ask" and bounded_number(added[0]["number"]) != max([number for row in old_rows if (number := bounded_number(row["number"])) is not None] or [0]) + 1:
             raise BoardError("question_number_not_next", "The ask skill must use the next sequential question number.", 409)
         if skill in {"po-clarify", "design-clarify", "dev-clarify"} and resolved_count == 0:
             raise BoardError("answer_required", f"Skill `{skill}` must resolve at least one owned open question.", 409)

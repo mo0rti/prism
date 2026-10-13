@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 from prism_cli.board_service import BoardError
 from prism_cli.release_lint import lint_release_records, validate_release_records
 from prism_cli.wiki_model import parse_markdown_text, parse_release_rows
-from prism_cli.wiki_releases import ReleaseRecord, current_delivery, next_release_number, read_release_records, record_kinds
+from prism_cli.wiki_releases import ReleaseRecord, current_delivery, latest_record, next_release_number, read_release_records, record_kinds
 from tests.qa_support import FEATURE, release_row as pending_row
 from tests.release_pages import delivery, record_id, record_page, record_path, release_row
 from tests.release_support import ReleaseTests
@@ -77,6 +77,45 @@ class ReleaseSequenceTests(unittest.TestCase):
         self.assertEqual({record.record_id: "release" for record in records}, record_kinds(records))
         self.assertEqual(1101, next_release_number(records))
 
+    def test_a_record_number_over_the_bound_is_an_invalid_id_and_changes_no_authority(self) -> None:
+        records = [parsed(1, [delivery("F-001", "backend")]), parsed(2, [delivery("F-002", "backend", version="build:backend#2")], features=["F-002"])]
+        over = [
+            parsed(number, [delivery("F-003", "backend", version="build:backend#9")], features=["F-003"])
+            for number in (10**18, 10**19, 9 * 10**18)
+        ]
+        self.assertEqual([19, 20, 19], [len(str(number)) for number in (10**18, 10**19, 9 * 10**18)])
+        valid, problems = validate_release_records([*over, *records[::-1]])
+        self.assertEqual(records, valid)
+        self.assertEqual({record.page.path for record in over}, set(problems))
+        for record in over:
+            self.assertTrue(any("18 digits" in message for message in problems[record.page.path]), problems[record.page.path])
+        self.assertEqual("REL-002", current_delivery([*records, *over], "backend", "production")[0].record_id)
+        self.assertEqual("REL-002", latest_record([*records, *over], "backend").record_id)
+        self.assertEqual(3, next_release_number([*records, *over]))
+        self.assertEqual({"REL-001": "release", "REL-002": "release"}, record_kinds([*records, *over]))
+        findings = lint_release_records([*records, *over], items={"F-001": ["backend"], "F-002": ["backend"], "F-003": ["backend"]})
+        self.assertEqual({record.page.path for record in over}, {finding.path for finding in findings})
+        self.assertTrue(all(finding.code == "release-record-invalid" for finding in findings))
+
+    def test_a_record_that_names_a_record_over_the_bound_has_no_predecessor(self) -> None:
+        records = [parsed(1, [delivery("F-001", "backend", outcome="failed")])]
+        huge = parsed(10**18, [delivery("F-001", "backend", attempt=2)], retry_of="REL-001")
+        retry = parsed(2, [delivery("F-001", "backend", attempt=2)], retry_of=huge.record_id)
+        valid, problems = validate_release_records([*records, retry, huge])
+        self.assertEqual(records, valid)
+        self.assertEqual({retry.page.path, huge.page.path}, set(problems))
+        self.assertTrue(any("earlier valid" in message for message in problems[retry.page.path]))
+
+    def test_a_record_number_of_eighteen_digits_is_valid_and_the_order_is_numeric(self) -> None:
+        numbers = [1, 10**17, 9 * 10**17, 10**18 - 1, 1000]
+        records = [parsed(number, [delivery(f"F-{index:03d}", "backend", version=f"build:backend#{index}")], features=[f"F-{index:03d}"]) for index, number in enumerate(numbers, 1)]
+        valid, problems = validate_release_records(records[::-1])
+        self.assertEqual({}, problems)
+        self.assertEqual(sorted(numbers), [record.number for record in valid])
+        self.assertEqual(record_id(10**18 - 1), current_delivery(records, "backend", "production")[0].record_id)
+        self.assertEqual(10**18, next_release_number(records))
+        self.assertEqual([], lint_release_records(records, items={f"F-{index:03d}": ["backend"] for index in range(1, 6)}))
+
     def test_a_later_delivery_invalidates_redeploy_of_a_valid_old_rollback(self) -> None:
         records = [
             parsed(1, [delivery("F-001", "backend")]),
@@ -127,6 +166,35 @@ class ReleaseSequenceBoardTests(ReleaseTests):
 
                 preview = self.ready("release-done", [{"path": record_path(2), "content": content}])
                 self.assertEqual("ready", preview["classification"])
+
+    DIGITS = "9" * 5000
+
+    def test_a_write_that_creates_a_record_over_the_bound_is_refused_and_one_of_eighteen_digits_fails_only_the_sequence(self) -> None:
+        for number, code in ((10**18, "release_record_invalid"), (10**19, "release_record_invalid"), (10**18 - 1, "release_sequence_invalid")):
+            with self.subTest(digits=len(str(number))):
+                feature = self.released_page([release_row("backend", number), release_row("worker", number)])
+                record = record_page(number, [delivery("F-001", "backend"), delivery("F-001", "worker")])
+                self.assertEqual((code, 409), self.refusal([{"path": FEATURE, "content": feature}, {"path": record_path(number), "content": record}]))
+        self.assertEqual([], self.records())
+
+    def test_numbers_of_thousands_of_digits_in_a_proposal_are_refused_not_raised(self) -> None:
+        feature, record = self.all_released(1)
+        changes = lambda feature_text, record_text: [{"path": FEATURE, "content": feature_text}, {"path": record_path(1), "content": record_text}]  # noqa: E731
+        cases = {
+            "the attempt of a Release row": (changes(feature.replace("| release-1 |", f"| release-{self.DIGITS} |", 1), record), "release_row_invalid"),
+            "the attempt of a Delivery row": (changes(feature, record.replace("| release-1 |", f"| release-{self.DIGITS} |", 1)), "release_record_invalid"),
+            "an acceptance criterion": (changes(feature.replace("AC-1 [", f"AC-{self.DIGITS} [", 1), record), None),
+            "a criterion reference of a QA row": (changes(feature.replace("AC-1@v1", f"AC-{self.DIGITS}@v1", 1), record), None),
+            "the attempt of a QA row": (changes(feature.replace("| qa-1 |", f"| qa-{self.DIGITS} |", 1), record), None),
+            "the version of a contract binding": (changes(feature.replace("| none |", f"| F-001@v{self.DIGITS}:c1:{'0' * 64} |", 1), record), None),
+        }
+        for name, (proposal, code) in cases.items():
+            with self.subTest(name):
+                self.assertIn(self.DIGITS, "".join(item["content"] for item in proposal))
+                refused_code, status = self.refusal(proposal)
+                self.assertEqual(409, status)
+                if code is not None:
+                    self.assertEqual(code, refused_code)
 
     def test_a_spanning_bug_ships_one_app_then_the_other(self) -> None:
         self.put(BUG, self.verified(apps=("backend", "worker"), feature="none"))

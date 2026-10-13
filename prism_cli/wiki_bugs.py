@@ -17,6 +17,7 @@ from typing import Any, Iterable, Mapping
 
 from prism_cli.wiki_model import (
     CHECKED_BASES,
+    MAX_RECORD_NUMBER_DIGITS,
     QA_METHODS,
     QA_RESULTS,
     FeatureEvidence,
@@ -32,6 +33,7 @@ from prism_cli.wiki_model import (
     clean_cell,
     has_section,
     normalize_feature_id,
+    oversized_number,
     parse_evidence_history,
     parse_evidence_table,
     read_feature_evidence,
@@ -131,7 +133,7 @@ def parse_verification_rows(body: str) -> tuple[list[VerificationRow], list[Evid
             clean_cell(method).lower(),
             clean_cell(artifact),
             clean_cell(environment),
-            int(attempt_match.group(1)) if attempt_match else None,
+            bounded_number(attempt_match.group(1)) if attempt_match else None,
             clean_cell(result).lower(),
             evidence,
             clean_cell(basis).lower(),
@@ -426,6 +428,8 @@ def lint_bug_page(
     if "id" in frontmatter:
         if not isinstance(bug_id, str) or not BUG_ID_PATTERN.match(bug_id.strip()):
             add("bug-page-invalid", "`id` must be a bug ID such as `BUG-001`.")
+        elif oversized_number(bug_id):
+            add("bug-page-invalid", f"`id` has more than {MAX_RECORD_NUMBER_DIGITS} digits in its number; a bug takes a number of at most {MAX_RECORD_NUMBER_DIGITS} digits.")
         else:
             file_match = BUG_FILE_PATTERN.match(path.name)
             if file_match is None or file_match.group(1).casefold() != bug_id.strip().casefold():

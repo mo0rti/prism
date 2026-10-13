@@ -31,7 +31,7 @@ from prism_cli.wiki_incidents import (
     section_layout_problem,
     timeline_items,
 )
-from prism_cli.wiki_model import MARKDOWN_LINK_PATTERN, parse_iso_date
+from prism_cli.wiki_model import MARKDOWN_LINK_PATTERN, MAX_RECORD_NUMBER_DIGITS, oversized_number, parse_iso_date
 from prism_cli.wiki_releases import RELEASE_ID_PATTERN, read_release_records
 
 # The incident sections that stay as they are once the incident is `resolved`: the record of how it ended.
@@ -73,10 +73,16 @@ class IncidentActionsMixin:
         incident_id = frontmatter["id"]
         name = PurePosixPath(relative).name
         match = INCIDENT_FILE_PATTERN.match(name)
-        if not isinstance(incident_id, str) or not INCIDENT_ID_PATTERN.match(incident_id) or match is None or match.group(1).casefold() != incident_id.casefold():
+        if (
+            not isinstance(incident_id, str)
+            or not INCIDENT_ID_PATTERN.match(incident_id)
+            or oversized_number(incident_id)
+            or match is None
+            or match.group(1).casefold() != incident_id.casefold()
+        ):
             raise error(
                 "invalid_incident",
-                f"Incident `{relative}` needs `id: INC-<n>` and the file name `INC-<n>-<slug>.md` with the same number and a lowercase hyphenated slug.",
+                f"Incident `{relative}` needs `id: INC-<n>` and the file name `INC-<n>-<slug>.md` with the same number (at most {MAX_RECORD_NUMBER_DIGITS} digits) and a lowercase hyphenated slug.",
                 relative,
             )
         if not isinstance(frontmatter["title"], str) or not frontmatter["title"].strip():

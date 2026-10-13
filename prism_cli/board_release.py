@@ -45,6 +45,7 @@ from prism_cli.wiki_model import (
     APP_REVALIDATION_DOMAINS,
     active_scope,
     app_stages,
+    bounded_number,
     clean_cell,
     contract_page_citation,
     merge_revalidation,
@@ -162,7 +163,7 @@ class ReleaseActionsMixin:
             )
         today = None if self._recovering else date.fromisoformat(self._history_day())
         raise_first(check_record_page(path, frontmatter, body, today=today, proposal=True), path)
-        number = int(RELEASE_FILE_PATTERN.match(name).group("id")[4:]) if match else 0  # type: ignore[union-attr]
+        number = (bounded_number(match.group("id")[4:]) or 0) if match else 0
         expected = next_release_number(records)
         if not self._recovering and number != expected:
             raise bs.BoardError(
