@@ -133,6 +133,27 @@ test('first run downloads, verifies and caches uv; the second run reuses the cac
   assert.deepEqual(second, { path: first.path, source: 'cache' });
 });
 
+test('a staging folder that cannot be removed does not fail an install that put the binary in place', async (t) => {
+  const dir = makeTempDir();
+  t.after(() => removeDir(dir));
+  const payload = Buffer.from('stand-in uv binary\n'.repeat(100));
+  const { asset, archive } = craftedAsset(payload);
+  const env = { PATH: '', LOCALAPPDATA: dir, XDG_CACHE_HOME: dir };
+  const removals = [];
+  const remove = (directory) => {
+    removals.push(directory);
+    if (removals.length === 1) {
+      throw Object.assign(new Error('EPERM: operation not permitted, rmdir'), { code: 'EPERM' });
+    }
+  };
+
+  const result = await resolveUv({ ...HOST, env, homedir: dir, asset, fetchBuffer: async () => archive, remove });
+  assert.equal(result.source, 'download');
+  assert.equal(result.path, path.join(cacheRoot({ ...HOST, env, homedir: dir }), UV_VERSION, asset.binary));
+  assert.deepEqual(fs.readFileSync(result.path), payload);
+  assert.equal(removals.length, 1, 'the cleanup was attempted once');
+});
+
 test('a download that fails the SHA-256 check is discarded and nothing is cached', async (t) => {
   const dir = makeTempDir();
   t.after(() => removeDir(dir));

@@ -61,8 +61,14 @@ function findOnPath(env, platform) {
   return null;
 }
 
+// Windows can hold a file for a moment after a process that used it has exited; with these options Node retries
+// the removal when it fails with EBUSY, EMFILE, ENFILE, ENOTEMPTY or EPERM.
+function removeDirectory(directory) {
+  fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
 // Downloads, verifies and unpacks the pinned uv into the cache; returns the path of the binary.
-async function installUv({ asset, root, fetchBuffer, env, log }) {
+async function installUv({ asset, root, fetchBuffer, env, log, remove = removeDirectory }) {
   const final = path.join(root, UV_VERSION);
   const binaryPath = path.join(final, asset.binary);
   log(`Prism: downloading uv ${UV_VERSION} (${asset.target}) from github.com. This happens once.`);
@@ -82,8 +88,21 @@ async function installUv({ asset, root, fetchBuffer, env, log }) {
         throw error;
       }
     }
-  } finally {
-    fs.rmSync(staging, { recursive: true, force: true });
+  } catch (error) {
+    // The install failed. Clear the staging folder, but report the install error, not a cleanup error.
+    try {
+      remove(staging);
+    } catch (_cleanupError) {
+      // The staging folder stays; the error below is the one to show.
+    }
+    throw error;
+  }
+  // The binary is in place. A staging folder that cannot be removed (the rename normally moved it already) is only
+  // a leftover; it must not fail the launch.
+  try {
+    remove(staging);
+  } catch (_cleanupError) {
+    // Leave the leftover in the cache folder.
   }
   return binaryPath;
 }
@@ -97,6 +116,7 @@ async function resolveUv({
   asset: assetOverride,
   fetchBuffer = defaultFetchBuffer,
   log = () => {},
+  remove,
 } = {}) {
   if (env.PRISM_UV) {
     if (!isFile(env.PRISM_UV)) {
@@ -117,7 +137,7 @@ async function resolveUv({
     return { path: cached, source: 'cache' };
   }
 
-  const installed = await installUv({ asset, root, fetchBuffer, env, log });
+  const installed = await installUv({ asset, root, fetchBuffer, env, log, remove });
   return { path: installed, source: 'download' };
 }
 
