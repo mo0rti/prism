@@ -1087,7 +1087,7 @@ if (checkConnectedBoard) {
     if (url.endsWith("/recover")) {
       const operationId = decodeURIComponent(url.split("/").at(-2));
       const body = JSON.parse(options.body || "{}");
-      if (operationId === "op-astra-recover") {
+      if (operationId === "op-recover-after-conflict") {
         return reply({ schema_version: 1, operation_id: operationId, state: "applied", applied_paths: ["knowledge/wiki/features/F-close.md", "knowledge/wiki/status-board.md", "knowledge/wiki/log.md"], graph_epoch: "board-epoch", graph_version: 2, resulting_features: { "F-close": { status: "in-dev", owner: "dev", app_stages: { backend: "ready-for-qa", worker: "in-dev" } } }, recovery_available: false, actor: { participant_id: "human-7", name: "Safe Human", kind: "human" } });
       }
       if (operationId === abandonId) {
@@ -1457,7 +1457,7 @@ if (checkConnectedBoard) {
   refreshBoardGraphAfterApply(restartedOther);
   assert(restartedOther.operationMessage.includes("a later change") && !restartedOther.operationMessage.includes("stale") && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && retryDelays().length === 0 && closeStage() === "ready-for-qa", "a graph of the new epoch that differs from the result was not current at once: " + restartedOther.operationMessage);
 
-  // Astra's case: operation A, then operation B that changed A's features, then a restart; the page inspects A. The new epoch's first
+  // Delayed inspection after a restart: operation A, then operation B that changed A's features, then a restart; the page inspects A. The new epoch's first
   // snapshot already reflects B and nothing changes after it, so it must be current at once and never wait for a later change.
   adoptData(beforeDevEnvelope);
   state.liveEpoch = "old-epoch";
@@ -1516,10 +1516,10 @@ if (checkConnectedBoard) {
   retryTimers.length = 0;
   openBoardOperations(null);
   const operationsDialog = state.transitionPreview;
-  operationsDialog.selectedOperation = { operation_id: "op-astra-recover", state: "conflict", actor: { participant_id: "agent-9", name: "Former Agent", kind: "agent" }, remaining_changes: [], moves: [], recovery_review_revision: "review-astra", receipt: { schema_version: 1, operation_id: "op-astra-recover", state: "conflict", applied_paths: [], conflicts: [{ path: "knowledge/wiki/features/F-close.md", reason: "Current file differs." }] }, approval: null };
-  operationsDialog.inspectedOperationId = "op-astra-recover";
+  operationsDialog.selectedOperation = { operation_id: "op-recover-after-conflict", state: "conflict", actor: { participant_id: "agent-9", name: "Former Agent", kind: "agent" }, remaining_changes: [], moves: [], recovery_review_revision: "review-recover-after-conflict", receipt: { schema_version: 1, operation_id: "op-recover-after-conflict", state: "conflict", applied_paths: [], conflicts: [{ path: "knowledge/wiki/features/F-close.md", reason: "Current file differs." }] }, approval: null };
+  operationsDialog.inspectedOperationId = "op-recover-after-conflict";
   operationsDialog.recoveryAcknowledged = true;
-  recoverBoardOperation(operationsDialog, "op-astra-recover");
+  recoverBoardOperation(operationsDialog, "op-recover-after-conflict");
   waitOutRetries();
   assert(operationsDialog.operationState === "applied" && state.boardViewStale && state.pendingAppliedStage && state.pendingAppliedStage.expectation.features[0].id === "F-close" && operationsDialog.operationMessage.includes("view stale") && !operationsDialog.operationMessage.includes("refreshed and validated") && closeStage() === "in-dev", "recovery from the Operations dialog validated a graph that does not show the recovered receipt: " + operationsDialog.operationMessage);
   adoptData(partialEnvelope, 2);
