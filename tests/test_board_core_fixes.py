@@ -78,7 +78,9 @@ class AbandonedDevDoneTests(lifecycle.FlowTests):
     def test_evidence_whose_write_landed_stays_bound_and_the_rest_is_released(self) -> None:
         self.walk_to_dev()
         self.apply_skill("dev-done", self.deliver("backend", "in-dev", "dev"))
-        intent = json.loads(self.service.store.connection.execute("SELECT intent_json FROM operations WHERE state = 'applied' ORDER BY created_at DESC LIMIT 1").fetchone()[0])
+        # The dev-done is the only applied operation that produced evidence; operations applied in the same second share a timestamp.
+        rows = self.service.store.connection.execute("SELECT intent_json FROM operations WHERE state = 'applied'").fetchall()
+        intent = next(intent for intent in (json.loads(row[0]) for row in rows) if intent.get("produces_evidence"))
         self.assertEqual("backend", intent["produces_evidence"][0]["app"])
         self.assertEqual([], self.service._unlanded_provenance(intent, [LIFECYCLE_FEATURE]), "the page landed: the row stays bound")
         self.assertEqual([], self.service._unlanded_provenance(intent, []), "the page still holds the row, so it is not shown absent")
