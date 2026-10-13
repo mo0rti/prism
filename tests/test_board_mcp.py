@@ -16,8 +16,10 @@ from mcp.shared.exceptions import MCPError
 
 from prism_cli.board_mcp import SERVER_INSTRUCTIONS, _safe_error
 from prism_cli import board_reads
-from prism_cli.board_service import BoardError
+from prism_cli.board_service import BoardError, BoardService
 from prism_cli.board_server import create_app
+from prism_cli.workflow_install import apply_install, plan_install
+from tests.test_core_workflow_fixture import _feature_page
 from tests import real_temp  # noqa: F401
 
 
@@ -333,25 +335,6 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 await self._disconnect(http, streams, session)
 
-    async def test_a_result_no_shaper_can_reduce_fails_closed_with_a_clear_error(self) -> None:
-        async with self.app.router.lifespan_context(self.app):
-            http, streams, session = await self._connect()
-            try:
-                await session.initialize()
-                original = self.service.read_workspace
-                self.service.read_workspace = lambda actor, paths, cursor=None: {"schema_version": 1, "files": [{"path": "knowledge/wiki/index.md", "content": "x" * (board_reads.RESULT_BUDGET_CHARS + 1)}], "next_cursor": None}
-                try:
-                    result = await session.call_tool("read_workspace", {"paths": ["knowledge/wiki/index.md"]})
-                finally:
-                    self.service.read_workspace = original
-                self.assertTrue(result.is_error)
-                message = " ".join(block.text for block in result.content if block.type == "text")
-                self.assertIn("result_too_large", message)
-                self.assertIn(f"{board_reads.RESULT_BUDGET_CHARS:,}", message)
-                self.assertLess(len(message), 1000, "The refusal does not carry the oversized result.")
-            finally:
-                await self._disconnect(http, streams, session)
-
     async def test_initialize_publishes_title_description_and_orientation_instructions(self) -> None:
         async with self.app.router.lifespan_context(self.app):
             http, streams, session = await self._connect()
@@ -634,6 +617,63 @@ class BoardMCPTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(invalid.status_code, 401)
                 self.assertNotIn("raw-invalid-token", invalid.text)
+
+
+class BoardMCPFeatureReadTests(unittest.IsolatedAsyncioTestCase):
+    """A feature page with many acceptance criteria stays readable over MCP through the real service."""
+
+    CRITERIA = 500
+
+    async def asyncSetUp(self) -> None:
+        self.temp = TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.assertEqual("applied", apply_install(self.root, plan_install(self.root, name="Document review", apps=["backend"]))["status"])
+        self.path = "knowledge/wiki/features/F-001-document-review.md"
+        page = _feature_page().replace("criteria-high-water: 2", f"criteria-high-water: {self.CRITERIA}")
+        criteria = "\n".join(f"- [ ] AC-{number} [backend] Criterion {number} is recorded." for number in range(1, self.CRITERIA + 1))
+        head, rest = page.split("## Acceptance criteria\n", 1)
+        self.page = head + "## Acceptance criteria\n" + criteria + "\n" + rest[rest.index("\n## Open questions"):]
+        (self.root / self.path).write_bytes(self.page.encode("utf-8"))
+        self.service = BoardService(self.root)
+        self.addCleanup(self.service.close)
+        self.token = self.service.create_participant("Reading agent", "agent")["token"]
+        self.app = create_app(self.root, port=8765, service=self.service)
+        self.transport = httpx2.ASGITransport(app=self.app)
+
+    async def asyncTearDown(self) -> None:
+        self.temp.cleanup()
+
+    async def test_the_page_is_readable_with_a_continuation_cursor_and_every_criterion(self) -> None:
+        async with self.app.router.lifespan_context(self.app):
+            async with httpx2.AsyncClient(transport=self.transport, base_url="http://127.0.0.1:8765", headers={"Authorization": f"Bearer {self.token}"}) as http:
+                streams = streamable_http_client("http://127.0.0.1:8765/mcp", http_client=http)
+                reader, writer = await streams.__aenter__()
+                session = ClientSession(reader, writer)
+                await session.__aenter__()
+                try:
+                    await session.initialize()
+                    text, cursor, pages, criteria = "", None, 0, []
+                    while True:
+                        arguments: dict[str, Any] = {"paths": [self.path]}
+                        if cursor is not None:
+                            arguments["cursor"] = cursor
+                        result = await session.call_tool("read_workspace", arguments)
+                        self.assertFalse(result.is_error, result.content)
+                        record = result.structured_content["files"][0]
+                        self.assertEqual(len(text), record["offset"])
+                        text += record["content"]
+                        criteria.extend(record.get("annotations", {}).get("criteria", []))
+                        pages += 1
+                        cursor = result.structured_content["next_cursor"]
+                        if cursor is None:
+                            break
+                        self.assertLess(pages, 20)
+                finally:
+                    await session.__aexit__(None, None, None)
+                    await streams.__aexit__(None, None, None)
+        self.assertEqual(self.page, text, "Every character of the page is read.")
+        self.assertEqual([f"AC-{number}" for number in range(1, self.CRITERIA + 1)], [item["id"] for item in criteria])
+        self.assertGreater(pages, 1, "The first piece carries a continuation cursor.")
 
 
 if __name__ == "__main__":

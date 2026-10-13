@@ -112,14 +112,17 @@ CEILINGS: dict[str, dict[str, tuple[int, int]]] = {
     # It binds the operation's dependency set (the relevant-source snapshot of a reviewed recovery) before it validates, compares it
     # after, and compares it again before every write, so a dependency that appears while a write waits is a change. That is five
     # snapshots of a fixed cost each; no slope changed.
+    # The graph refresh after a write starts without the facts the write's scope computed before it (the workspace model and the release
+    # records), so the graph shows what the write wrote. That computes them once more: one file open and one
+    # scandir on the intercept. The parsed pages stay shared, so no slope changed.
     "apply": {
         "page_parses": (1, 15),
-        "file_opens": (4, 423),
+        "file_opens": (4, 424),
         "workspace_fingerprint": (0, 4),
         "validate_graph_inputs": (0, 16),
         "lint_wiki": (0, 2),
         "build_graph": (0, 1),
-        "scandir": (0, 678),
+        "scandir": (0, 679),
     },
 }
 

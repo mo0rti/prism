@@ -1985,15 +1985,16 @@ function appliedGraphPosition(receipt) {
   if (!receipt || typeof receipt.graph_epoch !== "string" || !receipt.graph_epoch || typeof receipt.graph_version !== "number" || !Number.isFinite(receipt.graph_version)) return null;
   return { epoch: receipt.graph_epoch, version: receipt.graph_version };
 }
-// A graph of the receipt's epoch at or after its version contains the operation and is current for it, whatever it shows now: a
-// later change may have replaced the result. With another epoch (the server restarted) or a receipt without a position, the
-// versions cannot be compared, so only a graph newer than the last snapshot known to lack the result ends the wait.
+// Whether a graph is current for the operation, whatever it shows now (a later change may have replaced the result). A graph of
+// the receipt's epoch is current from the receipt's version on. A graph of another epoch is a server that started after the
+// operation: it builds its graphs from the disk the operation had already written, so it contains the operation. A receipt
+// without a position cannot be compared, so any graph newer than the one the wait started from ends the wait.
 function supersedesApplied(pending, epoch, version) {
   if (!Number.isFinite(version)) return false;
   const position = pending.position;
-  if (position && position.epoch === epoch) return version >= position.version;
-  const lacking = pending.lacking;
-  return !!lacking && lacking.epoch === epoch && version > lacking.version;
+  if (position) return position.epoch !== epoch || version >= position.version;
+  const since = pending.since;
+  return !!since && (since.epoch !== epoch || version > since.version);
 }
 const APPLY_SUPERSEDED_MESSAGE = "Operation applied. Dashboard view refreshed; a later change replaced the applied result.";
 function confirmPendingAppliedStage(version) {
@@ -2016,7 +2017,7 @@ function refreshBoardGraphAfterApply(preview, receipt = preview && preview.recei
   state.pendingAppliedStage = null;
   const expectation = appliedStageExpectation(receipt);
   const position = appliedGraphPosition(receipt);
-  let lacking = null;
+  let since = null;
   const refreshId = preview ? (preview.graphRefreshId = (preview.graphRefreshId || 0) + 1) : 0;
   const superseded = () => !!preview && preview.graphRefreshId !== refreshId;
   const requestSnapshot = attempt => {
@@ -2025,14 +2026,14 @@ function refreshBoardGraphAfterApply(preview, receipt = preview && preview.recei
       const version = Number(payload && payload.version);
       if (!payload || !payload.envelope || !Number.isFinite(version) || typeof payload.epoch !== "string") throw new Error("The refreshed graph response could not be validated.");
       if (state.liveEpoch === payload.epoch && state.liveVersion !== null && version < state.liveVersion) throw new Error("The refreshed graph was older than the current dashboard snapshot.");
-      const replaced = !!expectation && !envelopeShowsStage(payload.envelope, expectation) && supersedesApplied({ position, lacking }, payload.epoch, version);
+      const replaced = !!expectation && !envelopeShowsStage(payload.envelope, expectation) && supersedesApplied({ position, since }, payload.epoch, version);
       if (expectation && !replaced && !envelopeShowsStage(payload.envelope, expectation)) {
         // The snapshot predates the applied write. Retry briefly, then wait for the live event stream.
-        lacking = { epoch: payload.epoch, version };
+        if (!position && !since) since = { epoch: payload.epoch, version };
         if (attempt < APPLY_REFRESH_RETRY_MS.length) { setTimeout(() => requestSnapshot(attempt + 1), APPLY_REFRESH_RETRY_MS[attempt]); return; }
         state.boardViewStale = true;
         state.liveRefreshError = APPLY_STALE_VIEW_ERROR;
-        state.pendingAppliedStage = { preview, expectation, position, lacking };
+        state.pendingAppliedStage = { preview, expectation, position, since };
         if (preview) preview.operationMessage = "Operation applied. Dashboard view stale: the board has not received the applied change yet; waiting for the live update stream.";
         renderAll(false);
         return;

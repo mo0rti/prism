@@ -180,11 +180,15 @@ class _SnapshotRefreshingService:
 
             # One request: the write and the graph refresh that follows it share
             # parsed pages, and the scope ends when the request does.
-            with wiki_read_scope():
+            with wiki_read_scope() as scope:
                 try:
                     result = attribute(*args, **kwargs)
                 finally:
-                    # Runs after the service releases its lock; never raises.
+                    # Runs after the service releases its lock; never raises. The scope holds facts that were computed
+                    # before the write (the release records, the workspace model), and a graph built from them would
+                    # lack what the operation just wrote, so the refresh starts without them. Parsed pages stay: the
+                    # scope checks each one against its file and rereads a page the write changed.
+                    scope.facts.clear()
                     self._graph.refresh_now()
                 return self._with_graph_version(result)
 

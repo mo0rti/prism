@@ -1435,8 +1435,9 @@ if (checkConnectedBoard) {
   adoptData(otherEnvelope, 3);
   assert(state.pendingAppliedStage === null && !state.boardViewStale && !state.liveRefreshError && closeStage() === "ready-for-qa" && earlierView.operationMessage.includes("a later change"), "the graph at the receipt's version did not end the wait: " + earlierView.operationMessage);
 
-  // Another epoch (a restarted server): the versions cannot be compared. The feature values of the receipt still validate a graph
-  // that shows them; otherwise the page waits for the live stream, and a newer graph of the new epoch ends the wait.
+  // Another epoch (a restarted server): the server built its graphs from the disk after the operation, so every graph of the new
+  // epoch contains the operation and is current for it, whatever it shows. A graph that shows the result is validated; one that
+  // differs (a later change replaced the result) is current at once, with no retry and no stale label.
   adoptData(beforeDevEnvelope);
   state.liveEpoch = "board-epoch";
   state.liveVersion = 1;
@@ -1450,16 +1451,60 @@ if (checkConnectedBoard) {
   state.liveEpoch = "board-epoch";
   state.liveVersion = 1;
   dataRefreshEnvelope = otherEnvelope;
-  dataRefreshVersion = 2;
+  dataRefreshVersion = 1;
   retryTimers.length = 0;
   const restartedOther = positionedPreview("old-epoch", 7);
   refreshBoardGraphAfterApply(restartedOther);
+  assert(restartedOther.operationMessage.includes("a later change") && !restartedOther.operationMessage.includes("stale") && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && retryDelays().length === 0 && closeStage() === "ready-for-qa", "a graph of the new epoch that differs from the result was not current at once: " + restartedOther.operationMessage);
+
+  // Astra's case: operation A, then operation B that changed A's features, then a restart; the page inspects A. The new epoch's first
+  // snapshot already reflects B and nothing changes after it, so it must be current at once and never wait for a later change.
+  adoptData(beforeDevEnvelope);
+  state.liveEpoch = "old-epoch";
+  state.liveVersion = 7;
+  dataRefreshEnvelope = otherEnvelope;
+  dataRefreshVersion = 1;
+  retryTimers.length = 0;
+  inspectedReceipt = positionedReceipt("old-epoch", 2);
+  const inspectedAfterRestart = { ...partialPreview(), receipt: null, operationId: "op-original", operationState: "outcome unknown" };
+  inspectConnectedOperation(inspectedAfterRestart);
+  assert(inspectedAfterRestart.operationState === "applied" && inspectedAfterRestart.operationMessage.includes("a later change") && !inspectedAfterRestart.operationMessage.includes("stale") && !state.boardViewStale && !state.liveRefreshError && state.pendingAppliedStage === null && retryDelays().length === 0 && state.liveEpoch === "board-epoch" && state.liveVersion === 1 && closeStage() === "ready-for-qa", "inspecting A after a restart left a stale warning: " + inspectedAfterRestart.operationMessage);
+  for (let index = 0; index < 100; index += 1) adoptData(otherEnvelope, 1);
+  assert(!state.boardViewStale && state.pendingAppliedStage === null && retryDelays().length === 0, "delivering the same new-epoch version again changed the settled state");
+
+  // A receipt without a position (no snapshot existed when the operation was applied) cannot be compared by version. It still never
+  // waits forever: the graph that shows the result validates, and any graph newer than the one the wait started from ends the wait.
+  const unpositionedReceipt = { ...partialReceipt };
+  delete unpositionedReceipt.graph_epoch;
+  delete unpositionedReceipt.graph_version;
+  assert(appliedGraphPosition(unpositionedReceipt) === null, "a receipt without a position was given one");
+  const unpositionedPreview = () => ({ ...partialPreview(), receipt: unpositionedReceipt });
+  const startUnpositioned = (envelope, version) => {
+    adoptData(beforeDevEnvelope);
+    state.liveEpoch = "board-epoch";
+    state.liveVersion = 1;
+    dataRefreshEnvelope = envelope;
+    dataRefreshVersion = version;
+    retryTimers.length = 0;
+    const preview = unpositionedPreview();
+    refreshBoardGraphAfterApply(preview);
+    return preview;
+  };
+  const unpositionedShown = startUnpositioned(partialEnvelope, 1);
+  assert(unpositionedShown.operationMessage.includes("refreshed and validated") && !state.boardViewStale && state.pendingAppliedStage === null, "the graph that shows the result of an unpositioned receipt was not validated: " + unpositionedShown.operationMessage);
+  const unpositionedWaiting = startUnpositioned(otherEnvelope, 2);
   waitOutRetries();
-  assert(state.boardViewStale && state.pendingAppliedStage && state.pendingAppliedStage.position.epoch === "old-epoch" && restartedOther.operationMessage.includes("view stale") && closeStage() === "in-dev", "a graph of the new epoch that differs from the result was current at once: " + restartedOther.operationMessage);
+  assert(state.boardViewStale && state.pendingAppliedStage && state.pendingAppliedStage.position === null && unpositionedWaiting.operationMessage.includes("view stale") && closeStage() === "in-dev", "an unpositioned receipt took a graph that lacks its result as current at once: " + unpositionedWaiting.operationMessage);
   adoptData(otherEnvelope, 2);
   assert(state.boardViewStale && state.pendingAppliedStage, "the snapshot the wait started from ended it");
   adoptData(otherEnvelope, 3);
-  assert(state.pendingAppliedStage === null && !state.boardViewStale && !state.liveRefreshError && closeStage() === "ready-for-qa" && restartedOther.operationMessage.includes("a later change"), "a newer graph of the new epoch did not end the wait: " + restartedOther.operationMessage);
+  assert(state.pendingAppliedStage === null && !state.boardViewStale && !state.liveRefreshError && closeStage() === "ready-for-qa" && unpositionedWaiting.operationMessage.includes("a later change"), "a newer graph did not end the wait of an unpositioned receipt: " + unpositionedWaiting.operationMessage);
+  const unpositionedRestarted = startUnpositioned(otherEnvelope, 2);
+  waitOutRetries();
+  assert(state.boardViewStale && state.pendingAppliedStage, "the second unpositioned wait did not start");
+  state.liveEpoch = "next-epoch";
+  adoptData(otherEnvelope, 1);
+  assert(state.pendingAppliedStage === null && !state.boardViewStale && unpositionedRestarted.operationMessage.includes("a later change"), "a graph of another epoch did not end the wait of an unpositioned receipt: " + unpositionedRestarted.operationMessage);
 
   // Recovery from the Operations dialog confirms the view against the recovered receipt, like the connected dialog does. The receipt
   // requires backend at ready-for-qa; the graph still shows in-dev, so the view is not validated.
