@@ -4,6 +4,10 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- **The board page shows the bugs, the release history and the incidents.** Three views follow Apps: **Bugs** (a board with a column per status, severity, blocking, deferred and regression badges, the apps, the owner, the feature as a link and a closed bug's disposition; filters by app and blocking only), **Releases** (newest first, with the kind, outcome and `current` badges, the features and bugs as links, `retry of` and `rollback of` links and each delivery as an app, target, version and outcome row; filters by app and target) and **Incidents** (by status, with the severity, the impact, "cause unknown" and links to the releases and follow-ups). A record opens a panel with its summary, fix, verification and release rows, its deliveries and chain, or its impact and timeline, and a link between records opens the other panel. A feature's panel lists its bugs and the release records that name it, the Apps view links each app's open bugs, open incidents and latest release, and the header shows **Open bugs** (with the blocking count) and **Open incidents**, each opening its view. A page that fails lint shows with a warning instead of being hidden, and a view without records says so. The views are read-only and appear on the connected board, the legacy dashboard and the static export.
+
 ## [0.7.3]
 
 Release date: 2026-10-13

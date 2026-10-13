@@ -1,7 +1,7 @@
 // Runtime boot harness for the Prism dashboard inline script.
 // Stubs just enough DOM to execute the whole boot sequence and surface
 // runtime errors (TDZ, undefined refs) that `node --check` cannot catch.
-// Usage: node boot_harness.js <exported-dashboard.html> [--check-guide-transition] [--check-escaping] [--check-health-labels] [--check-view-accessibility] [--check-unknown-stage] [--check-transitions] [--check-connected-board] [--check-board-defects]
+// Usage: node boot_harness.js <exported-dashboard.html> [--check-guide-transition] [--check-escaping] [--check-health-labels] [--check-view-accessibility] [--check-unknown-stage] [--check-transitions] [--check-connected-board] [--check-board-defects] [--check-records-views]
 
 const fs = require("fs");
 
@@ -15,6 +15,7 @@ const checkUnknownStage = process.argv.includes("--check-unknown-stage");
 const checkTransitions = process.argv.includes("--check-transitions");
 const checkConnectedBoard = process.argv.includes("--check-connected-board");
 const checkBoardDefects = process.argv.includes("--check-board-defects");
+const checkRecordsViews = process.argv.includes("--check-records-views");
 
 // --- extract embedded JSON payloads and the app script ---
 function tagContent(id) {
@@ -49,6 +50,7 @@ function matchesSelector(tag, attrs, selector) {
     if (dataAttribute && dataAttribute[1].startsWith("data-")) return attrs[dataAttribute[1]] !== undefined;
     if (value === ".card[data-id]") return tag === "div" && hasClass(attrs, "card") && attrs["data-id"] !== undefined;
     if (value === ".card[data-intake]") return tag === "div" && hasClass(attrs, "card") && attrs["data-intake"] !== undefined;
+    if (value === ".card[data-record-id]") return tag === "div" && hasClass(attrs, "card") && attrs["data-record-id"] !== undefined;
     if (value === ".column[data-stage]") return tag === "div" && hasClass(attrs, "column") && attrs["data-stage"] !== undefined;
     if (value === "[data-transition-id]" || value === ".prepare-btn") return tag === "button" && attrs["data-transition-id"] !== undefined;
     if (value === "[data-transition-cancel]" || value === ".cancel-btn") return tag === "button" && attrs["data-transition-cancel"] !== undefined;
@@ -186,7 +188,7 @@ const doc = {
   getElementById(id) {
     if (elements[id] && elements[id].isConnected !== false) return elements[id];
     delete elements[id];
-    const roots = ["panel", "transition-dialog", "board-view", "app-view", "firstrun-view", "graph-view", "views", "toolbar"];
+    const roots = ["panel", "transition-dialog", "board-view", "app-view", "bugs-view", "releases-view", "incidents-view", "firstrun-view", "graph-view", "views", "toolbar"];
     for (const rootId of roots) {
       const root = elements[rootId];
       if (!root || !root.querySelector) continue;
@@ -203,7 +205,7 @@ const doc = {
     return null;
   },
   querySelectorAll(selector) {
-    if (selector === "#dashboard .view") return ["firstrun-view", "graph-view", "board-view", "app-view"].map(id => doc.getElementById(id));
+    if (selector === "#dashboard .view") return ["firstrun-view", "graph-view", "board-view", "app-view", "bugs-view", "releases-view", "incidents-view"].map(id => doc.getElementById(id));
     if (selector.startsWith("#panel ")) return doc.getElementById("panel").querySelectorAll(selector.slice(7));
     if (selector.startsWith("#board-view ")) return doc.getElementById("board-view").querySelectorAll(selector.slice(12));
     if (selector.startsWith("#transition-dialog ")) return doc.getElementById("transition-dialog").querySelectorAll(selector.slice(20));
@@ -1961,6 +1963,242 @@ if (checkBoardDefects) {
   globalThis.__boardDefectsChecked = true;
 })();`);
 }
+// The records views check. Its source runs inside the dashboard's script context (see recordsViewsCheck.toString()), so it uses the page's
+// own globals (state, adoptData, switchView, ...) and nothing of this harness. The envelope in the page data comes from tests/records_views_fixture.py.
+function recordsViewsCheck() {
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const clone = value => JSON.parse(JSON.stringify(value));
+  const same = (actual, expected, message) => assert(JSON.stringify(actual) === JSON.stringify(expected), message + ": expected " + JSON.stringify(expected) + ", got " + JSON.stringify(actual));
+  const html = id => document.getElementById(id).innerHTML;
+  const idsIn = markup => Array.from(markup.matchAll(/data-record-id="([^"]*)"/g)).map(match => match[1]);
+  const column = (markup, stage) => {
+    const start = markup.indexOf('<div class="column" data-stage="' + stage + '">');
+    assert(start >= 0, "missing column " + stage);
+    const next = markup.indexOf('<div class="column" data-stage=', start + 10);
+    return markup.slice(start, next < 0 ? markup.length : next);
+  };
+  const count = (markup, text) => markup.split(text).length - 1;
+  const noRawMarkup = (markup, label) => assert(!/<(?:img|svg|script)\b/i.test(markup), label + " has unescaped data-derived markup");
+  const resetFilters = () => { state.records = { bugApp: "", bugBlocking: false, releaseApp: "", releaseTarget: "" }; };
+  const control = (viewId, attribute, index) => document.getElementById(viewId).querySelectorAll("[" + attribute + "]")[index || 0];
+  const openCard = (viewId, id) => {
+    const card = document.getElementById(viewId).querySelectorAll("[data-record-id]").find(item => item.dataset.recordId === id);
+    assert(card, "no card for " + id);
+    card.__listeners.click[0]({ target: { closest() { return null; } } });
+    return card;
+  };
+  const followLink = (attribute, value) => {
+    const link = document.getElementById("panel").querySelectorAll("[" + attribute + "]").find(item => item.dataset[attribute.slice(5).replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase())] === value);
+    assert(link, "the panel has no link " + attribute + "=" + value);
+    link.__listeners.click[0]({ stopPropagation() {} });
+  };
+  const panel = () => document.getElementById("panel").innerHTML;
+
+  const full = clone(globalThis.transitionPayload);
+  assert(full.facts.bugs.length && full.facts.releases.length && full.facts.incidents.length, "the page data carries no records");
+  state.boardConnection = "unsupported";
+  adoptData(full);
+  resetFilters();
+
+  // 1. The Bugs view: every status column, severity colour, badge, link and disposition.
+  switchView("bugs");
+  let bugs = html("bugs-view");
+  for (const stage of ["open", "in-fix", "fixed", "verified", "released", "closed", "invalid"]) assert(bugs.includes('data-stage="' + stage + '"'), "bugs view has no " + stage + " column");
+  same(idsIn(column(bugs, "open")), ["BUG-001", "BUG-010", "BUG-012"], "open column");
+  same(idsIn(column(bugs, "in-fix")), ["BUG-002"], "in-fix column");
+  same(idsIn(column(bugs, "fixed")), ["BUG-003"], "fixed column");
+  same(idsIn(column(bugs, "verified")), ["BUG-004"], "verified column");
+  same(idsIn(column(bugs, "released")), ["BUG-005"], "released column");
+  same(idsIn(column(bugs, "closed")), ["BUG-007", "BUG-008", "BUG-006"], "closed column");
+  same(idsIn(column(bugs, "invalid")), ["BUG-009", "BUG-011"], "invalid column (a null status and an unknown one)");
+  for (const tone of ["critical", "app", "design", "context"]) assert(bugs.includes('--c:var(--' + tone + ')" title="Severity"'), "no severity badge in the " + tone + " tone");
+  assert(bugs.includes('class="badge tone solid" style="--c:var(--critical)" title="Severity"'), "a critical severity is not the solid badge");
+  assert(/class="ctitle" title="A very long title[^"]*">A very long title[^<]*…</.test(column(bugs, "open")), "a long bug title is not bounded with its full value in a title");
+  assert(bugs.includes('class="badge blocked">blocking<'), "no blocking badge");
+  assert(bugs.includes('class="badge deferred">deferred<'), "no deferred badge");
+  assert(bugs.includes('>regression<'), "no regression badge");
+  assert(column(bugs, "invalid").includes('class="badge advisory" title="Lint reports this bug page as invalid.">invalid<'), "an invalid bug has no warning badge");
+  assert(column(bugs, "invalid").includes("card rec invalid"), "an invalid bug card is not marked");
+  assert(column(bugs, "closed").includes("won't fix"), "no wont-fix disposition");
+  assert(/duplicate of<\/span><button[^>]*data-record-link="BUG-002"/.test(column(bugs, "closed")), "no duplicate disposition link");
+  assert(/promoted to<\/span><button[^>]*data-node-link="F-002"/.test(column(bugs, "closed")), "no promoted disposition link to the feature");
+  assert(/data-record-id="BUG-001"[\s\S]*?data-node-link="F-001"[^>]*>F-001<\/button><span class="ftitle">Review summary export</.test(column(bugs, "open")), "the feature of a bug is not a link with its title");
+  assert(column(bugs, "open").includes('class="owner-chip" title="Owner">dev<'), "no owner chip");
+  assert(column(bugs, "released").includes('no owner'), "an unowned bug does not say so");
+  assert(bugs.includes('<option value="backend">backend</option>') && bugs.includes('<option value="web">web</option>'), "no app filter options");
+  noRawMarkup(bugs, "bugs view");
+  assert(bugs.includes("&lt;img src=x onerror=alert(1)&gt;") && bugs.includes("&lt;svg/onload=alert(2)&gt;"), "hostile bug text is not shown as text");
+  const bugCard = html("bugs-view").match(/<div class="card rec" data-record-id="BUG-001"[^>]*>/)[0];
+  assert(bugCard.includes('tabindex="0"') && bugCard.includes('role="group"') && bugCard.includes('aria-label="Bug BUG-001:'), "a bug card is not a keyboard-reachable group");
+
+  // 2. The filters: by app, and blocking only.
+  const appSelect = control("bugs-view", "data-records-filter");
+  appSelect.value = "web";
+  appSelect.__listeners.change[0]();
+  same(idsIn(html("bugs-view")).sort(), ["BUG-002", "BUG-003"], "bugs of the web app");
+  control("bugs-view", "data-records-toggle").__listeners.click[0]();
+  assert(html("bugs-view").includes("No bugs match the filters."), "no empty message for a filter without a match");
+  assert(html("bugs-view").includes('aria-pressed="true"'), "the blocking toggle is not pressed");
+  const clearApp = control("bugs-view", "data-records-filter");
+  clearApp.value = "";
+  clearApp.__listeners.change[0]();
+  same(idsIn(html("bugs-view")), ["BUG-001"], "blocking bugs");
+  control("bugs-view", "data-records-toggle").__listeners.click[0]();
+  assert(idsIn(html("bugs-view")).length === 12, "clearing the filters did not show every bug");
+
+  // 3. The Releases view: newest first, kinds, outcomes, chains, the current mark, deliveries and filters.
+  switchView("releases");
+  let releases = html("releases-view");
+  same(idsIn(releases), ["REL-006", "REL-004", "REL-003", "REL-002", "REL-001", "REL-005", "REL-007"], "release order");
+  for (const kind of ["release", "retry", "rollback", "redeploy"]) assert(releases.includes("<i></i>" + kind + "<"), "no " + kind + " kind badge");
+  for (const outcome of ["released", "failed", "partial", "rolled-back"]) assert(releases.includes('title="Outcome">' + outcome + "<"), "no " + outcome + " outcome badge");
+  assert(count(releases, 'class="badge current"') === 2, "the current mark is not on the two current records");
+  assert(/data-record-id="REL-002"[\s\S]*?retry of<\/span><button[^>]*data-record-link="REL-001"/.test(releases), "no retry chain link");
+  assert(/data-record-id="REL-003"[\s\S]*?rollback of<\/span><button[^>]*data-record-link="REL-002"/.test(releases), "no rollback chain link");
+  assert(releases.includes('<span class="d-app">backend</span><span class="sep">·</span><span>production</span><span class="sep">·</span><span class="d-version">build:backend#412</span>'), "no compact delivery row");
+  assert(/data-record-id="REL-002"[\s\S]*?data-record-link="BUG-005"/.test(releases) && /data-record-id="REL-002"[\s\S]*?data-node-link="F-001"/.test(releases), "no feature and bug links on a record");
+  assert(releases.includes("card rec rel invalid") && releases.includes('title="The release validator rejects this record.">invalid<'), "an invalid record is not marked");
+  assert(/data-record-id="REL-007"[\s\S]*?<span class="rel-date">—<\/span>[\s\S]*?title="Outcome">—<\/span>/.test(releases), "a missing date and outcome are not an em dash");
+  assert(releases.includes('<span class="d-version" title="'), "a long version does not keep its full value in a title");
+  noRawMarkup(releases, "releases view");
+  assert(releases.includes("&lt;i&gt;v1&lt;/i&gt;"), "a hostile version is not shown as text");
+  const releaseApp = control("releases-view", "data-records-filter", 0);
+  releaseApp.value = "web";
+  releaseApp.__listeners.change[0]();
+  same(idsIn(html("releases-view")), ["REL-004", "REL-002"], "records with a web delivery");
+  const releaseTarget = control("releases-view", "data-records-filter", 1);
+  releaseTarget.value = "staging";
+  releaseTarget.__listeners.change[0]();
+  same(idsIn(html("releases-view")), ["REL-002"], "records with a web delivery to staging (one delivery has both)");
+  resetFilters();
+  renderReleases();
+  assert(idsIn(html("releases-view")).length === 7, "clearing the release filters did not show every record");
+
+  // 4. The Incidents view: the status groups, the cause, the links.
+  switchView("incidents");
+  const incidents = html("incidents-view");
+  same(idsIn(column(incidents, "open")), ["INC-004", "INC-001", "INC-005"], "open incidents, newest first, an invalid one without a status or date last");
+  same(idsIn(column(incidents, "mitigated")), ["INC-002"], "mitigated incidents");
+  same(idsIn(column(incidents, "resolved")), ["INC-003"], "resolved incidents");
+  assert(count(incidents, ">cause unknown<") === 1, "cause unknown is not on exactly the incident whose cause is unknown");
+  assert(column(incidents, "open").includes("Reviewers saw a blank summary"), "no impact line");
+  assert(/data-record-link="REL-002"/.test(incidents) && /data-record-link="BUG-002"/.test(incidents) && /data-node-link="F-001"/.test(incidents), "no release and follow-up links");
+  assert(incidents.includes('class="rlink plain"'), "an unknown follow-up is not plain text");
+  assert(column(incidents, "open").includes("card rec invalid"), "an invalid incident is not marked");
+  assert(/data-record-id="INC-005"[\s\S]*?<span class="when">—<\/span>/.test(incidents), "a missing incident date is not an em dash");
+  noRawMarkup(incidents, "incidents view");
+  assert(incidents.includes("&lt;img src=x onerror=alert(1)&gt;"), "a hostile incident title is not shown as text");
+
+  // 5. The panels: a bug, a release and an incident, the links between records, the feature panel.
+  switchView("bugs");
+  const card = openCard("bugs-view", "BUG-005");
+  let shown = panel();
+  assert(state.selectedRecord === "BUG-005" && state.selected === null, "the bug panel did not select the record");
+  assert(!document.getElementById("panel").hasAttribute("inert") && document.getElementById("panel").getAttribute("aria-hidden") === "false", "the bug panel is not open");
+  assert(shown.includes("No summary.") && shown.includes("Fix - 1") && shown.includes("commit:77c0de1"), "no fix row");
+  assert(shown.includes("Verification - 1") && shown.includes("qa-3") && shown.includes(">pass<"), "no verification row");
+  assert(shown.includes("Release - 2") && shown.includes('data-record-link="REL-002"') && shown.includes("no record") && shown.includes(">pending<"), "no release rows");
+  assert(shown.includes('id="copy-path"') && shown.includes("knowledge/wiki/bugs/BUG-005-"), "no page path with a copy button");
+  card.__listeners.keydown[0]({ key: "Enter", target: card, preventDefault() {} });
+  assert(state.selectedRecord === "BUG-005", "Enter on a card did not open its panel");
+  followLink("data-record-link", "REL-002");
+  shown = panel();
+  assert(state.selectedRecord === "REL-002" && shown.includes('class="pid">REL-002<'), "a link did not open the other record's panel");
+  assert(shown.includes("Deliveries - 2") && shown.includes("build:web#31") && shown.includes("release-2"), "no delivery rows");
+  assert(shown.includes("Retry of") && shown.includes('data-record-link="REL-001"') && shown.includes("Rolled back by") && shown.includes('data-record-link="REL-003"'), "no chain in the release panel");
+  assert(shown.includes("The retry shipped after the migration was fixed.") && shown.includes("Bugs - 1"), "no summary and bugs in the release panel");
+  followLink("data-record-link", "REL-001");
+  assert(panel().includes("Retried by") && panel().includes('data-record-link="REL-002"'), "the first record of a chain does not name its retry");
+  followLink("data-node-link", "F-001");
+  shown = panel();
+  assert(state.selected === "F-001" && state.selectedRecord === null, "a feature link did not open the feature panel");
+  assert(shown.includes("Bugs - 2") && shown.includes('data-record-link="BUG-001"') && shown.includes('data-record-link="BUG-002"') && shown.includes(">open<") && shown.includes(">in-fix<"), "the feature panel lists no bugs with their status");
+  assert(shown.includes("Release records - 3") && shown.includes('data-record-link="REL-003"'), "the feature panel lists no release records");
+  followLink("data-record-link", "BUG-001");
+  shown = panel();
+  assert(shown.includes("The summary shows the visible comments only") && shown.includes("build:backend#88") && shown.includes("staging") && shown.includes("No fix recorded yet.") && shown.includes("Not verified yet.") && shown.includes("Not released yet."), "the bug panel misses its summary or its empty rows");
+  openCard("bugs-view", "BUG-010");
+  shown = panel();
+  noRawMarkup(shown, "bug panel");
+  assert(shown.includes("&lt;script&gt;alert(3)&lt;/script&gt;") && shown.includes("commit:&lt;u&gt;x&lt;/u&gt;") && !shown.includes("<u>"), "hostile bug fields are not shown as text");
+  openCard("bugs-view", "BUG-009");
+  assert(panel().includes('class="panel-note"') && panel().includes("bug-page-invalid"), "an invalid bug panel carries no warning");
+  assert(/Blocking<\/div><div class="v">—</.test(panel()) && /Owner<\/div><div class="v">—</.test(panel()) && /Status<\/div><div class="v"><i[^>]*><\/i>—</.test(panel()), "null fields of an invalid bug are not an em dash");
+  assert(panel().includes("<span>—</span>") && panel().includes("no record"), "null cells of an invalid bug's rows are not an em dash");
+  openCard("bugs-view", "BUG-012");
+  assert(/<span title="commit:0123456789abcdef[^"]*">commit:[^<]*…<\/span>/.test(panel()) && /<h2 title="A very long title[^"]*">A very long title[^<]*…<\/h2>/.test(panel()), "a long artifact or title keeps no full value in a title");
+  openCard("bugs-view", "BUG-003");
+  assert(/style="--c:var\(--context\)">blocked</.test(panel()), "a blocked verification is not shown as written in a neutral badge");
+  openCard("bugs-view", "BUG-007");
+  assert(panel().includes("Duplicate of") && panel().includes('data-record-link="BUG-002"'), "a closed bug panel shows no disposition");
+  switchView("incidents");
+  openCard("incidents-view", "INC-002");
+  shown = panel();
+  assert(shown.includes("Timeline - 20") && shown.includes("Timeline line 19") && shown.includes("Showing the last 20 lines; more lines on the page."), "no truncated timeline note");
+  assert(shown.includes("Impact") && shown.includes("Exports took more than a minute") && shown.includes('data-record-link="REL-003"') && shown.includes('data-record-link="BUG-004"'), "no impact, releases and follow-ups");
+  openCard("incidents-view", "INC-001");
+  shown = panel();
+  assert(shown.includes("Timeline - 2") && !shown.includes("more lines on the page") && shown.includes("Support reported the blank summary.") && shown.includes("unknown"), "the timeline or the cause is wrong");
+  followLink("data-node-link", "F-001");
+  openCard("incidents-view", "INC-004");
+  shown = panel();
+  noRawMarkup(shown, "incident panel");
+  assert(shown.includes("&lt;img src=x onerror=alert(6)&gt;") && shown.includes("&lt;b&gt;now&lt;/b&gt;"), "hostile incident fields are not shown as text");
+
+  // 6. The Apps view links the open bugs, the open incidents and the latest release.
+  renderApps();
+  const apps = html("app-view");
+  for (const id of ["BUG-001", "BUG-002", "INC-001", "INC-002", "REL-004", "REL-006"]) assert(apps.includes('data-record-link="' + id + '"'), "the Apps view does not link " + id);
+  assert(apps.includes('data-node-link="F-002"'), "the Apps view does not link a released feature");
+  assert(apps.includes("(failed)"), "the Apps view lost the latest outcome");
+  noRawMarkup(apps, "apps view");
+
+  // 7. The header tiles count the open bugs (with the blocking ones) and the open incidents, and open their views.
+  renderStats();
+  const stats = html("statrow");
+  assert(/Open bugs<\/div><div class="value alert" data-tick="6">/.test(stats) && stats.includes("1 blocking"), "the Open bugs tile is wrong");
+  assert(/Open incidents<\/div><div class="value alert" data-tick="4">/.test(stats) && stats.includes("1 mitigated"), "the Open incidents tile is wrong");
+  const tile = document.getElementById("statrow").querySelectorAll("[data-goto]").find(item => item.dataset.goto === "incidents");
+  tile.__listeners.click[0]();
+  assert(state.view === "incidents", "a tile did not switch to its view");
+  tile.__listeners.keydown[0]({ key: "Enter", preventDefault() {} });
+  document.getElementById("statrow").querySelectorAll("[data-goto]").find(item => item.dataset.goto === "bugs").__listeners.click[0]();
+  assert(state.view === "bugs", "the Open bugs tile did not switch to the Bugs view");
+
+  // 8. A live update re-renders the open record panel; a record that is gone closes it.
+  switchView("bugs");
+  openCard("bugs-view", "BUG-001");
+  const changed = clone(full);
+  Object.assign(changed.facts.bugs.find(bug => bug.id === "BUG-001"), { status: "in-fix", title: "Summary shows the hidden count" });
+  adoptData(changed);
+  assert(state.selectedRecord === "BUG-001" && panel().includes("Summary shows the hidden count") && panel().includes("in-fix"), "a live update did not re-render the open panel");
+  same(idsIn(column(html("bugs-view"), "in-fix")), ["BUG-001", "BUG-002"], "in-fix column after the update");
+  const gone = clone(full);
+  gone.facts.bugs = gone.facts.bugs.filter(bug => bug.id !== "BUG-001");
+  adoptData(gone);
+  assert(state.selectedRecord === null && document.getElementById("panel").hasAttribute("inert"), "the panel of a removed record stayed open");
+  openCard("bugs-view", "BUG-002");
+  closePanel();
+  assert(state.selectedRecord === null && document.getElementById("panel").hasAttribute("inert"), "closing the panel kept the record selected");
+
+  // 9. A view without records says so.
+  const empty = clone(full);
+  empty.facts.bugs = []; empty.facts.releases = []; delete empty.facts.incidents; empty.facts.app_operations = [];
+  adoptData(empty);
+  assert(html("bugs-view").includes("No bugs recorded.") && html("releases-view").includes("No release records.") && html("incidents-view").includes("No incidents recorded."), "an empty view has no friendly message");
+  assert(!html("bugs-view").includes("class=\"column\""), "an empty Bugs view still shows columns");
+  assert(/Open bugs<\/div><div class="value" data-tick="0">/.test(html("statrow")) && html("statrow").includes("clear"), "the tiles do not show zero open records");
+  renderApps();
+  assert(!html("app-view").includes("data-record-link"), "the Apps view links records that do not exist");
+
+  // 10. The new views are inert while another view is active, and the switcher lists them.
+  adoptData(full);
+  switchView("releases");
+  assert(!document.getElementById("releases-view").hasAttribute("inert") && document.getElementById("bugs-view").hasAttribute("inert") && document.getElementById("incidents-view").hasAttribute("inert"), "an inactive record view stayed reachable");
+  switchView("graph");
+  globalThis.__recordsViewsChecked = true;
+}
+if (checkRecordsViews) regressionChecks.push("(" + recordsViewsCheck.toString() + ")();");
 try {
   vm.runInNewContext(appJs + regressionChecks.join("\n"), sandbox, { filename: "dashboard-app.js" });
   console.log("BOOT OK — full script executed without runtime errors");
@@ -2046,6 +2284,10 @@ if (checkConnectedBoard) {
 if (checkBoardDefects) {
   if (!sandbox.__boardDefectsChecked) { console.error("BOARD DEFECTS FAILED - the board defect regressions did not complete"); process.exit(1); }
   console.log("BOARD DEFECTS OK - in-flight apply never goes stale, rejected applies are not unknown outcomes, expired sessions offer Reconnect, refused drops are explained, and every modal keeps Tab focus");
+}
+if (checkRecordsViews) {
+  if (!sandbox.__recordsViewsChecked) { console.error("RECORDS VIEWS FAILED - the bug, release and incident view checks did not complete"); process.exit(1); }
+  console.log("RECORDS VIEWS OK - every bug status, severity, release kind and outcome, incident status, link, filter, panel, tile and empty state rendered, and hostile text stayed inert");
 }
 // sanity: header + views wired
 const viewsEl = elements["views"];
