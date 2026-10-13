@@ -19,9 +19,11 @@ from prism_cli.wiki_model import (
     read_feature_pages,
     read_app_requirement_pages,
     read_wiki_settings,
+    release_participants,
     stage_scope,
     status_rank,
 )
+from prism_cli.wiki_releases import release_participation
 from prism_cli.workspace import (
     COPIER_ANSWERS_FILE,
     GENERATION_ANSWER_FIELDS,
@@ -692,14 +694,17 @@ def _wiki_counts(root: Path) -> tuple[dict[str, int], dict[str, int], dict[str, 
 
 
 def _feature_app_stages(root: Path, model: Any) -> dict[str, dict[str, str]]:
-    """The stage of each app of every feature at `in-dev` or later, from its evidence tables: the active apps, and for a released feature also a retired app with evidence rows."""
+    """The stage of each app of every feature at `in-dev` or later, from its evidence tables: the active apps, and for a released feature also each retired app that took part in its release."""
 
+    wiki_root = root / "knowledge" / "wiki"
+    participation = release_participation(wiki_root)
     stages: dict[str, dict[str, str]] = {}
-    for feature in read_feature_pages(root / "knowledge" / "wiki"):
+    for feature in read_feature_pages(wiki_root):
         if status_rank(feature.status) < status_rank("in-dev"):
             continue
         evidence = read_feature_evidence(feature.page.body)
-        stages[feature.feature_id] = app_stages(stage_scope(feature.status, feature.apps, model, evidence), evidence)
+        participants = release_participants(feature.status, feature.apps, model, feature.feature_id, feature.page.body, evidence, participation)
+        stages[feature.feature_id] = app_stages(stage_scope(feature.status, feature.apps, model, participants), evidence)
     return dict(sorted(stages.items()))
 
 

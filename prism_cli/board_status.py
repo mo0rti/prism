@@ -30,7 +30,7 @@ from prism_cli.wiki_operations import (
     read_board_views,
     row_kind,
 )
-from prism_cli.wiki_releases import RELEASE_DIRECTORY, ReleaseRecord, read_release_records
+from prism_cli.wiki_releases import RELEASE_DIRECTORY, ReleaseRecord, read_release_records, release_participation_of
 
 _FEATURE_PREFIX = "knowledge/wiki/features/"
 _RELEASE_PREFIX = f"knowledge/wiki/{RELEASE_DIRECTORY}/"
@@ -94,14 +94,17 @@ class StatusBoardMixin:
             new_apps = set(cell_ids(new["apps"])) if new else set()
             touched_apps |= (old_apps ^ new_apps) if old and new else (old_apps | new_apps)
 
-        # The features the operation writes: their row follows the page, with the open bugs the bug rows leave.
+        # The features the operation writes: their row follows the page, with the open bugs the bug rows leave and, for a released
+        # feature, the retired apps the release records (those the operation writes included) say took part.
+        releases = self._release_records_with(overlay)
+        participation = release_participation_of(releases)
         feature_rows = dict(features_now)
         for relative, text in sorted(overlay.items()):
             if not relative.startswith(_FEATURE_PREFIX):
                 continue
             frontmatter, body = bs._parse_markdown(text, relative)
             feature_id = str(frontmatter.get("id", ""))
-            row = bs._status_row(frontmatter, body, model, ids_text(open_bugs_of_feature(feature_id, bug_rows.values())))
+            row = bs._status_row(frontmatter, body, model, ids_text(open_bugs_of_feature(feature_id, bug_rows.values())), participation)
             existing = features_now.get(feature_id.casefold())
             feature_rows[feature_id.casefold()] = row
             if existing != row:
@@ -120,7 +123,6 @@ class StatusBoardMixin:
 
         # The incidents and release records the operation writes name apps whose Operations row follows them.
         incidents = self._incident_pages_with(overlay)
-        releases = self._release_records_with(overlay)
         for relative, text in sorted(overlay.items()):
             if is_incident_path(relative):
                 new_incident = IncidentPage(parse_markdown_text(wiki / "incidents" / PurePosixPath(relative).name, text))

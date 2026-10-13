@@ -14,12 +14,13 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Iterator, Mapping, Sequence
 
 from prism_cli.wiki_model import (
     CHECKED_BASES,
     EvidenceProblem,
     MarkdownPage,
+    ReleaseParticipation,
     _APP_ID_TOKEN,
     _substantive_evidence_cell,
     artifact_reference_problem,
@@ -378,6 +379,23 @@ def read_release_records(wiki_root: Path) -> list[ReleaseRecord]:
     """The valid release records of a wiki, in number order: the only records that carry delivery, numbering or rollback authority."""
 
     return list(request_fact(("valid-release-records", str(wiki_root)), lambda: authoritative_records(read_all_release_records(wiki_root))))
+
+
+def _delivery_pairs(records: Iterable[ReleaseRecord]) -> Iterator[tuple[str, str]]:
+    return ((row.item, row.app) for record in records for row in record.rows)
+
+
+def release_participation_of(records: Iterable[ReleaseRecord]) -> ReleaseParticipation:
+    """Which apps `records` ship for each item; the caller passes valid records (`read_release_records`)."""
+
+    held = list(records)
+    return ReleaseParticipation(lambda: _delivery_pairs(held))
+
+
+def release_participation(wiki_root: Path) -> ReleaseParticipation:
+    """Which apps the valid release records of a wiki ship for each item; the records are read on the first question."""
+
+    return ReleaseParticipation(lambda: _delivery_pairs(read_release_records(wiki_root)))
 
 
 def invalid_release_records(wiki_root: Path) -> dict[Path, list[str]]:

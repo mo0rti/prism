@@ -2275,31 +2275,105 @@ def minimum_stage(stages: Iterable[str]) -> str | None:
     return APP_STAGE_ORDER[min(ranks)] if ranks else None
 
 
-def app_stages_text(status: str | None, apps: Iterable[str], body: str, model: WorkspaceModel | None) -> str:
-    """The `App stages` cell of the status board (CONTRACTS 8.2): `app: stage; ...` for the active apps, or `—` before `in-dev`."""
+def app_stages_text(
+    status: str | None,
+    apps: Iterable[str],
+    body: str,
+    model: WorkspaceModel | None,
+    feature_id: str = "",
+    participation: "ReleaseParticipation | None" = None,
+) -> str:
+    """The `App stages` cell of the status board (CONTRACTS 8.2): `app: stage; ...` for the apps in the scope, or `—` before `in-dev`.
+
+    `participation` is the release records' view of which apps shipped `feature_id`; without it a retired app is judged by the
+    feature page alone.
+    """
 
     if status_rank(status) < status_rank("in-dev"):
         return "—"
+    apps = list(apps)
     evidence = read_feature_evidence(body)
-    stages = app_stages(stage_scope(status, apps, model, evidence), evidence)
+    participants = release_participants(status, apps, model, feature_id, body, evidence, participation)
+    stages = app_stages(stage_scope(status, apps, model, participants), evidence)
     return "; ".join(f"{app}: {stage}" for app, stage in stages.items()) or "—"
 
 
-def stage_scope(status: str | None, apps: Iterable[str], model: WorkspaceModel | None, evidence: FeatureEvidence) -> list[str]:
-    """The apps whose stages a feature shows: its active apps, and for a released feature also each retired app that has evidence rows.
+class ReleaseParticipation:
+    """Which apps the valid release records ship for each item: a Delivery row of the item and the app.
 
-    An app retired after it took part in the release stays in the history of the feature, on the status board, the graph, `prism status`
-    and lint. An app retired without any evidence row never took part, so it is not part of that history.
+    The records are read once, on the first question, so a pass that never meets a released feature with a retired app reads none.
+    """
+
+    def __init__(self, load: Callable[[], Iterable[tuple[str, str]]]) -> None:
+        self._load = load
+        self._by_item: dict[str, frozenset[str]] | None = None
+
+    def apps(self, item: str) -> frozenset[str]:
+        """The apps the records deliver, roll back or redeploy for `item`."""
+
+        if self._by_item is None:
+            found: dict[str, set[str]] = {}
+            for record_item, app in self._load():
+                found.setdefault(record_item, set()).add(app)
+            self._by_item = {key: frozenset(value) for key, value in found.items()}
+        return self._by_item.get(item.upper(), frozenset())
+
+
+def _archived_apps(history: Iterable[HistoryEntry]) -> set[str]:
+    """The apps named by the Delivery evidence, QA verification and Release rows that Evidence history archived."""
+
+    named: set[str] = set()
+    for entry in history:
+        for section, cells in entry.archived_rows:
+            if not cells or section not in EVIDENCE_SECTIONS:
+                continue
+            key = clean_cell(cells[0])
+            if section == "QA verification" and key.startswith("integration:"):
+                named.update(part.strip() for part in key[len("integration:"):].split("+"))
+            else:
+                named.add(key)
+    return named
+
+
+def release_participants(
+    status: str | None,
+    apps: Iterable[str],
+    model: WorkspaceModel | None,
+    feature_id: str,
+    body: str,
+    evidence: FeatureEvidence,
+    participation: ReleaseParticipation | None,
+) -> frozenset[str]:
+    """The retired apps of a `released` feature that took part in its release: the one rule behind `stage_scope`.
+
+    A retired app took part when the feature page's evidence tables name it, when a valid release record ships the feature for it,
+    or when the feature's Evidence history archived rows that name it. The release records are the authority: deleting or archiving
+    the current rows of an app does not remove it from the feature.
+    """
+
+    if status != "released" or model is None:
+        return frozenset()
+    retired = [app for app in apps if (item := model.app(app)) is not None and not item.active]
+    took_part = {app for app in retired if evidence.names_app(app)}
+    unresolved = [app for app in retired if app not in took_part]
+    if unresolved:
+        shipped = participation.apps(feature_id) if participation is not None else frozenset()
+        archived = _archived_apps(parse_evidence_history(body))
+        took_part.update(app for app in unresolved if app in shipped or app in archived)
+    return frozenset(took_part)
+
+
+def stage_scope(status: str | None, apps: Iterable[str], model: WorkspaceModel | None, participants: Iterable[str]) -> list[str]:
+    """The apps whose stages a feature shows: its active apps, and for a released feature also each retired app in `participants`.
+
+    `participants` comes from `release_participants`. An app retired after it took part in the release stays in the history of the
+    feature, on the status board, the graph, `prism status` and lint. An app retired before it took part is not part of that history.
     """
 
     active = active_scope(apps, model)
     if status != "released" or model is None:
         return active
-    kept = set(active)
-    for app in apps:
-        item = model.app(app)
-        if item is not None and not item.active and evidence.names_app(app):
-            kept.add(app)
+    kept = {*active, *participants}
     return [app for app in apps if app in kept]
 
 

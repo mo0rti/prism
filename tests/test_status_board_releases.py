@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import unittest
 
+import yaml
+
+from prism_cli.status import build_status
+from prism_cli.wiki_graph import build_graph
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_operations import read_board_views
 from tests.release_support import (
@@ -27,6 +31,7 @@ from tests.release_support import (
     verification_row,
 )
 from tests import test_release_variants
+from tests.qa_support import DELIVERY_HEADER, QA_HEADER, append_history, history_entry
 from tests.wiki_files import refresh_status_board
 
 BOARD = "knowledge/wiki/status-board.md"
@@ -126,6 +131,85 @@ class OperationsFollowReleaseTests(ReleaseTests):
         self.assertNotIn("BUG-001", read_board_views(self.read(BOARD)).bugs)
         self.assertEqual([], self.drift())
         self.assertEqual(set(), self.errors())
+
+
+class ReleasedScopeFromRecordsTests(ReleaseTests):
+    """A released feature keeps every retired app its valid release records ship, whatever its current evidence rows say."""
+
+    KEPT = {"backend": "released", "worker": "in-dev"}
+
+    def retire_worker(self) -> None:
+        manifest_path = self.root / "prism.workspace.yml"
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        for entry in manifest["apps"]:
+            if entry["id"] == "worker":
+                entry["status"] = "retired"
+        manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
+
+    def drop_worker_rows(self, archive: bool) -> None:
+        """Remove every current row that names `worker`; `archive` moves them into an Evidence history entry instead of deleting them."""
+
+        evidence = self.evidence()
+        sections = (
+            ("Delivery evidence", DELIVERY_HEADER, evidence.delivery, lambda row: row.app == "worker"),
+            ("QA verification", QA_HEADER, evidence.qa, lambda row: "worker" in row.apps),
+            ("Release", RELEASE_HEADER, evidence.release, lambda row: row.app == "worker"),
+        )
+        page = self.read(FEATURE)
+        archived: list[tuple[str, str]] = []
+        for name, header, rows, names_worker in sections:
+            kept = [f"| {' | '.join(row.cells)} |" for row in rows if not names_worker(row)]
+            archived.extend((name, f"| {' | '.join(row.cells)} |") for row in rows if names_worker(row))
+            page = self.with_section(name, table(header, kept), page)
+        self.assertTrue(archived)
+        if archive:
+            page = append_history(page, history_entry("dev-return-design", affected="worker", archived=archived))
+        self.put(FEATURE, page)
+        refresh_status_board(self.root)
+
+    def codes(self) -> dict[str, str]:
+        return {item.code: item.message for item in lint_wiki(self.root).diagnostics if item.severity == "error"}
+
+    def board_cell(self) -> str:
+        row = next(line for line in self.read(BOARD).splitlines() if line.startswith("| F-001 "))
+        return row.split("|")[7].strip()
+
+    def graph_stages(self) -> dict[str, str]:
+        node = next(item for item in build_graph(self.root)["facts"]["nodes"] if item["id"] == "F-001")
+        return {entry["app"]: entry["stage"] for entry in node["app_stages"]}
+
+    def assert_worker_kept(self) -> None:
+        """Lint reports the missing rows and every surface still shows `worker`, at the stage its remaining evidence derives."""
+
+        codes = self.codes()
+        self.assertIn("feature-status-not-minimum", codes)
+        self.assertIn("app-row-missing", codes)
+        self.assertIn("worker: in-dev", codes["feature-status-not-minimum"])
+        self.assertEqual({"F-001": self.KEPT}, build_status(self.root).feature_app_stages)
+        self.assertEqual(self.KEPT, self.graph_stages())
+        self.assertEqual("backend: released; worker: in-dev", self.board_cell())
+        self.assertEqual([], [item.message for item in lint_wiki(self.root).diagnostics if item.code == "status-board-frontmatter-drift"])
+
+    def test_a_retired_app_with_rows_intact_stays_in_the_scope_and_lint_stays_clean(self) -> None:
+        self.release()
+        self.retire_worker()
+        refresh_status_board(self.root)
+        self.assertEqual(set(), self.errors())
+        self.assertEqual({"backend": "released", "worker": "released"}, self.graph_stages())
+        self.assertEqual({"F-001": {"backend": "released", "worker": "released"}}, build_status(self.root).feature_app_stages)
+        self.assertEqual("backend: released; worker: released", self.board_cell())
+
+    def test_deleting_every_row_of_a_retired_app_keeps_it_in_the_scope_and_lint_reports_the_gap(self) -> None:
+        self.release()
+        self.retire_worker()
+        self.drop_worker_rows(archive=False)
+        self.assert_worker_kept()
+
+    def test_archiving_every_row_of_a_retired_app_into_the_evidence_history_keeps_it_in_the_scope(self) -> None:
+        self.release()
+        self.retire_worker()
+        self.drop_worker_rows(archive=True)
+        self.assert_worker_kept()
 
 
 if __name__ == "__main__":

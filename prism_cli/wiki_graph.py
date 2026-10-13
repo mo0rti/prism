@@ -26,11 +26,13 @@ from prism_cli.wiki_model import (
     resolve_relative_markdown_link,
     parse_design_tracks,
     parse_open_question_rows,
+    ReleaseParticipation,
     read_feature_evidence,
     read_feature_pages,
     read_app_requirement_pages,
     read_wiki_pages,
     read_wiki_settings,
+    release_participants,
     section_text,
     stage_scope,
     status_rank,
@@ -38,7 +40,7 @@ from prism_cli.wiki_model import (
 )
 from prism_cli.wiki_operations import bug_board_row, operation_row
 from prism_cli.wiki_query import build_envelope
-from prism_cli.wiki_releases import read_release_records
+from prism_cli.wiki_releases import read_release_records, release_participation
 from prism_cli.qa_rules import QA_FAIL_STAGES
 from prism_cli.wiki_transitions import (
     ACTION_BY_ID,
@@ -136,7 +138,9 @@ def action_registry() -> list[dict[str, Any]]:
     return [_action_metadata(spec) for spec in ACTION_SPECS if spec.subject == "feature" and spec.available]
 
 
-def app_operations(wiki_root: Path, model: WorkspaceModel, feature_pages: list[Any]) -> list[dict[str, str]]:
+def app_operations(
+    wiki_root: Path, model: WorkspaceModel, feature_pages: list[Any], participation: ReleaseParticipation
+) -> list[dict[str, str]]:
     """The status board's Operations rows, derived from the pages by the same function that writes and lints them.
 
     An app with nothing released, recorded or open has no row, as on the status board.
@@ -144,7 +148,8 @@ def app_operations(wiki_root: Path, model: WorkspaceModel, feature_pages: list[A
 
     bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
     stage_cells = {
-        feature.feature_id: app_stages_text(feature.status, feature.apps, feature.page.body, model) for feature in feature_pages
+        feature.feature_id: app_stages_text(feature.status, feature.apps, feature.page.body, model, feature.feature_id, participation)
+        for feature in feature_pages
     }
     incidents, releases = read_incident_pages(wiki_root), read_release_records(wiki_root)
     try:
@@ -278,12 +283,14 @@ def build_graph(root: Path) -> dict[str, Any]:
         initial_fingerprint=initial_fingerprint,
     )
 
-    nodes, pages_by_id, path_to_id = _collect_nodes(wiki_root, inspection.model, feature_pages=feature_pages)
+    # The release records the graph reads decide which retired apps a released feature keeps, on every surface.
+    participation = release_participation(wiki_root)
+    nodes, pages_by_id, path_to_id = _collect_nodes(wiki_root, inspection.model, participation, feature_pages=feature_pages)
     edges, dangling = _collect_edges(wiki_root, nodes, pages_by_id, path_to_id)
 
     # An app node stays when a feature targets it or when the app has an Operations row, so a standalone bug or incident
     # (`feature: none`) still shows the app in the Apps view.
-    operations = app_operations(wiki_root, inspection.model, feature_pages)
+    operations = app_operations(wiki_root, inspection.model, feature_pages, participation)
     shown_apps = {edge.target for edge in edges if edge.target.startswith("app:")} | {f"app:{row['app']}" for row in operations}
     nodes = {
         node_id: node
@@ -351,9 +358,20 @@ def build_graph(root: Path) -> dict[str, Any]:
     return finalize_transition_envelope(workspace_root, envelope)
 
 
+def _node_app_stages(feature: Any, model: WorkspaceModel, participation: ReleaseParticipation) -> tuple[tuple[str, str], ...] | None:
+    """The stage of each app a feature shows, from its evidence tables; ``None`` before `in-dev`."""
+
+    if status_rank(feature.status) < status_rank("in-dev"):
+        return None
+    evidence = read_feature_evidence(feature.page.body)
+    participants = release_participants(feature.status, feature.apps, model, feature.feature_id, feature.page.body, evidence, participation)
+    return tuple(app_stages(stage_scope(feature.status, feature.apps, model, participants), evidence).items())
+
+
 def _collect_nodes(
     wiki_root: Path,
     model: WorkspaceModel,
+    participation: ReleaseParticipation,
     *,
     feature_pages: list[Any] | None = None,
 ) -> tuple[dict[str, GraphNode], dict[str, Any], dict[str, str]]:
@@ -384,11 +402,7 @@ def _collect_nodes(
             open_questions=tuple(
                 (row["number"], row["question"], row["owner"], row["status"]) for row in question_rows
             ),
-            app_stages=(
-                tuple(app_stages(stage_scope(feature.status, feature.apps, model, evidence := read_feature_evidence(feature.page.body)), evidence).items())
-                if status_rank(feature.status) >= status_rank("in-dev")
-                else None
-            ),
+            app_stages=_node_app_stages(feature, model, participation),
             design_tracks=(
                 tuple((track, design_tracks.state(track)) for track in DESIGN_TRACKS) if design_tracks is not None else None
             ),

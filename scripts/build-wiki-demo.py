@@ -45,7 +45,7 @@ from prism_cli.wiki_operations import (  # noqa: E402
     operation_row,
     table_text,
 )
-from prism_cli.wiki_releases import format_snapshot, read_release_records  # noqa: E402
+from prism_cli.wiki_releases import format_snapshot, read_release_records, release_participation  # noqa: E402
 from prism_cli.workspace import inspect_workspace  # noqa: E402
 from prism_cli.wiki_transitions import ACTION_SPECS  # noqa: E402
 
@@ -1055,7 +1055,11 @@ def _view_tables(destination: Path) -> str:
     wiki_root = destination / "knowledge" / "wiki"
     model = inspect_workspace(destination).model
     targets, _problems = resolve_delivery_targets(None, model)
-    cells = {page.feature_id: app_stages_text(page.status, page.apps, page.page.body, model) for page in read_feature_pages(wiki_root)}
+    participation = release_participation(wiki_root)
+    cells = {
+        page.feature_id: app_stages_text(page.status, page.apps, page.page.body, model, page.feature_id, participation)
+        for page in read_feature_pages(wiki_root)
+    }
     bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
     incidents, releases = read_incident_pages(wiki_root), read_release_records(wiki_root)
     operations = [
@@ -1085,11 +1089,12 @@ def _write_populated_index(destination: Path, today: date) -> None:
     wiki_root = destination / "knowledge" / "wiki"
     model = inspect_workspace(destination).model
     pages = {page.feature_id: page for page in read_feature_pages(wiki_root)}
+    participation = release_participation(wiki_root)
     bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
     rows = []
     for feature in FEATURES:
         page = pages[feature["id"]]
-        stages = app_stages_text(page.status, page.apps, page.page.body, model)
+        stages = app_stages_text(page.status, page.apps, page.page.body, model, feature["id"], participation)
         tracks = design_tracks_text(page.page.frontmatter)
         open_bugs = ids_text(open_bugs_of_feature(feature["id"], bug_rows))
         rows.append(

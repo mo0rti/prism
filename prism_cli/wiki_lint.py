@@ -31,7 +31,7 @@ from prism_cli.wiki_operations import (
     operation_rows_match,
     read_board_views,
 )
-from prism_cli.wiki_releases import ReleaseRecord, read_all_release_records, read_release_records, record_id_of_cell
+from prism_cli.wiki_releases import ReleaseRecord, read_all_release_records, read_release_records, record_id_of_cell, release_participation
 from prism_cli.wiki_model import (
     APP_STAGE_ORDER,
     SINGLE_FEATURE_SECTIONS,
@@ -45,6 +45,7 @@ from prism_cli.wiki_model import (
     AppRequirementPage,
     FeaturePage,
     MarkdownPage,
+    ReleaseParticipation,
     active_scope,
     app_stage,
     app_stages,
@@ -83,6 +84,7 @@ from prism_cli.wiki_model import (
     read_wiki_settings,
     read_wiki_pages,
     section_text,
+    release_participants,
     stage_scope,
     stale_qa_rows,
     status_rank,
@@ -371,9 +373,11 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
     for requirement in requirement_pages:
         diagnostics.extend(_lint_app_requirement(requirement, model))
 
+    # The release records decide which retired apps a released feature keeps in its scope, as on the status board and the graph.
+    participation = release_participation(wiki_root)
     features_by_id: dict[str, FeaturePage] = {}
     for feature in feature_pages:
-        diagnostics.extend(_lint_feature(feature, model))
+        diagnostics.extend(_lint_feature(feature, model, participation))
         feature_id = feature.feature_id
         if normalize_feature_id(feature_id) in features_by_id:
             diagnostics.append(
@@ -522,7 +526,7 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                         row.feature_id,
                     )
                 )
-            expected_stages = app_stages_text(feature.status, feature.apps, feature.page.body, model)
+            expected_stages = app_stages_text(feature.status, feature.apps, feature.page.body, model, feature.feature_id, participation)
             if row.app_stages != expected_stages:
                 diagnostics.append(
                     _diag(
@@ -534,7 +538,7 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
                     )
                 )
         if not board_errors:
-            diagnostics.extend(_lint_board_views(board_path, features_by_id, bug_pages, board_bug_rows, wiki_root, model))
+            diagnostics.extend(_lint_board_views(board_path, features_by_id, bug_pages, board_bug_rows, wiki_root, model, participation))
 
     diagnostics.sort(key=_diagnostic_order)
     return WikiLintResult(root=root, diagnostics=diagnostics, feature_count=len(feature_pages), information=sorted(information, key=_diagnostic_order))
@@ -593,6 +597,7 @@ def _lint_board_views(
     bug_rows: list[dict[str, str]],
     wiki_root: Path,
     model: WorkspaceModel,
+    participation: ReleaseParticipation,
 ) -> list[WikiDiagnostic]:
     """The Bugs and Operations tables of the status board against the pages (CONTRACTS 8.2).
 
@@ -623,7 +628,8 @@ def _lint_board_views(
         drift(f"status-board.md lists `{bug_id}` under Bugs, but no bug page of that ID is open.")
 
     stage_cells = {
-        feature.feature_id: app_stages_text(feature.status, feature.apps, feature.page.body, model) for feature in features_by_id.values()
+        feature.feature_id: app_stages_text(feature.status, feature.apps, feature.page.body, model, feature.feature_id, participation)
+        for feature in features_by_id.values()
     }
     incidents = read_incident_pages(wiki_root)
     releases = read_release_records(wiki_root)
@@ -2608,7 +2614,7 @@ def _requires_frontmatter(path: Path, wiki_root: Path) -> bool:
     return directory == "advisory" and relative.name.startswith("F-") and relative.name.endswith("-review.md")
 
 
-def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagnostic]:
+def _lint_feature(feature: FeaturePage, model: WorkspaceModel, participation: ReleaseParticipation) -> list[WikiDiagnostic]:
     diagnostics: list[WikiDiagnostic] = []
     path = feature.page.path
     feature_id = feature.feature_id
@@ -2704,7 +2710,7 @@ def _lint_feature(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagn
         )
 
     diagnostics.extend(_lint_feature_criteria(feature, model))
-    diagnostics.extend(_lint_feature_evidence(feature, model))
+    diagnostics.extend(_lint_feature_evidence(feature, model, participation))
 
     apps_value = frontmatter.get("apps")
     if "apps" in frontmatter and not isinstance(apps_value, list):
@@ -2802,7 +2808,7 @@ def _lint_feature_criteria(feature: FeaturePage, model: WorkspaceModel) -> list[
     return diagnostics
 
 
-def _lint_feature_evidence(feature: FeaturePage, model: WorkspaceModel) -> list[WikiDiagnostic]:
+def _lint_feature_evidence(feature: FeaturePage, model: WorkspaceModel, participation: ReleaseParticipation) -> list[WikiDiagnostic]:
     """CONTRACTS 4.5: the evidence tables agree with the app stages, the status and the current criteria."""
 
     path = feature.page.path
@@ -2871,8 +2877,9 @@ def _lint_feature_evidence(feature: FeaturePage, model: WorkspaceModel) -> list[
         )
         return diagnostics
     # The stages and the status minimum are judged over the scope the status board, the graph and `prism status` show: a released
-    # feature keeps the apps retired after its release.
-    stages = app_stages(stage_scope(status, feature.apps, model, evidence), evidence)
+    # feature keeps each retired app its release records or its evidence name, so deleting an app's rows leaves the app in scope.
+    participants = release_participants(status, feature.apps, model, feature_id, feature.page.body, evidence, participation)
+    stages = app_stages(stage_scope(status, feature.apps, model, participants), evidence)
     minimum = minimum_stage(stages.values())
     if minimum is not None and status in APP_STAGE_ORDER and minimum != status:
         diagnostics.append(
