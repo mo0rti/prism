@@ -290,7 +290,10 @@ both files, besides `SCHEMA.md`, `LIFECYCLE.md` and `ACTIONS.md`, or the board s
   `delivery_evidence_invalid`; an artifact that is not `version:`, `build:`, `image:`,
   `package:` or `commit:` with its form with `artifact_reference_invalid`; a basis other
   than `checked` or `attested` with `basis_invalid`; a contract cell that is not the
-  current citation with `contract_binding_stale`. A reference the agent cannot check is
+  current citation with `contract_binding_stale`, and so is every row while an API contract that
+  applies to the feature (its own or a shared one its requirements link) has no citation because
+  its `version` or `feature-id` is not usable, `none` included; `details.unusable` lists those
+  contract paths beside `current`. A reference the agent cannot check is
   `attested`: the approving human vouches for it, and the agent never invents it. The
   feature moves to the minimum of its app stages, so it reaches `ready-for-qa` once every
   active app has a row. `dev-done` is gated (`dev`): the board offers no direct human

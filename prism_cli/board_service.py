@@ -115,6 +115,7 @@ from prism_cli.wiki_model import (
     body_without_sections,
     clean_cell,
     contract_page_citation,
+    contract_without_citation_message,
     criteria_high_water,
     design_owner,
     evidence_generation,
@@ -6104,18 +6105,29 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         body = _parse_markdown(supplied[feature["path"]], feature["path"])[1]
         rows = {row.app: row for row in read_feature_evidence(body).delivery}
         citations: dict[str, str] = {}
+        unusable: list[str] = []
         for contract in sorted(self._feature_api_contract_paths(feature, supplied)):
             text = supplied.get(contract) or self._optional_text(self._safe_path(contract, allow_missing=True))
             if text is None:
                 continue
             frontmatter, contract_body = _parse_markdown(text, contract)
             citation = contract_page_citation(frontmatter, contract_body)
-            if citation is not None:
+            if citation is None:
+                unusable.append(contract)
+            else:
                 citations[citation] = contract
         for app_id in named_apps:
             row = rows.get(app_id)
             if row is None:
                 continue
+            if unusable:
+                # A contract that applies and has no citation leaves no current contract to cite, so `none` is not an answer either.
+                raise BoardError(
+                    "contract_binding_stale",
+                    contract_without_citation_message(str(feature["id"]), unusable),
+                    409,
+                    {"path": feature["path"], "app": app_id, "current": sorted(citations), "unusable": sorted(unusable)},
+                )
             cited = clean_cell(row.contract)
             if cited.lower() == "none":
                 stale = bool(citations)

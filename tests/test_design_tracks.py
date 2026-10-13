@@ -29,7 +29,7 @@ from prism_cli.wiki_model import (
     read_feature_evidence,
     technical_design_problems,
 )
-from prism_cli.wiki_transitions import build_transition_preflight
+from prism_cli.wiki_transitions import build_board_transition_preflight, build_transition_preflight
 from prism_cli.workflow_install import apply_install, plan_install
 from tests import real_temp  # noqa: F401
 from tests.board_approval import apply_preview, human_with_roles
@@ -946,6 +946,180 @@ class DeliveryBindingTests(TrackCase):
         self.at_dev(DesignTracks("done", "pending"))
         preview = self.blocked("dev-done", self.deliver(self.citation()))
         self.assertIn("workflow:design-track-pending", self.codes(preview))
+
+
+class UnusableContractTests(TrackCase):
+    """CONTRACTS 3.4: an applicable contract without a citation blocks every Delivery row, `none` included."""
+
+    SHARED = "knowledge/wiki/api-contracts/SHARED.md"
+    OVER_LONG_ID = "F-" + "0" * 30 + "9"
+    note: str | None = None
+
+    def shared_contract(self, feature_id: str | None = None) -> str:
+        return contract_page(feature_id=feature_id or self.OVER_LONG_ID)
+
+    def deliver(self, contract: str) -> list[dict[str, str]]:
+        page = self.read(FEATURE)
+        row = f"| backend | `build:backend#7` | {contract} | Pull request 7 | CI run 7: 31 tests passed | checked |"
+        page = _replace_body_section_text(page, "Delivery evidence", "\n".join([*DELIVERY_HEADER.splitlines(), row]))
+        page = edit_frontmatter(page, {"status": "in-dev", "owner": "dev"})
+        return self.changes(page, (BACKEND_REQ, requirement_page("backend", "done", self.note)))
+
+    @staticmethod
+    def citation() -> str:
+        return contract_citation("F-001", 1, _parse_markdown(contract_page())[1])
+
+    def at_dev_with(self, *, own: str | None, shared: str | None, surface: str = SURFACE) -> None:
+        """Ready for dev; the feature's own contract is `own` (none when ``None``) and its requirements link `shared` when given."""
+
+        self.write(DESIGN, designs_page())
+        self.write(TECH, technical_page())
+        if own is not None:
+            self.write(CONTRACT, own)
+        self.seed_feature("ready-for-dev", "dev", DesignTracks("done", "done"), surface=surface)
+        self.note = "The shared contract is [SHARED](../api-contracts/SHARED.md)." if shared is not None else None
+        self.write(BACKEND_REQ, requirement_page("backend", body_note=self.note))
+        self.write(WEB_REQ, requirement_page("web", body_note=self.note))
+        if shared is not None:
+            self.write(self.SHARED, shared)
+        _write_index_rows(self.root, [("F-001", "Document review", "ready-for-dev", "dev")])
+        self.service.close()
+        self.start()
+
+    def delivered_page(self, contract: str) -> str:
+        return self.deliver(contract)[0]["content"]
+
+    def refusal(self, contract: str) -> BoardError:
+        error = self.rejected("dev-done", self.deliver(contract))
+        self.assertEqual(("contract_binding_stale", 409), (error.code, error.status), error.message)
+        return error
+
+    def transition_check(self, contract: str) -> dict:
+        """The `contract-binding-stale` check for the page that delivers `backend` citing `contract`, read from disk."""
+
+        self.write(FEATURE, self.delivered_page(contract))
+        transition = build_board_transition_preflight(self.root, "F-001", "dev-done", named_apps=("backend",))
+        return next(item for item in transition["checks"] if item["code"] == "contract-binding-stale")
+
+    def delivery_lint(self, contract: str) -> list:
+        """The `stale-delivery-evidence` diagnostics of the feature page that records `backend` as delivered citing `contract`."""
+
+        self.write(FEATURE, self.delivered_page(contract))
+        return [item for item in lint_wiki(self.root).diagnostics if item.code == "stale-delivery-evidence"]
+
+    def test_a_shared_contract_with_an_over_long_feature_id_blocks_none_through_the_board(self) -> None:
+        self.at_dev_with(own=None, shared=self.shared_contract())
+        error = self.refusal("none")
+        self.assertEqual([self.SHARED], error.details["unusable"])
+        self.assertEqual([], error.details["current"])
+        self.assertEqual(("backend", FEATURE), (error.details["app"], error.details["path"]))
+        self.assertIn(f"`{self.SHARED}`", error.message)
+        self.assertIn("no citation", error.message)
+        self.assertIn("`version` or `feature-id`", error.message)
+        self.assertIn("Correct the contract page", error.message)
+        # The citation a producer without the bound would write is refused as well: no Delivery row can cite the page.
+        body = _parse_markdown(self.shared_contract())[1]
+        self.assertEqual([self.SHARED], self.refusal(contract_citation(self.OVER_LONG_ID, 1, body)).details["unusable"])
+
+    def test_a_shared_contract_with_an_over_long_feature_id_makes_the_dev_done_check_blocked(self) -> None:
+        self.at_dev_with(own=None, shared=self.shared_contract())
+        check = self.transition_check("none")
+        self.assertEqual("blocked", check["status"])
+        self.assertIn(f"`{self.SHARED}`", check["message"])
+        self.assertIn("no citation", check["message"])
+        transition = build_board_transition_preflight(self.root, "F-001", "dev-done", named_apps=("backend",))
+        self.assertNotEqual("ready", transition["classification"])
+
+    def test_a_shared_contract_with_an_over_long_feature_id_makes_the_delivery_row_stale_in_lint(self) -> None:
+        self.at_dev_with(own=None, shared=self.shared_contract())
+        found = self.delivery_lint("none")
+        self.assertEqual(1, len(found), [item.message for item in found])
+        self.assertEqual(("error", FEATURE), (found[0].severity, Path(found[0].path).relative_to(self.root).as_posix()))
+        self.assertIn(f"`{self.SHARED}`", found[0].message)
+        self.assertIn("no citation", found[0].message)
+
+    def test_an_own_contract_with_an_invalid_version_blocks_none_through_the_board(self) -> None:
+        self.at_dev_with(own=contract_page(version=0), shared=None)
+        error = self.refusal("none")
+        self.assertEqual([CONTRACT], error.details["unusable"])
+        self.assertEqual([], error.details["current"])
+        self.assertIn(f"`{CONTRACT}`", error.message)
+
+    def test_an_own_contract_with_an_invalid_version_makes_the_dev_done_check_blocked(self) -> None:
+        self.at_dev_with(own=contract_page(version=0), shared=None)
+        check = self.transition_check("none")
+        self.assertEqual("blocked", check["status"])
+        self.assertIn(f"`{CONTRACT}`", check["message"])
+        self.assertIn("no citation", check["message"])
+
+    def test_an_own_contract_with_an_invalid_version_makes_the_delivery_row_stale_in_lint(self) -> None:
+        self.at_dev_with(own=contract_page(version=0), shared=None)
+        found = self.delivery_lint("none")
+        self.assertEqual(1, len(found), [item.message for item in found])
+        self.assertIn(f"`{CONTRACT}`", found[0].message)
+        self.assertIn("no citation", found[0].message)
+
+    def test_a_row_citing_a_valid_contract_is_blocked_while_another_applicable_contract_has_no_citation(self) -> None:
+        self.at_dev_with(own=contract_page(), shared=self.shared_contract())
+        valid = self.citation()
+        error = self.refusal(valid)
+        self.assertEqual([self.SHARED], error.details["unusable"])
+        self.assertEqual([valid], error.details["current"])
+        check = self.transition_check(valid)
+        self.assertEqual("blocked", check["status"])
+        self.assertIn(f"`{self.SHARED}`", check["message"])
+        found = self.delivery_lint(valid)
+        self.assertEqual(1, len(found), [item.message for item in found])
+        self.assertIn(f"`{self.SHARED}`", found[0].message)
+
+    def test_every_delivery_row_of_the_check_is_blocked_not_only_one(self) -> None:
+        self.at_dev_with(own=None, shared=self.shared_contract())
+        page = self.delivered_page("none")
+        page = _replace_body_section_text(
+            page,
+            "Delivery evidence",
+            "\n".join(
+                [
+                    *DELIVERY_HEADER.splitlines(),
+                    "| backend | `build:backend#7` | none | Pull request 7 | CI run 7: 31 tests passed | checked |",
+                    "| web | `build:web#8` | none | Pull request 8 | CI run 8: 12 tests passed | checked |",
+                ]
+            ),
+        )
+        self.write(FEATURE, page)
+        transition = build_board_transition_preflight(self.root, "F-001", "dev-done", named_apps=("backend", "web"))
+        check = next(item for item in transition["checks"] if item["code"] == "contract-binding-stale")
+        self.assertEqual("blocked", check["status"])
+        found = [item for item in lint_wiki(self.root).diagnostics if item.code == "stale-delivery-evidence"]
+        self.assertEqual(2, len(found), [item.message for item in found])
+
+    def test_a_contract_that_does_not_apply_to_the_feature_changes_nothing(self) -> None:
+        self.at_dev_with(own=contract_page(), shared=None)
+        # Another feature's contract with an unusable version, linked from no page of this feature.
+        self.write("knowledge/wiki/api-contracts/F-002.md", contract_page(feature_id="F-002", version=0))
+        self.ready("dev-done", self.deliver(self.citation()))
+        self.assertEqual("pass", self.transition_check(self.citation())["status"])
+        self.assertEqual([], self.delivery_lint(self.citation()))
+
+    def test_a_feature_with_no_contract_accepts_none(self) -> None:
+        self.at_dev_with(own=None, shared=None, surface="None.")
+        self.ready("dev-done", self.deliver("none"))
+        self.assertEqual("pass", self.transition_check("none")["status"])
+        self.assertEqual([], self.delivery_lint("none"))
+
+    def test_a_feature_whose_contracts_all_have_citations_behaves_as_before(self) -> None:
+        shared = contract_page(feature_id="F-009")
+        self.at_dev_with(own=contract_page(), shared=shared)
+        own = self.citation()
+        shared_citation = contract_citation("F-009", 1, _parse_markdown(shared)[1])
+        stale = self.refusal("none")
+        self.assertNotIn("unusable", stale.details)
+        self.assertEqual(sorted([own, shared_citation]), stale.details["current"])
+        self.ready("dev-done", self.deliver(own))
+        self.ready("dev-done", self.deliver(shared_citation))
+        self.assertEqual("pass", self.transition_check(own)["status"])
+        self.assertEqual("blocked", self.transition_check("none")["status"])
+        self.assertEqual([], self.delivery_lint(own))
 
 
 class TrackLintTests(TrackCase):

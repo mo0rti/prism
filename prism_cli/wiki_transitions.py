@@ -53,6 +53,7 @@ from prism_cli.wiki_model import (
     app_stages,
     clean_cell,
     contract_page_citation,
+    contract_without_citation_message,
     design_owner,
     extract_markdown_links,
     feature_id_from_path,
@@ -2368,12 +2369,22 @@ def _contract_binding_checks(feature: FeaturePage, wiki_pages: list[Any], named_
         return []
     rows, _problems = parse_delivery_rows(feature.page.body)
     named = set(named_apps)
-    current = {
-        citation
-        for page in matching_contract_pages(feature, wiki_pages)
-        if (citation := contract_page_citation(page.frontmatter, page.body)) is not None
-    }
+    current: set[str] = set()
+    unusable: list[str] = []
+    workspace_root = feature.page.path.parent.parent.parent.parent
+    for page in matching_contract_pages(feature, wiki_pages):
+        citation = contract_page_citation(page.frontmatter, page.body)
+        if citation is not None:
+            current.add(citation)
+            continue
+        try:
+            unusable.append(page.path.relative_to(workspace_root).as_posix())
+        except ValueError:
+            unusable.append(page.path.as_posix())
     path = feature.page.path
+    if unusable and any(row.app in named for row in rows):
+        # A contract that applies and has no citation leaves no current contract to cite, so `none` is not an answer either.
+        return [_check("contract-binding-stale", "blocked", contract_without_citation_message(feature.feature_id, unusable), path)]
     stale: list[str] = []
     for row in rows:
         if row.app not in named:
