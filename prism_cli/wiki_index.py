@@ -16,14 +16,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 from urllib.parse import unquote, urlsplit
 
+from prism_cli import standard_files
 from prism_cli.wiki_model import parse_markdown_text, section_text
 from prism_cli.wiki_paths import decoded_link_path
 
 
 INDEX_FILE = "index.md"
 STATUS_BOARD_FILE = "status-board.md"
-# Files in the wiki root that are not pages: the index itself, the ledger and the generated report.
-NON_PAGE_ROOT_FILES = frozenset({"index.md", "log.md", "WIKI_REPORT.md"})
+# Files in the wiki root that are not pages: the generated report and the standard files the index never lists (the
+# index itself and the ledger).
+_UNLISTED_ROOT_FILES = frozenset({"WIKI_REPORT.md"})
 # A generated workspace's `docs/` folder sits two levels above the wiki. Its pages are listed in the
 # index by this prefix; they are project docs, not wiki pages.
 PROJECT_DOCS_PREFIX = "../../docs/"
@@ -108,14 +110,9 @@ GROUPS = (
 GROUP_HEADINGS = dict(GROUPS)
 
 _SECTION_BY_GROUP = {"personas": "Who they are", "business-rules": "Rule", "decisions": "Decision", "incidents": "Impact"}
-# The pages the template ships and the board never writes carry a fixed line.
-_FIXED_LINES = {
-    "SCHEMA.md": ("SCHEMA.md", "Wiki conventions and operational rules."),
-    "LIFECYCLE.md": ("LIFECYCLE.md", "Feature, board and advisory protocol."),
-    "ACTIONS.md": ("ACTIONS.md", "Lifecycle action registry, write scopes and action contracts."),
-    "CONNECTED.md": ("CONNECTED.md", "How agents use the connected board and MCP service."),
-    "SETTINGS.md": ("SETTINGS.md", "Project-level settings for wiki read and query behavior."),
-    "status-board.md": ("Status board", "The status, owner and board review of every feature."),
+# The pages the template ships and the board never writes carry a fixed line: the standard files that have one in the
+# manifest, and these advisory pages.
+_ADVISORY_FIXED_LINES = {
     "advisory/BOARD.md": ("Advisory board", "Advisory board composition."),
     "advisory/PROJECT_FOUNDATION.md": ("Project foundation", "Setup interview answers, risk framing and the initial board rationale."),
 }
@@ -148,7 +145,7 @@ def is_page_path(relative: str) -> bool:
     if not parts or not parts[-1].lower().endswith(".md") or parts[-1].startswith("_"):
         return False
     if len(parts) == 1:
-        return parts[0] not in NON_PAGE_ROOT_FILES
+        return parts[0] not in _UNLISTED_ROOT_FILES and parts[0] not in standard_files.names("unindexed")
     return len(parts) == 2 and parts[0] in PAGE_DIRECTORIES
 
 
@@ -296,11 +293,16 @@ def _label_text(value: str) -> str:
     return value.replace("[", "(").replace("]", ")")
 
 
+def _fixed_lines() -> dict[str, tuple[str, str]]:
+    return {**standard_files.index_lines(), **_ADVISORY_FIXED_LINES}
+
+
 def index_label(relative: str, frontmatter: Mapping[str, Any]) -> str:
     """The text of a page's index link: its ID and title, a derived name for requirement, contract and review pages."""
 
-    if relative in _FIXED_LINES:
-        return _FIXED_LINES[relative][0]
+    fixed = _fixed_lines()
+    if relative in fixed:
+        return fixed[relative][0]
     group = page_group(relative)
     stem = PurePosixPath(relative).stem
     feature_id = _clean(frontmatter.get("feature-id"))
@@ -324,8 +326,9 @@ def index_label(relative: str, frontmatter: Mapping[str, Any]) -> str:
 def index_summary(relative: str, frontmatter: Mapping[str, Any], body: str) -> str:
     """The one-sentence summary of a page's index line, derived from its own text."""
 
-    if relative in _FIXED_LINES:
-        return _FIXED_LINES[relative][1]
+    fixed = _fixed_lines()
+    if relative in fixed:
+        return fixed[relative][1]
     group = page_group(relative)
     feature_id = _clean(frontmatter.get("feature-id"))
     if group == "app-requirements" and feature_id:

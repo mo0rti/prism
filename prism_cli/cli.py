@@ -23,7 +23,7 @@ from typing import Any, Iterable
 
 import yaml
 
-from prism_cli import __version__
+from prism_cli import __version__, standard_files
 from prism_cli.arguments import IntermixedParser
 from prism_cli.app_model import (
     ALL_PLATFORM_CHOICES,
@@ -1522,9 +1522,7 @@ def validate_generated_project(path: Path) -> int:
     checks = [
         "README.md present",
         "AGENTS.md present",
-        "knowledge/wiki/SCHEMA.md present",
-        "knowledge/wiki/LIFECYCLE.md present",
-        "knowledge/wiki/ACTIONS.md present",
+        *[f"{standard_files.wiki_path(name)} present" for name in standard_files.names("versioned")],
         "Taskfile.yml present",
         "wiki contract checks passed",
         "scaffolded apps, their answers files and workflows present",
@@ -1550,9 +1548,7 @@ def validate_generated_project_structure(path: Path) -> tuple[list[str], list[st
         ("README.md", path / "README.md"),
         ("AGENTS.md", path / "AGENTS.md"),
         (MANIFEST_FILE, path / MANIFEST_FILE),
-        ("knowledge/wiki/SCHEMA.md", path / "knowledge" / "wiki" / "SCHEMA.md"),
-        ("knowledge/wiki/LIFECYCLE.md", path / "knowledge" / "wiki" / "LIFECYCLE.md"),
-        ("knowledge/wiki/ACTIONS.md", path / "knowledge" / "wiki" / "ACTIONS.md"),
+        *[(standard_files.wiki_path(name), path / "knowledge" / "wiki" / name) for name in standard_files.names("versioned")],
         ("Taskfile.yml", path / "Taskfile.yml"),
     ]
     for label, required_path in required_paths:

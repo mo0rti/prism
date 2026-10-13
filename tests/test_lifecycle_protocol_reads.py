@@ -139,7 +139,7 @@ class LifecycleProtocolReadTests(unittest.TestCase):
         (self.root / ACTIONS).unlink()
         self.assertIsNone(BoardServiceIdentity(self.root))
         with BoardService(self.root) as service:
-            self.assertIn("action registry", (service._read_only_reason or "").lower())
+            self.assertIn("ACTIONS.md", service._read_only_reason or "")
 
     def test_lint_requires_the_lifecycle_file(self) -> None:
         self.assertEqual([], [item for item in lint_wiki(self.root).diagnostics if "LIFECYCLE" in item.path])

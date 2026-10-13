@@ -89,6 +89,7 @@ from prism_cli.wiki_model import (
     ui_apps,
     within_wiki_read_scope,
 )
+from prism_cli import standard_files
 from prism_cli.fs_safety import reparse_kind
 from prism_cli.wiki_index import (
     CURRENT_STATE_DIRECTORIES,
@@ -145,18 +146,12 @@ _FEATURE_FILE_PATTERN = re.compile(r"\bF-\d+(?:-[A-Za-z0-9][A-Za-z0-9_-]*)?\.md\
 _MARKDOWN_LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]*\]\([^)]*\)")
 _WIKI_PATH_PATTERN = r"(?P<path>(?:(?:knowledge/)?wiki/)?(?:\.\.?/)*(?:{directory})/[A-Za-z0-9][A-Za-z0-9_-]*\.md\b)"
 _EXTERNAL_URL_PATTERN = re.compile(r"(?i)(?:(?:https?|ftp):|//)[^\s<>()]+")
+# The pages that are not standard files and are never read as sources; the standard files that are not are in the manifest.
 _NON_SOURCE_FILENAMES = {
     "BOARD.md",
     "PROJECT_FOUNDATION.md",
-    "SCHEMA.md",
-    "LIFECYCLE.md",
-    "ACTIONS.md",
-    "SETTINGS.md",
     "WIKI_REPORT.md",
-    "log.md",
-    "status-board.md",
 }
-_SCHEMA_VERSION_FILES = ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md")
 SUPPORTED_SCHEMA_VERSION = 1
 # A dated record keeps its own date field; every other page kind carries none.
 _RECORD_DATE_FIELDS = {"decisions": "date", "releases": "date", "incidents": "date"}
@@ -341,9 +336,10 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
         diagnostics.append(_diag("missing-wiki-root", "error", wiki_root, "Missing knowledge/wiki directory."))
         return WikiLintResult(root=root, diagnostics=diagnostics)
 
-    # SETTINGS.md is optional by contract. SCHEMA.md, LIFECYCLE.md, ACTIONS.md, the index and the status
-    # board remain the structural files that lint requires before it can reason about the wiki.
-    for required in ("SCHEMA.md", "LIFECYCLE.md", "ACTIONS.md", "index.md", "status-board.md"):
+    # The other standard files are optional by contract. The required ones of the manifest (the schema, the
+    # lifecycle protocol, the action registry, the index and the status board) are the structural files that lint
+    # requires before it can reason about the wiki.
+    for required in standard_files.names("required"):
         required_path = wiki_root / required
         if not required_path.exists():
             diagnostics.append(
@@ -1599,11 +1595,11 @@ def _record_date_field(path: Path, wiki_root: Path) -> str | None:
 
 
 def _lint_schema_versions(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
-    """SCHEMA.md, LIFECYCLE.md and ACTIONS.md each start with front matter `schema-version: 1`."""
+    """Each versioned standard file (the schema, the lifecycle protocol and the action registry) starts with front matter `schema-version: 1`."""
 
     diagnostics: list[WikiDiagnostic] = []
     by_name = {page.path.name: page for page in pages if page.path.parent == wiki_root}
-    for name in _SCHEMA_VERSION_FILES:
+    for name in standard_files.names("versioned"):
         page = by_name.get(name)
         if page is None:
             continue  # a missing file is reported as missing-required-wiki-file
@@ -2366,7 +2362,7 @@ def _reference_path(source_path: Path, raw_target: str, wiki_root: Path, directo
 
 
 def _is_non_source_page(path: Path, wiki_root: Path) -> bool:
-    if path.name.startswith("_") or path.name in _NON_SOURCE_FILENAMES:
+    if path.name.startswith("_") or path.name in _NON_SOURCE_FILENAMES or path.name in standard_files.names("non_source"):
         return True
     try:
         relative = _resolve(path).relative_to(_resolve(wiki_root))

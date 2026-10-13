@@ -6,6 +6,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
+from prism_cli import standard_files
 from prism_cli.wiki_model import FRONTMATTER_PATTERN, MARKDOWN_LINK_PATTERN
 from prism_cli.wiki_paths import decoded_link_path
 
@@ -20,18 +21,14 @@ LINKED_CONTEXT_DIRECTORIES = {
     "decisions": "decisions",
 }
 
+# The files that are never read as pages, wherever they sit: the standard files of the manifest that are not pages and
+# these others. Other modules import the constant, so it is built when this module loads.
 NON_PAGE_FILENAMES = {
     "BOARD.md",
     "PROJECT_FOUNDATION.md",
     "_FORMAT.md",
-    "SCHEMA.md",
-    "LIFECYCLE.md",
-    "ACTIONS.md",
-    "SETTINGS.md",
-    "index.md",
-    "status-board.md",
-    "log.md",
     "WIKI_REPORT.md",
+    *standard_files.names("non_page"),
 }
 
 
