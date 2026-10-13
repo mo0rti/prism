@@ -180,6 +180,8 @@ class AppStageLayoutTests(unittest.TestCase):
         self.assertIn("white-space: nowrap", chip)
         self.assertIn("text-overflow: ellipsis", chip)
         self.assertIn('<span class="req" title="${escapeHtml(stageLabel)}">', self.html)
+        # Every label the chip can cut keeps its full text in a title, the requirement status too.
+        self.assertIn('title="req: ${escapeHtml(reqStatus)}">req: ${escapeHtml(reqStatus)}</span>', self.html)
 
 
 class BoardPageEnvelopeTests(TwoAppWorkspace):

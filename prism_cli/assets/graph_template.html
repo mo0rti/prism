@@ -3614,7 +3614,7 @@ function renderApps() {
       const stageRow = featureAppRows(f).find(row => row.app === appId);
       const stageLabel = stageRow ? (stageRow.stage ? (stageRow.retired ? stageRow.stage + " · retired" : stageRow.stage) : "retired") : "";
       return `<div class="fchip" data-id="${escapeHtml(fid)}" tabindex="0" role="button" aria-label="Open feature ${escapeHtml(boundedText(fid, 120))}: ${escapeHtml(boundedText(f.title, 180))}"><i style="background:${phaseColor(f)}"></i>${escapeHtml(fid)} · ${escapeHtml(f.title)}
-        ${stageLabel ? `<span class="req" title="${escapeHtml(stageLabel)}">${escapeHtml(boundedText(stageLabel, 40))}</span>` : ""}<span class="req" style="color:${reqColor}">req: ${escapeHtml(reqStatus)}</span></div>`;
+        ${stageLabel ? `<span class="req" title="${escapeHtml(stageLabel)}">${escapeHtml(boundedText(stageLabel, 40))}</span>` : ""}<span class="req" style="color:${reqColor}" title="req: ${escapeHtml(reqStatus)}">req: ${escapeHtml(reqStatus)}</span></div>`;
     }).join("");
     return `<div class="lane" style="animation-delay:${REDUCED ? 0 : i * 0.07}s"><h3><i></i>${escapeHtml(p.title)}${p.status === "retired" ? ' <span class="retired">(retired)</span>' : ""}<span class="count">${featureIds.length} FEATURE${featureIds.length === 1 ? "" : "S"}</span></h3>
       ${appOperationsHtml(p.id.slice("app:".length))}
