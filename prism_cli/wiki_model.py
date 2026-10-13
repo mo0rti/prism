@@ -1500,6 +1500,11 @@ class FeatureEvidence:
     def qa_rows_naming(self, app: str) -> list[QaRow]:
         return [row for row in self.qa if app in row.apps]
 
+    def names_app(self, app: str) -> bool:
+        """Whether any evidence row of the page names `app`: a delivery, QA or Release row."""
+
+        return any(row.app == app for row in self.delivery) or bool(self.qa_rows_naming(app)) or any(row.app == app for row in self.release)
+
 
 def read_feature_evidence(body: str) -> FeatureEvidence:
     """Parse `## Delivery evidence`, `## QA verification` and `## Release` of a feature page body."""
@@ -2275,17 +2280,27 @@ def app_stages_text(status: str | None, apps: Iterable[str], body: str, model: W
 
     if status_rank(status) < status_rank("in-dev"):
         return "—"
-    stages = app_stages(stage_scope(status, apps, model), read_feature_evidence(body))
+    evidence = read_feature_evidence(body)
+    stages = app_stages(stage_scope(status, apps, model, evidence), evidence)
     return "; ".join(f"{app}: {stage}" for app, stage in stages.items()) or "—"
 
 
-def stage_scope(status: str | None, apps: Iterable[str], model: WorkspaceModel | None) -> list[str]:
-    """The apps whose stages a feature shows: its active apps, or for a released feature its whole scope as history.
+def stage_scope(status: str | None, apps: Iterable[str], model: WorkspaceModel | None, evidence: FeatureEvidence) -> list[str]:
+    """The apps whose stages a feature shows: its active apps, and for a released feature also each retired app that has evidence rows.
 
-    A later retirement does not change what a released feature shows, on the status board, the graph and `prism status`.
+    An app retired after it took part in the release stays in the history of the feature, on the status board, the graph, `prism status`
+    and lint. An app retired without any evidence row never took part, so it is not part of that history.
     """
 
-    return list(apps) if status == "released" else active_scope(apps, model)
+    active = active_scope(apps, model)
+    if status != "released" or model is None:
+        return active
+    kept = set(active)
+    for app in apps:
+        item = model.app(app)
+        if item is not None and not item.active and evidence.names_app(app):
+            kept.add(app)
+    return [app for app in apps if app in kept]
 
 
 def active_scope(apps: Iterable[str], model: WorkspaceModel | None) -> list[str]:

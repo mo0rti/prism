@@ -23,6 +23,7 @@ from prism_cli.qa_rules import (
     merged_app_revalidation,
     qa_fail_archive,
     qa_fail_support,
+    qa_return_problem,
     qa_row_changes,
     release_attempt_for,
 )
@@ -419,23 +420,15 @@ class QaActionsMixin:
         old_fm, new_fm = pages["old_fm"], pages["new_fm"]
         evidence = pages["old_evidence"]
         scope = pages["scope"]
-        stages_all = {app: app_stage(app, evidence) for app in scope}
-        released = [app for app, stage in stages_all.items() if stage == "released"]
-        if released:
-            raise bs.BoardError(
-                "partial_release_requires_new_feature",
-                f"{pages['feature_id']} has released app(s) {_quoted(released)}. A changed requirement or contract goes in a new feature, and an implementation defect in a bug; "
-                "this feature cannot go back to specification or design.",
-                409,
-                {"path": path, "apps": released},
-            )
-        if old_fm.get("status") == "in-dev" and not any(stage in QA_FAIL_STAGES for app, stage in pages["stages"].items()):
-            raise bs.BoardError(
-                "app_stage_mismatch",
-                f"{pages['feature_id']} is in development and no app has reached QA, so it returns with dev-return-* rather than {action}.",
-                409,
-                {"path": path},
-            )
+        problem = qa_return_problem(
+            action,
+            pages["feature_id"],
+            old_fm.get("status"),
+            {app: app_stage(app, evidence) for app in scope},
+            pages["stages"],
+        )
+        if problem is not None:
+            raise bs.BoardError(problem.code, problem.message, 409, {"path": path, **dict(problem.details)})
         history = pages["new_history"]
         if len(history) <= len(pages["old_history"]):
             raise bs.BoardError(

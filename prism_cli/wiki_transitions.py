@@ -32,7 +32,7 @@ from prism_cli.app_model import (
 )
 from prism_cli import standard_files
 from prism_cli.fs_safety import reparse_kind
-from prism_cli.qa_checks import qa_fail_checks, qa_pass_checks, qa_verify_checks
+from prism_cli.qa_checks import qa_fail_checks, qa_pass_checks, qa_return_checks, qa_verify_checks
 from prism_cli.release_checks import release_done_checks, release_inclusion_checks, release_return_checks
 from prism_cli.roles import RolePredicate
 from prism_cli.status import IGNORED_INTAKE_FILES
@@ -1058,8 +1058,10 @@ def evaluate_transition_summaries(
 
     capability_checks_by_action: dict[str, list[dict[str, Any]]] = {}
     invocations_by_action: dict[str, dict[str, str]] = {}
+    # Actions that share a skill (the returns and the reopens) read its generated files once.
+    surface_reads: dict[Path, str | OSError | UnicodeError] = {}
     for action_id in SUPPORTED_ACTIONS:
-        checks, invocations = _capability_checks(workspace_root, action_id)
+        checks, invocations = _capability_checks(workspace_root, action_id, surface_reads)
         capability_checks_by_action[action_id] = checks
         invocations_by_action[action_id] = invocations
     capability_available_by_action = {
@@ -1690,6 +1692,8 @@ def _action_specific_checks(
         ]
     if action == "qa-fail":
         return qa_fail_checks(feature, model, named_apps)
+    if action in {"qa-return-spec", "qa-return-design"}:
+        return qa_return_checks(action, feature, model, proposal=proposal)
     if action == "release-done":
         return [
             *release_done_checks(feature, model, named_apps),
@@ -2651,7 +2655,11 @@ def _action_transition_reason(spec: ActionSpec, classification: str, checks: lis
     return "; ".join(messages) or "Required transition facts are unknown."
 
 
-def _capability_checks(root: Path, action: str = SUPPORTED_ACTION) -> tuple[list[dict[str, Any]], dict[str, str]]:
+def _capability_checks(
+    root: Path,
+    action: str = SUPPORTED_ACTION,
+    reads: dict[Path, str | OSError | UnicodeError] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
     spec = ACTION_BY_ID.get(action)
     if spec is None:
         return [
@@ -2667,11 +2675,19 @@ def _capability_checks(root: Path, action: str = SUPPORTED_ACTION) -> tuple[list
     for role, relative in _ACTION_SURFACE_PATHS[action].items():
         path = root / relative
         code = f"capability-{role}" if action == SUPPORTED_ACTION else f"capability-{action}-{role}"
-        try:
-            text = path.read_text(encoding="utf-8-sig")
-        except (OSError, UnicodeError) as exc:
-            checks.append(_check(code, "unknown", f"Unable to read generated {role} `{action}` capability: {exc}.", path))
+        if reads is not None and path in reads:
+            read = reads[path]
+        else:
+            try:
+                read = path.read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeError) as exc:
+                read = exc
+            if reads is not None:
+                reads[path] = read
+        if not isinstance(read, str):
+            checks.append(_check(code, "unknown", f"Unable to read generated {role} `{action}` capability: {read}.", path))
             continue
+        text = read
         markers = _ACTION_MARKERS[action][role]
         if not text.strip():
             checks.append(_check(code, "unknown", f"Generated {role} `{action}` capability is empty.", path))

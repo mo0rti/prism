@@ -8,6 +8,7 @@ import yaml
 
 from prism_cli.board_service import BoardError
 from prism_cli.wiki_lint import lint_wiki
+from prism_cli.wiki_transitions import build_board_transition_preflight
 from tests.qa_support import (
     FEATURE,
     QaBoard,
@@ -197,6 +198,29 @@ class ReturnTests(QaBoard):
         for action in ("qa-return-spec", "qa-return-design"):
             with self.subTest(action=action):
                 self.assertEqual("partial_release_requires_new_feature", self.refused("feature-reopen", self.return_changes(action)).code)
+
+    def test_the_preflight_and_the_board_judge_the_return_by_one_rule(self) -> None:
+        released = "| backend | production | `build:backend#1` | release-1 | released | [REL-001](https://records.example/REL-001) | checked |"
+        page = self.release_table([released], self.qa_table([app_row("backend"), integration_row()]))
+        self.put(FEATURE, self.frontmatter_with(self.with_status("ready-for-qa", "qa", page), **{"design-tracks": TRACKS, "design-reaffirm": []}))
+        for action in ("qa-return-spec", "qa-return-design"):
+            with self.subTest(action=action):
+                transition = build_board_transition_preflight(self.root, "F-001", action)
+                blocked = [check for check in transition["checks"] if check["status"] == "blocked"]
+                self.assertEqual(("blocked", ["partial-release-requires-new-feature"]), (transition["classification"], [check["code"] for check in blocked]))
+                refusal = self.refused("feature-reopen", self.return_changes(action))
+                self.assertEqual("partial_release_requires_new_feature", refusal.code)
+                self.assertEqual(refusal.message, blocked[0]["message"])
+
+    def test_a_return_the_preflight_calls_ready_is_accepted_by_the_board(self) -> None:
+        page = self.qa_table([app_row("backend"), integration_row()])
+        self.apply("qa-verify", [{"path": FEATURE, "content": self.with_status("in-qa", "qa", page)}])
+        self.seed_tracks()
+        for action in ("qa-return-spec", "qa-return-design"):
+            with self.subTest(action=action):
+                transition = build_board_transition_preflight(self.root, "F-001", action)
+                self.assertEqual(("ready", True), (transition["classification"], transition["supported"]))
+        self.assertEqual("qa-return-spec", self.apply("feature-reopen", self.return_changes("qa-return-spec"))["action"])
 
     def contract_changes(self, action: str, status: str, written: str | None) -> list[dict[str, str]]:
         """The return with the feature's contract on disk at `status` (the feature declares no API work); `written` is the status the proposal gives it."""
