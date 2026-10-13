@@ -8,6 +8,12 @@ All notable changes to Prism are recorded here. The format follows [Keep a Chang
 
 - The standard wiki files (`SCHEMA.md`, `LIFECYCLE.md`, `ACTIONS.md`, `SETTINGS.md`, `CONNECTED.md`, `index.md`, `status-board.md` and `log.md`) are listed once, in `prism_cli/standard_files.py`, with the categories each belongs to: required, copied into a preview's candidate workspace, recorded as a revision of a preview, and gating for lifecycle actions. Lint, the board service, the lifecycle checks, the index and the workspace checks read that manifest, so a new standard file is one entry in it. Behavior is unchanged.
 
+### Fixed
+
+- **A scope edit that removes the last app answers `scope_empty`.** The generic `invalid_feature_output` rule for an empty `apps` list answered first, at every stage, so the documented code was never returned. The edit is refused as before, now with the code that names it.
+- **`unsupported_source_pair` is returned where it can arise.** `release-done` on a feature that is not in development, in QA or `ready-for-release` answers it, and a feature skill proposed from another status answers `lifecycle_action_required`. The two feature-level source checks that the action selection always answers first (the transition source and the reopen route) stay as guards for an internal path that bypasses the selection, and `docs/troubleshooting.md` names the code each case returns.
+- **`unused-api-contract` in every status.** Lint warns about a feature's own `draft` API contract whenever its one `## API surface` section declares no API work, not only from `ready-for-dev` to `ready-for-release`. It stays a warning that does not gate.
+
 ## [0.7.1]
 
 Release date: 2026-10-13

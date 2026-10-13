@@ -288,11 +288,20 @@ class ScopeEditBoardTests(unittest.TestCase):
         self.assertEqual("scope_body_exceeded", self.rejected("feature-scope", [{"path": FEATURE_ONE, "content": other_section}]).code)
 
     def test_the_last_app_cannot_leave_the_scope(self) -> None:
-        frontmatter, body = _parse_markdown(self.read(FEATURE_ONE))
-        frontmatter["apps"] = []
-        emptied = _replace_body_section_text(self.service._replace_frontmatter(self.read(FEATURE_ONE), frontmatter), "App scope", "No app remains in scope.")
-        error = self.rejected("feature-scope", [{"path": FEATURE_ONE, "content": emptied}])
-        # The nonempty-scope rule of the feature output answers before the scope-edit rule `scope_empty` is reached.
+        # In development (the gated `scope-edit` action) and in design (the ordinary write): the scope-edit code answers, not the generic apps rule.
+        for relative in (FEATURE_ONE, FEATURE_THREE):
+            with self.subTest(feature=relative):
+                frontmatter, _body = _parse_markdown(self.read(relative))
+                frontmatter["apps"] = []
+                emptied = _replace_body_section_text(self.service._replace_frontmatter(self.read(relative), frontmatter), "App scope", "No app remains in scope.")
+                error = self.rejected("feature-scope", [{"path": relative, "content": emptied}])
+                self.assertEqual(("scope_empty", 409), (error.code, error.status))
+                self.assertEqual({"path": relative}, error.details)
+        # The generic rule still answers for an `apps` value that is not an empty list.
+        frontmatter, _body = _parse_markdown(self.read(FEATURE_ONE))
+        frontmatter["apps"] = None
+        missing = _replace_body_section_text(self.service._replace_frontmatter(self.read(FEATURE_ONE), frontmatter), "App scope", "No app remains in scope.")
+        error = self.rejected("feature-scope", [{"path": FEATURE_ONE, "content": missing}])
         self.assertEqual(("invalid_feature_output", 409), (error.code, error.status))
         self.assertIn("nonempty `apps` list", error.message)
 

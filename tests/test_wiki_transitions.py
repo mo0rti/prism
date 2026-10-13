@@ -546,6 +546,33 @@ class WikiTransitionTests(unittest.TestCase):
         self.assertEqual(1, len(codes("api-contract-not-ready")))
         self.assertEqual([], codes("unused-api-contract"))
 
+    def test_the_unused_contract_warning_is_reported_in_every_status(self) -> None:
+        contracts = self.wiki_root / "api-contracts"
+        contracts.mkdir(parents=True, exist_ok=True)
+        (contracts / "F-001.md").write_text("---\nfeature-id: F-001\nversion: 1\nstatus: draft\n---\n\n## Endpoints\nGET /payouts\n", encoding="utf-8")
+
+        def feature_body(status: str, owner: str, surface: str) -> str:
+            return (
+                FEATURE_TEMPLATE.format(feature_id="F-001", title="Payout summary", status=status, owner=owner, platforms="backend", advisory="not-needed", advisory_reason="")
+                + f"## API surface\n{surface}\n"
+            )
+
+        def codes(code: str) -> list:
+            return [item for item in lint_wiki(self.root).diagnostics if item.code == code]
+
+        for status, owner in (("specified", "po"), ("in-design", "designer"), ("released", "none")):
+            with self.subTest(status=status):
+                # The surface declares no API work: the feature's own draft is reported, as a warning that does not gate, and blocks nothing.
+                self._write_feature(status=status, owner=owner, body=feature_body(status, owner, "None."))
+                warnings = codes("unused-api-contract")
+                self.assertEqual([("warning", False)], [(item.severity, item.gates) for item in warnings])
+                self.assertEqual(("F-001.md", "F-001"), (Path(warnings[0].path).name, warnings[0].feature_id))
+                self.assertEqual([], codes("api-contract-not-ready"))
+                # The surface declares API work: nothing asks for the page's deletion, and the draft is no error before development.
+                self._write_feature(status=status, owner=owner, body=feature_body(status, owner, "GET /payouts returns the summary."))
+                self.assertEqual([], codes("unused-api-contract"))
+                self.assertEqual([], codes("api-contract-not-ready"))
+
     def test_advisory_required_actions_block_development_but_deferred_actions_do_not(self) -> None:
         self._write_all_capabilities()
         body = FEATURE_TEMPLATE.format(

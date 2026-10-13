@@ -215,6 +215,13 @@ class ReleaseDoneTests(ReleaseTests):
         unchanged = self.released_page([pending_row("backend"), pending_row("worker")], status="ready-for-release", owner="release")
         self.assertEqual(("release_apps_required", 409), self.refuse(unchanged, record_page(1, [delivery("F-001", "backend")])))
 
+    def test_a_release_runs_only_on_a_feature_in_development_qa_or_ready_for_release(self) -> None:
+        feature, record = self.all_released()
+        for status, owner in (("released", "none"), ("ready-for-dev", "dev"), ("in-design", "designer")):
+            with self.subTest(status=status):
+                self.put(FEATURE, self.with_status(status, owner))
+                self.assertEqual(("unsupported_source_pair", 409), self.refuse(feature, record))
+
     # -- the gates -------------------------------------------------------------------------------------------------------
 
     def test_the_status_follows_the_minimum_of_the_app_stages(self) -> None:
