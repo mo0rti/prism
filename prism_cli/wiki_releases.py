@@ -19,6 +19,7 @@ from typing import Iterable, Iterator, Mapping, Sequence
 from prism_cli.wiki_model import (
     CHECKED_BASES,
     EvidenceProblem,
+    bounded_number,
     MarkdownPage,
     ReleaseParticipation,
     _APP_ID_TOKEN,
@@ -288,7 +289,7 @@ class ReleaseRecord:
     @property
     def number(self) -> int | None:
         match = RELEASE_ID_PATTERN.match(self.record_id)
-        return int(match.group("number")) if match else None
+        return bounded_number(match.group("number")) if match else None
 
     @property
     def title(self) -> str:

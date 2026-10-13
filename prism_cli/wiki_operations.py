@@ -19,7 +19,7 @@ from typing import Any, Iterable, Mapping
 
 from prism_cli.wiki_bugs import ACTIVE_BUG_STATUSES, BugPage
 from prism_cli.wiki_incidents import IncidentPage, incident_sort_key
-from prism_cli.wiki_model import parse_design_tracks
+from prism_cli.wiki_model import number_order, parse_design_tracks
 from prism_cli.wiki_releases import ReleaseRecord, latest_record
 
 EMPTY_CELL = "—"
@@ -62,15 +62,15 @@ def operation_key(app_id: str) -> str:
     return APP_KEY_PREFIX + app_id
 
 
-def _id_number(identifier: str) -> int:
+def _id_order(identifier: str) -> tuple[int, int, str, str]:
     match = _ID_NUMBER.search(identifier)
-    return int(match.group(1)) if match else 10**9
+    return number_order(match.group(1) if match else None, identifier)
 
 
 def sorted_ids(identifiers: Iterable[str]) -> list[str]:
     """Identifiers such as `BUG-002` and `F-010` in number order, each once."""
 
-    return sorted(dict.fromkeys(identifiers), key=lambda item: (_id_number(item), item))
+    return sorted(dict.fromkeys(identifiers), key=_id_order)
 
 
 def ids_text(identifiers: Iterable[str]) -> str:

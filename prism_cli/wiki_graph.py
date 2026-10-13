@@ -30,6 +30,7 @@ from prism_cli.wiki_model import (
     OWNER_BY_STATUS,
     app_stages,
     app_stages_text,
+    number_order,
     extract_markdown_links,
     load_markdown_page,
     resolve_relative_markdown_link,
@@ -257,9 +258,9 @@ def _cell_value(text: str) -> str | None:
     return None if value in _NO_VALUE else value
 
 
-def _record_order(identifier: str) -> tuple[int, str]:
+def _record_order(identifier: str) -> tuple[int, int, str, str]:
     match = _RECORD_NUMBER.search(identifier)
-    return (int(match.group(1)) if match else 10**9, identifier)
+    return number_order(match.group(1) if match else None, identifier)
 
 
 def _page_path(workspace_root: Path, path: Path) -> str:
@@ -344,10 +345,15 @@ def release_facts(records: Iterable[ReleaseRecord], sequence: ReleaseSequence, *
     """`facts.releases`: one entry per release record, in record order.
 
     `sequence` is the `ReleaseSequence` of `validate_release_sequence` over those records: it decides each record's kind and
-    which records are the current delivery of an (app, target).
+    which records are live. A record is `current` when it is the latest record of an (app, target) and it released there, so a
+    record rolled back without a redeploy is not current.
     """
 
-    current = {record.record_id for record, _rows in sequence.deliveries.values()}
+    current = {
+        record.record_id
+        for pair, (record, _rows) in sequence.deliveries.items()
+        if sequence.latest.get(pair) is not None and sequence.latest[pair].record_id == record.record_id
+    }
     entries: list[dict[str, Any]] = []
     for record in records:
         entries.append(

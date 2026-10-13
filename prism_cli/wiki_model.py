@@ -815,6 +815,29 @@ def _scan_sections(body: str) -> tuple[list[str], list[MarkdownSection], list[tu
     return lines, sections, indented
 
 
+MAX_RECORD_NUMBER_DIGITS = 18
+
+
+def number_order(digits: str | None, identifier: str) -> tuple[int, int, str, str]:
+    """A sort key for a record ID by its number, ascending, then by the ID; an ID without a number sorts last.
+
+    The key compares the length and then the digits, so an ID with thousands of digits sorts after every smaller number
+    without converting it to an integer.
+    """
+
+    if digits is None:
+        return (1, 0, "", identifier)
+    stripped = digits.lstrip("0")
+    return (0, len(stripped), stripped, identifier)
+
+
+def bounded_number(digits: str) -> int | None:
+    """The integer value of a record number, or ``None`` when it has more than `MAX_RECORD_NUMBER_DIGITS` digits."""
+
+    stripped = digits.lstrip("0")
+    return int(stripped or "0") if len(stripped) <= MAX_RECORD_NUMBER_DIGITS else None
+
+
 def markdown_sections(body: str) -> list[MarkdownSection]:
     """The level-two sections of a body, in order (`_scan_sections` says what a heading is)."""
 

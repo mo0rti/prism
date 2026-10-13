@@ -14,14 +14,16 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
+from prism_cli.board_server import _LiveGraph
 from prism_cli.status import build_status
 from prism_cli.wiki_bugs import BugPage, parse_fix_rows, parse_verification_rows, read_bug_pages
 from prism_cli.wiki_incidents import IncidentPage, read_incident_pages
 from prism_cli.wiki_lint import lint_wiki
 from prism_cli.wiki_graph import action_registry, bounded_text, build_graph
-from prism_cli.wiki_model import DESIGN_OWNERS, FEATURE_STATUS_ORDER, parse_release_rows, section_text, status_rank
+from prism_cli.wiki_graph_html import render_html
+from prism_cli.wiki_model import DESIGN_OWNERS, FEATURE_STATUS_ORDER, bounded_number, number_order, parse_release_rows, section_text, status_rank
 from prism_cli.wiki_operations import OPERATION_ROW_KEYS, read_board_views
-from prism_cli.wiki_releases import current_delivery, read_all_release_records, read_release_records, record_id_of_cell, record_kinds, record_sections
+from prism_cli.wiki_releases import current_delivery, latest_record, read_all_release_records, read_release_records, record_id_of_cell, record_kinds, record_sections
 from prism_cli.wiki_transitions import (
     ACTION_SPECS,
     DESIGN_OWNER,
@@ -651,7 +653,8 @@ class RecordFactsTests(TwoAppWorkspace):
         current: set[str] = set()
         for app, target in {(row.app, row.target) for record in valid_records for row in record.rows}:
             delivered = current_delivery(valid_records, app, target)
-            if delivered is not None:
+            latest = latest_record(valid_records, app, target)
+            if delivered is not None and latest is not None and delivered[0].record_id == latest.record_id:
                 current.add(delivered[0].record_id)
         bug_invalid = self.invalid_paths("bug-page-invalid", "invalid-bug-status-owner")
         release_invalid = self.invalid_paths("release-record-invalid")
@@ -805,6 +808,76 @@ class RecordFactsTests(TwoAppWorkspace):
             self.write_wiki_page(f"bugs/BUG-{number}-late-bug.md", bug_page(f"BUG-{number}", apps=["backend"], feature="none"))
         bugs = self.facts()["bugs"]
         self.assertEqual(["BUG-001", "BUG-002", "BUG-003", "BUG-004", "BUG-005", "BUG-006", "BUG-999", "BUG-1000"], [bug["id"] for bug in bugs])
+
+    def test_a_release_rolled_back_without_a_redeploy_is_not_current(self) -> None:
+        self.seed_records()
+        # Without the failed redeploy (REL-005) and the redeploy (REL-006), REL-004 is the latest record of backend/production and it rolled REL-003 back.
+        for number in (5, 6):
+            (self.wiki() / "releases" / f"REL-00{number}.md").unlink()
+        self.write_status_board()
+        facts = self.facts()
+        records = self.by_id(facts["releases"])
+        self.assertEqual(["REL-002"], sorted(key for key, record in records.items() if record["current"]))
+        self.assertEqual((False, False), (records["REL-003"]["current"], records["REL-004"]["current"]))
+        operations = {row["app"]: row for row in facts["app_operations"]}
+        self.assertEqual(("REL-004", "rolled-back"), (operations["backend"]["latest_release"], operations["backend"]["latest_outcome"]))
+        self.assert_entries_equal_the_readers(facts)
+
+    def test_a_redeploy_after_a_rollback_is_current_and_the_rolled_back_record_is_not(self) -> None:
+        self.seed_records()
+        records = self.by_id(self.facts()["releases"])
+        self.assertEqual(
+            {"REL-003": False, "REL-004": False, "REL-005": False, "REL-006": True}, {key: records[key]["current"] for key in ("REL-003", "REL-004", "REL-005", "REL-006")}
+        )
+
+    # -- IDs with thousands of digits -------------------------------------------------------------------------------------------
+
+    def test_a_bug_a_release_and_an_incident_with_oversized_ids_build_the_graph_the_export_and_the_board_snapshot(self) -> None:
+        self.seed_records()
+        closed, opened = "9" * 5000, "8" * 5000
+        self.write_wiki_page("bugs/BUG-097-oversized-open-bug.md", bug_page(f"BUG-{opened}", status="open", apps=["backend"], feature="none"))
+        self.write_wiki_page("bugs/BUG-098-oversized-closed-bug.md", bug_page(f"BUG-{closed}", status="closed", apps=["backend"], feature="none"))
+        for number, status, digits in ((97, "open", opened), (98, "resolved", closed)):
+            self.write_wiki_page(
+                f"incidents/INC-0{number}-oversized-incident.md",
+                self.incident_page(
+                    f"INC-{digits}",
+                    title="Incident with an oversized ID",
+                    status=status,
+                    apps=["backend"],
+                    releases=[],
+                    follow_ups=[],
+                    impact="An incident whose ID has thousands of digits.",
+                    timeline=["- 2026-10-10 12:00: The page exists."],
+                    cause="**Unknown:** Not known.",
+                ),
+            )
+        release = (self.wiki() / "releases" / "REL-007.md").read_text(encoding="utf-8")
+        self.write_wiki_page("releases/REL-099.md", release.replace("id: REL-007", f"id: REL-{closed}"))
+        self.write_status_board()
+
+        lint_wiki(self.root)
+        graph = build_graph(self.root)
+        Draft202012Validator(json.loads(SCHEMA.read_text(encoding="utf-8"))).validate(graph)
+        facts = graph["facts"]
+        self.assertEqual([f"BUG-{opened}", f"BUG-{closed}"], [bug["id"] for bug in facts["bugs"]][-2:])
+        self.assertEqual([f"INC-{opened}", f"INC-{closed}"], [incident["id"] for incident in facts["incidents"]][-2:])
+        self.assertIn(f"REL-{closed}", [record["id"] for record in facts["releases"]])
+        self.assertEqual(["BUG-001", "BUG-002", "BUG-003", "BUG-004", "BUG-005", "BUG-006"], [bug["id"] for bug in facts["bugs"]][:6])
+        self.assertIn(f"BUG-{opened}", render_html(graph, mode="snapshot"))
+        self.assertIn(f"INC-{closed}", render_html(graph, mode="live"))
+        epoch, version, snapshot = _LiveGraph(self.root, lambda: None).snapshot()
+        self.assertTrue(epoch and version >= 1)
+        self.assertEqual([bug["id"] for bug in facts["bugs"]], [bug["id"] for bug in json.loads(json.dumps(snapshot))["facts"]["bugs"]])
+
+    def test_a_record_number_with_thousands_of_digits_sorts_after_the_smaller_numbers(self) -> None:
+        identifiers = ["BUG-" + "9" * 5000, "BUG-1000", "BUG-002", "BUG-" + "9" * 4999, "BUG-001", "BUG-010"]
+        ordered = sorted(identifiers, key=lambda identifier: number_order(identifier.split("-", 1)[1], identifier))
+        self.assertEqual(["BUG-001", "BUG-002", "BUG-010", "BUG-1000", "BUG-" + "9" * 4999, "BUG-" + "9" * 5000], ordered)
+        self.assertEqual(7, bounded_number("0007"))
+        self.assertEqual(0, bounded_number("000"))
+        self.assertIsNone(bounded_number("9" * 19))
+        self.assertEqual(10**18 - 1, bounded_number("9" * 18))
 
     def test_a_workspace_without_records_lists_none(self) -> None:
         self.seed_in_dev()

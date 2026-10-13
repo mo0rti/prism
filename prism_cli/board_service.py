@@ -85,6 +85,7 @@ from prism_cli.wiki_model import (
     DESIGN_TRACKS,
     DELIVERY_EVIDENCE_COLUMNS,
     EVIDENCE_SECTIONS,
+    number_order,
     SINGLE_FEATURE_SECTIONS,
     FEATURE_REVALIDATION_DOMAINS,
     DesignTracks,
@@ -8684,6 +8685,13 @@ def _app_sort_key(app_id: str) -> str:
     return app_id.casefold()
 
 
+def _id_number_order(identifier: str) -> tuple[int, int, str, str]:
+    """A sort key by the first number in an ID, comparing its digits so a number of any length sorts without a conversion."""
+
+    match = re.search(r"\d+", identifier)
+    return number_order(match.group(0) if match else "", identifier)
+
+
 def _render_status_board(content: str, expected: Mapping[str, Any], after: Mapping[str, Mapping[str, str] | None]) -> str:
     """The status board with the given rows set. A key is a feature ID, a bug ID or `app:<id>`; a ``None`` row leaves the board."""
 
@@ -8718,14 +8726,14 @@ def _render_status_board(content: str, expected: Mapping[str, Any], after: Mappi
         insertion = end
         if insertion and not lines[insertion - 1].endswith("\n"):
             lines[insertion - 1] += newline
-        for offset, row in enumerate(sorted(missing, key=lambda item: int(re.search(r"\d+", item["id"]).group(0)))):
+        for offset, row in enumerate(sorted(missing, key=lambda item: _id_number_order(item["id"]))):
             lines.insert(insertion + offset, _format_status_row(row) + newline)
     for index in reversed(removed):
         del lines[index]
     if bug_after:
         lines = _render_view_rows(
             lines, newline, heading=BUGS_HEADING, columns=BUG_TABLE_COLUMNS, rows=bug_after, format_row=format_bug_row,
-            sort_key=lambda key: (int(re.search(r"\d+", key).group(0)) if re.search(r"\d+", key) else 0, key),
+            sort_key=_id_number_order,
         )
     if app_after:
         lines = _render_view_rows(

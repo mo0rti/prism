@@ -27,6 +27,7 @@ from prism_cli.wiki_model import (
     _ENVIRONMENT_TOKEN,
     _substantive_evidence_cell,
     app_stage,
+    bounded_number,
     artifact_reference_problem,
     clean_cell,
     has_section,
@@ -275,7 +276,7 @@ def bug_listing_digest(wiki_root: Path) -> str:
 def next_bug_number(bugs: Iterable[BugPage]) -> int:
     """One more than the highest bug number on disk."""
 
-    numbers = [int(match.group(1)) for bug in bugs if (match := BUG_ID_PATTERN.match(bug.bug_id))]
+    numbers = [bounded_number(match.group(1)) or 0 for bug in bugs if (match := BUG_ID_PATTERN.match(bug.bug_id))]
     return max(numbers, default=0) + 1
 
 

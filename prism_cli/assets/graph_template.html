@@ -489,6 +489,7 @@ main { position: relative; flex: 1; overflow: hidden; }
 .disposition { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; margin-top: 9px; padding-top: 7px; border-top: 1px dashed var(--hairline); font-size: 11px; color: var(--ink-2); }
 .ops-links { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .ops-links .rlink { font-size: 11px; }
+.ops-more { align-self: center; font: 10px ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace; letter-spacing: .06em; color: var(--muted); }
 .rel-list { position: relative; display: flex; flex-direction: column; gap: 12px; padding-left: 24px; max-width: 980px; }
 .rel-list::before { content: ""; position: absolute; left: 7px; top: 12px; bottom: 12px; width: 2px; background: var(--hairline); border-radius: 1px; }
 .card.rel { position: relative; padding: 11px 14px 12px; }
@@ -507,6 +508,7 @@ main { position: relative; flex: 1; overflow: hidden; }
 .delivery:last-child { border-bottom: 0; padding-bottom: 0; }
 .delivery .sep { color: var(--muted); }
 .delivery .d-app { color: var(--ink); font-weight: 600; }
+.delivery .rlink { font-size: 10.5px; }
 .delivery .d-version { min-width: 0; overflow-wrap: anywhere; }
 .delivery .d-out { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; font-weight: 700; color: color-mix(in srgb, var(--c, var(--context)) 72%, var(--ink)); }
 .delivery .d-out i { width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--context)); }
@@ -791,6 +793,9 @@ const OUTCOME_TONE = { released: "done", failed: "critical", partial: "warning",
 const DELIVERY_TONE = { released: "done", failed: "critical", "rolled-back": "qa", pending: "warning" };
 const RESULT_TONE = { pass: "done", fail: "critical" };
 const RECORD_FACTS = [["bug", "bugs"], ["release", "releases"], ["incident", "incidents"]];
+// The kind a record link names by its ID prefix, and how many IDs an Apps-view list shows before it says how many more there are.
+const RECORD_LINK_KINDS = { BUG: "bug", REL: "release", INC: "incident" };
+const OPS_LINK_LIMIT = 40;
 
 const state = {
   data: ENVELOPE,
@@ -799,6 +804,7 @@ const state = {
   query: "",
   selected: null,
   selectedRecord: null,
+  selectedRecordRef: null,
   records: { bugApp: "", bugBlocking: false, releaseApp: "", releaseTarget: "" },
   hovered: null,
   theme: null,
@@ -831,7 +837,7 @@ let fitTimer = null;
 
 let nodesById = {}, neighbors = {}, blockedIds = new Set(), blockersByFeature = {}, degree = {};
 let duplicateNodeIds = new Set(), duplicateFeatureIds = new Set();
-let recordIndex = new Map(), featureLookup = new Map();
+let recordIndex = new Map(), recordLinkIndex = new Map(), featureLookup = new Map();
 function buildIndexes() {
   nodesById = {}; neighbors = {}; blockedIds = new Set(); blockersByFeature = {}; degree = {};
   duplicateNodeIds = new Set(); duplicateFeatureIds = new Set();
@@ -856,12 +862,18 @@ function buildIndexes() {
       (blockersByFeature[b.feature_id] = blockersByFeature[b.feature_id] || []).push(b);
     }
   }
-  // A record or a feature is found by its ID in any letter case; the first record of an ID wins.
-  recordIndex = new Map(); featureLookup = new Map();
+  // A card opens the record it shows, found by its kind and source path. A link finds a record by its kind (from the ID's prefix) and its
+  // ID in any letter case, and takes the first valid entry of that kind and ID (the first entry when none is valid). A record that
+  // declares the ID of another kind never answers a link of that kind. A feature is found by its ID in any letter case.
+  recordIndex = new Map(); recordLinkIndex = new Map(); featureLookup = new Map();
   for (const [kind, factsKey] of RECORD_FACTS) {
     for (const record of recordList(factsKey)) {
-      const key = recordKey(record.id);
-      if (!recordIndex.has(key)) recordIndex.set(key, { kind, record });
+      const identity = recordIdentity(kind, record.path, record.id);
+      const entry = { kind, record, identity };
+      if (!recordIndex.has(identity)) recordIndex.set(identity, entry);
+      const linkKey = kind + "\u0000" + recordKey(record.id);
+      const known = recordLinkIndex.get(linkKey);
+      if (!known || (known.record.valid === false && record.valid !== false)) recordLinkIndex.set(linkKey, entry);
     }
   }
   for (const n of state.data.facts.nodes) {
@@ -3342,7 +3354,7 @@ function focusSignature(el) {
 }
 function focusOwnerKey(owner) {
   const kind = owner.classList.contains("fchip") ? "chip" : "card";
-  if (owner.dataset.recordId !== undefined) return kind + "\u0000record:" + owner.dataset.recordId;
+  if (owner.dataset.recordId !== undefined) return kind + "\u0000record:" + (owner.dataset.recordKind || "") + "\u0000" + (owner.dataset.recordPath || "id:" + owner.dataset.recordId);
   return kind + "\u0000" + (owner.dataset.id !== undefined ? "id:" + owner.dataset.id : "intake:" + owner.dataset.intake + "/" + owner.dataset.name);
 }
 function captureRenderFocus() {
@@ -3364,12 +3376,12 @@ function captureRenderFocus() {
     stage: column ? column.dataset.stage : null,
   };
 }
-function restoreRenderFocus(saved) {
-  if (!saved) return;
+function restoreRenderFocus(saved, force) {
+  if (!saved) return false;
   const active = document.activeElement;
-  if (active && active !== document.body && active.isConnected) return;
+  if (force !== true && active && active !== document.body && active.isConnected) return true;
   const region = document.getElementById(saved.regionId);
-  if (!region) return;
+  if (!region) return false;
   const owner = saved.ownerKey ? Array.from(region.querySelectorAll(FOCUS_OWNER_SELECTOR)).find(item => focusOwnerKey(item) === saved.ownerKey) : null;
   const candidates = [];
   if (owner) {
@@ -3384,9 +3396,10 @@ function restoreRenderFocus(saved) {
   }
   candidates.push(region);
   const target = candidates.find(item => item && transitionTargetAvailable(item));
-  if (!target) return;
+  if (!target) return false;
   if (!target.hasAttribute("tabindex") && !/^(A|BUTTON|INPUT|SELECT|TEXTAREA|SUMMARY)$/.test(target.tagName)) target.setAttribute("tabindex", "-1");
   target.focus({ preventScroll: true });
+  return true;
 }
 function renderAll(first) {
   const savedFocus = captureRenderFocus();
@@ -3704,7 +3717,7 @@ function appOperationsHtml(appId) {
   // A cell that lists IDs shows each as a link to its panel; an ID the page does not know stays plain text.
   const idLinks = cell => {
     const ids = String(cell === undefined || cell === null ? "" : cell).split(",").map(id => id.trim()).filter(id => id && id !== "—");
-    return ids.length ? `<span class="ops-links">${ids.slice(0, 40).map(id => recordLinkHtml(id)).join("")}</span>` : "—";
+    return ids.length ? `<span class="ops-links">${ids.slice(0, OPS_LINK_LIMIT).map(id => recordLinkHtml(id)).join("")}${ids.length > OPS_LINK_LIMIT ? `<span class="ops-more">+${ids.length - OPS_LINK_LIMIT} more</span>` : ""}</span>` : "—";
   };
   const latest = row.latest_release && row.latest_release !== "—" ? `<span class="ops-links">${recordLinkHtml(row.latest_release)}</span> (${escapeHtml(boundedText(row.latest_outcome || "—", 40))})` : "—";
   const facts = [
@@ -3727,7 +3740,12 @@ function recordList(factsKey) {
 function recordKey(id) { return String(id === undefined || id === null ? "" : id).trim().toUpperCase(); }
 function stringList(value) { return Array.isArray(value) ? value.filter(item => item !== undefined && item !== null).map(String) : []; }
 function objectList(value) { return Array.isArray(value) ? value.filter(item => item && typeof item === "object" && !Array.isArray(item)) : []; }
-function recordNumber(id) { const match = String(id).match(/(\d+)\s*$/); return match ? parseInt(match[1], 10) : 0; }
+// Record numbers compare by their digits (length, then text), so an ID with thousands of digits sorts without a lossy conversion.
+function recordDigits(id) { const match = String(id).match(/(\d+)\s*$/); return match ? match[1].replace(/^0+/, "") : ""; }
+function compareRecordNumbers(left, right) {
+  const a = recordDigits(left), b = recordDigits(right);
+  return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
+}
 function uniqueSorted(values) { return Array.from(new Set(values)).sort(); }
 function labelOf(value, fallback) {
   const text = value === undefined || value === null ? "" : String(value).trim();
@@ -3750,8 +3768,10 @@ function severityRank(value) { const index = SEVERITIES.indexOf(value); return i
 // Newest first: by date, then by record number.
 function newestFirst(a, b) {
   const left = String(a.date || ""), right = String(b.date || "");
-  return (right < left ? -1 : right > left ? 1 : 0) || recordNumber(b.id) - recordNumber(a.id);
+  return (right < left ? -1 : right > left ? 1 : 0) || compareRecordNumbers(b.id, a.id);
 }
+// Release records are chronological by their number, as the validator reads them: the highest number first.
+function latestReleaseFirst(a, b) { return compareRecordNumbers(b.id, a.id); }
 
 function severityBadgeHtml(value) {
   const rank = SEVERITIES.indexOf(value);
@@ -3765,11 +3785,38 @@ function appTagsHtml(apps) {
   const list = stringList(apps);
   return list.length ? list.map(app => `<span class="app-tag" title="${escapeHtml(app)}"><i></i>${escapeHtml(boundedText(app, 40))}</span>`).join("") : '<span class="app-tag">no app</span>';
 }
-function recordLinkHtml(id, label) {
+// A record is identified by its kind and source path (its ID when it has no path), never by its ID alone: two pages can declare one ID.
+function recordPathOf(record) { return record && typeof record.path === "string" ? record.path : ""; }
+function recordIdentity(kind, path, id) { return String(kind) + "\u0000" + (typeof path === "string" && path ? path : "id:" + recordKey(id)); }
+function recordRefOf(element) {
+  const data = element.dataset || {};
+  return { kind: data.recordKind || "", path: data.recordPath || "", id: data.recordId !== undefined ? data.recordId : data.recordLink || "" };
+}
+function recordPathAttr(record) {
+  const path = recordPathOf(record);
+  return path ? ` data-record-path="${escapeHtml(path)}"` : "";
+}
+function recordRefAttrs(entry) {
+  const path = recordPathOf(entry.record);
+  return `data-record-kind="${escapeHtml(entry.kind)}"${path ? ` data-record-path="${escapeHtml(path)}"` : ""}`;
+}
+function findRecordEntry(ref) {
+  if (!ref) return null;
+  const entry = recordIndex.get(recordIdentity(ref.kind, ref.path, ref.id));
+  if (entry) return entry;
+  return !ref.path && ref.kind ? recordLinkIndex.get(ref.kind + "\u0000" + recordKey(ref.id)) || null : null;
+}
+function recordLinkKind(text) {
+  const match = String(text).trim().match(/^(BUG|REL|INC)-/i);
+  return match ? RECORD_LINK_KINDS[match[1].toUpperCase()] : null;
+}
+// A link to a record resolves by the kind its ID names; `target` is the entry itself, for a link that already holds one.
+function recordLinkHtml(id, label, target) {
   const text = String(id === undefined || id === null ? "" : id);
   const shown = escapeHtml(boundedText(label === undefined ? text : label, 80));
-  const entry = recordIndex.get(recordKey(text));
-  if (entry) return `<button type="button" class="rlink" data-record-link="${escapeHtml(entry.record.id)}" aria-label="Open ${escapeHtml(boundedText(text, 80))}">${shown}</button>`;
+  const kind = recordLinkKind(text);
+  const entry = target || (kind ? recordLinkIndex.get(kind + "\u0000" + recordKey(text)) : undefined);
+  if (entry) return `<button type="button" class="rlink" data-record-link="${escapeHtml(entry.record.id)}" ${recordRefAttrs(entry)} aria-label="Open ${escapeHtml(boundedText(text, 80))}">${shown}</button>`;
   const featureId = featureLookup.get(recordKey(text));
   if (featureId !== undefined) return `<button type="button" class="rlink" data-node-link="${escapeHtml(featureId)}" aria-label="Open feature ${escapeHtml(boundedText(text, 80))}">${shown}</button>`;
   return `<span class="rlink plain" title="Not found on this page">${shown}</span>`;
@@ -3813,18 +3860,18 @@ function bindRecordCards(view) {
   view.querySelectorAll("[data-record-id]").forEach(card => {
     card.addEventListener("click", e => {
       if (e && e.target && e.target.closest && e.target.closest("button, select, label")) return;
-      selectRecord(card.dataset.recordId);
+      selectRecord(recordRefOf(card));
     });
     card.addEventListener("keydown", e => {
       if (e.target && e.target !== card) return;
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectRecord(card.dataset.recordId); }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectRecord(recordRefOf(card)); }
     });
   });
 }
 function bindRecordLinks(rootEl) {
   if (!rootEl || !rootEl.querySelectorAll) return;
   const open = (el, action) => el.addEventListener("click", e => { if (e && e.stopPropagation) e.stopPropagation(); action(); });
-  rootEl.querySelectorAll("[data-record-link]").forEach(el => open(el, () => selectRecord(el.dataset.recordLink)));
+  rootEl.querySelectorAll("[data-record-link]").forEach(el => open(el, () => selectRecord(recordRefOf(el))));
   rootEl.querySelectorAll("[data-node-link]").forEach(el => open(el, () => selectNode(el.dataset.nodeLink)));
 }
 
@@ -3842,7 +3889,7 @@ function bugCardHtml(bug, index) {
   if (bug.close_reason === "wont-fix") disposition = "<span>won't fix</span>";
   else if (bug.close_reason === "duplicate") disposition = `<span>duplicate of</span>${bug.duplicate_of ? recordLinkHtml(bug.duplicate_of) : ""}`;
   else if (bug.close_reason === "promoted") disposition = `<span>promoted to</span>${bug.promoted_to ? recordLinkHtml(bug.promoted_to) : ""}`;
-  return `<div class="card rec${invalid ? " invalid" : ""}" data-record-id="${escapeHtml(id)}" data-record-kind="bug" tabindex="0" role="group" aria-label="${escapeHtml(label)}" style="--stage-color:var(--${toneName(SEVERITY_TONE, bug.severity)});--stagger:${REDUCED ? 0 : index * 0.05}s">
+  return `<div class="card rec${invalid ? " invalid" : ""}" data-record-id="${escapeHtml(id)}" data-record-kind="bug"${recordPathAttr(bug)} tabindex="0" role="group" aria-label="${escapeHtml(label)}" style="--stage-color:var(--${toneName(SEVERITY_TONE, bug.severity)});--stagger:${REDUCED ? 0 : index * 0.05}s">
     <div class="rec-idrow"><span class="cid">${escapeHtml(id)}</span></div>${titleHtml(title)}
     <div class="badges">${badges.join("")}</div>
     <div class="rec-meta">${appTagsHtml(bug.apps)}<span class="owner-chip" title="Owner">${escapeHtml(owner === "none" ? "no owner" : owner)}</span></div>
@@ -3856,14 +3903,18 @@ function renderBugs() {
   const apps = uniqueSorted(all.flatMap(bug => stringList(bug.apps)));
   if (!apps.includes(state.records.bugApp)) state.records.bugApp = "";
   const filters = state.records;
-  // Blocking bugs first, then by severity, then by record number.
-  const shown = all.filter(bug => (!filters.bugApp || stringList(bug.apps).includes(filters.bugApp)) && (!filters.bugBlocking || bug.blocking === true))
-    .sort((a, b) => (b.blocking === true) - (a.blocking === true) || severityRank(a.severity) - severityRank(b.severity) || recordNumber(a.id) - recordNumber(b.id));
-  const statuses = all.some(bug => !BUG_STATUSES.includes(bug.status)) ? BUG_STATUSES.concat([INVALID_COLUMN]) : BUG_STATUSES;
-  const blockingCount = all.filter(bug => bug.blocking === true).length;
+  // "Blocking only" is the open bugs that block a release, the count of the header tile. Blocking bugs first, then by severity, then by record number.
+  const isOpenBlocking = bug => bug.blocking === true && OPEN_BUG_STATUSES.has(bug.status);
+  const isInvalid = bug => bug.valid === false || !BUG_STATUSES.includes(bug.status);
+  const shown = all.filter(bug => (!filters.bugApp || stringList(bug.apps).includes(filters.bugApp)) && (!filters.bugBlocking || isOpenBlocking(bug)))
+    .sort((a, b) => (b.blocking === true) - (a.blocking === true) || severityRank(a.severity) - severityRank(b.severity) || compareRecordNumbers(a.id, b.id));
+  // The column of bugs with a missing or unknown status comes first, where it is seen.
+  const statuses = all.some(bug => !BUG_STATUSES.includes(bug.status)) ? [INVALID_COLUMN].concat(BUG_STATUSES) : BUG_STATUSES;
+  const blockingCount = all.filter(isOpenBlocking).length;
+  const invalidCount = shown.filter(isInvalid).length;
   view.innerHTML = `<div class="rec-toolbar">${filterSelectHtml("bugApp", "App", "Filter bugs by app", filters.bugApp, apps)}
-      <button type="button" class="chip${filters.bugBlocking ? " on" : ""}" aria-pressed="${filters.bugBlocking ? "true" : "false"}" data-records-toggle="bugBlocking">Blocking only<span class="n">${blockingCount}</span></button>
-      <span class="rec-count">${escapeHtml(countText(shown.length, all.length, "bug"))}</span></div>` +
+      <button type="button" class="chip${filters.bugBlocking ? " on" : ""}" aria-pressed="${filters.bugBlocking ? "true" : "false"}" data-records-toggle="bugBlocking" title="Open bugs that block a release">Blocking only<span class="n">${blockingCount}</span></button>
+      <span class="rec-count">${escapeHtml(countText(shown.length, all.length, "bug") + (invalidCount ? `, ${invalidCount} invalid` : ""))}</span></div>` +
     (shown.length ? `<div class="board">${recordColumnsHtml(statuses, shown, bug => bug.status, BUG_STATUS_TONE, "Bug", bugCardHtml)}</div>` : recordsEmptyHtml("No bugs match the filters."));
   bindRecordFilters(view, renderBugs);
   bindRecordCards(view);
@@ -3872,8 +3923,9 @@ function renderBugs() {
 
 /* ---------- releases ---------- */
 function deliveryRowHtml(delivery) {
-  const hint = [delivery.item ? "item " + delivery.item : "", delivery.attempt ? "attempt " + delivery.attempt : ""].filter(Boolean).join(" · ");
-  return `<div class="delivery"${hint ? ` title="${escapeHtml(hint)}"` : ""}>${boundedSpan(delivery.app, 40, "d-app")}<span class="sep">·</span>${boundedSpan(delivery.target, 40)}<span class="sep">·</span>${boundedSpan(delivery.version, 60, "d-version")}<span class="d-out" style="${toneStyle(DELIVERY_TONE, delivery.outcome)}"><i></i>${escapeHtml(labelOf(delivery.outcome, "—"))}</span></div>`;
+  const hint = delivery.attempt ? "attempt " + delivery.attempt : "";
+  const item = delivery.item ? recordLinkHtml(delivery.item) : boundedSpan(delivery.item, 40, "d-item");
+  return `<div class="delivery"${hint ? ` title="${escapeHtml(hint)}"` : ""}>${item}<span class="sep">·</span>${boundedSpan(delivery.app, 40, "d-app")}<span class="sep">·</span>${boundedSpan(delivery.target, 40)}<span class="sep">·</span>${boundedSpan(delivery.version, 60, "d-version")}<span class="d-out" style="${toneStyle(DELIVERY_TONE, delivery.outcome)}"><i></i>${escapeHtml(labelOf(delivery.outcome, "—"))}</span></div>`;
 }
 function releaseCardHtml(release, index) {
   const id = String(release.id), title = recordTitle(release, "Untitled release record"), invalid = release.valid === false;
@@ -3884,7 +3936,7 @@ function releaseCardHtml(release, index) {
   const chain = [release.retry_of ? `<span class="k">retry of</span>${recordLinkHtml(release.retry_of)}` : "", release.rollback_of ? `<span class="k">rollback of</span>${recordLinkHtml(release.rollback_of)}` : ""].filter(Boolean);
   const deliveries = objectList(release.deliveries);
   const label = `Release record ${boundedText(id, 140)}: ${boundedText(title, 180)}; ${labelOf(release.date, "no date")}; ${kind}; ${outcome === "—" ? "no outcome" : outcome}${release.current === true ? "; current" : ""}${invalid ? "; invalid record" : ""}`;
-  return `<div class="card rec rel${invalid ? " invalid" : ""}" data-record-id="${escapeHtml(id)}" data-record-kind="release" tabindex="0" role="group" aria-label="${escapeHtml(label)}" style="--stage-color:var(--${toneName(OUTCOME_TONE, release.outcome)});--stagger:${REDUCED ? 0 : Math.min(index, 12) * 0.04}s">
+  return `<div class="card rec rel${invalid ? " invalid" : ""}" data-record-id="${escapeHtml(id)}" data-record-kind="release"${recordPathAttr(release)} tabindex="0" role="group" aria-label="${escapeHtml(label)}" style="--stage-color:var(--${toneName(OUTCOME_TONE, release.outcome)});--stagger:${REDUCED ? 0 : Math.min(index, 12) * 0.04}s">
     <div class="rel-head"><span class="cid">${escapeHtml(id)}</span><span class="rel-date">${escapeHtml(labelOf(release.date, "—"))}</span><div class="badges">${badges.join("")}</div></div>
     ${titleHtml(title)}
     ${chain.length ? `<div class="rec-links">${chain.join("")}</div>` : ""}
@@ -3903,7 +3955,7 @@ function renderReleases() {
   const filters = state.records;
   const filtered = !!(filters.releaseApp || filters.releaseTarget);
   const shown = all.filter(release => !filtered || deliveriesOf(release).some(item => (!filters.releaseApp || item.app === filters.releaseApp) && (!filters.releaseTarget || item.target === filters.releaseTarget)))
-    .sort(newestFirst);
+    .sort(latestReleaseFirst);
   view.innerHTML = `<div class="rec-toolbar">${filterSelectHtml("releaseApp", "App", "Filter releases by app", filters.releaseApp, apps)}${filterSelectHtml("releaseTarget", "Target", "Filter releases by target", filters.releaseTarget, targets)}
       <span class="rec-count">${escapeHtml(countText(shown.length, all.length, "record"))}</span></div>` +
     (shown.length ? `<div class="rel-list">${shown.map(releaseCardHtml).join("")}</div>` : recordsEmptyHtml("No release records match the filters."));
@@ -3919,7 +3971,7 @@ function incidentCardHtml(incident, index) {
   if (incident.cause_known === false) badges.push('<span class="badge advisory" title="The incident page says the cause is unknown.">cause unknown</span>');
   if (invalid) badges.push('<span class="badge advisory" title="Lint reports this incident page as invalid.">invalid</span>');
   const label = `Incident ${boundedText(id, 140)}: ${boundedText(title, 180)}; status ${labelOf(incident.status, "missing")}; severity ${labelOf(incident.severity, "missing")}${incident.cause_known === false ? "; cause unknown" : ""}${invalid ? "; invalid page" : ""}`;
-  return `<div class="card rec${invalid ? " invalid" : ""}" data-record-id="${escapeHtml(id)}" data-record-kind="incident" tabindex="0" role="group" aria-label="${escapeHtml(label)}" style="--stage-color:var(--${toneName(SEVERITY_TONE, incident.severity)});--stagger:${REDUCED ? 0 : index * 0.05}s">
+  return `<div class="card rec${invalid ? " invalid" : ""}" data-record-id="${escapeHtml(id)}" data-record-kind="incident"${recordPathAttr(incident)} tabindex="0" role="group" aria-label="${escapeHtml(label)}" style="--stage-color:var(--${toneName(SEVERITY_TONE, incident.severity)});--stagger:${REDUCED ? 0 : index * 0.05}s">
     <div class="rec-idrow"><span class="cid">${escapeHtml(id)}</span><span class="when">${escapeHtml(labelOf(incident.date, "—"))}</span></div>${titleHtml(title)}
     <div class="badges">${badges.join("")}</div>
     <div class="rec-meta">${appTagsHtml(incident.apps)}</div>
@@ -3989,8 +4041,9 @@ function releaseChainHtml(release) {
   if (release.rollback_of) rows.push([plainCell("Rollback of"), recordLinkHtml(release.rollback_of)]);
   for (const other of recordList("releases")) {
     if (recordKey(other.id) === key) continue;
-    if (other.retry_of && recordKey(other.retry_of) === key) rows.push([plainCell("Retried by"), recordLinkHtml(other.id)]);
-    if (other.rollback_of && recordKey(other.rollback_of) === key) rows.push([plainCell("Rolled back by"), recordLinkHtml(other.id)]);
+    const otherEntry = recordIndex.get(recordIdentity("release", other.path, other.id));
+    if (other.retry_of && recordKey(other.retry_of) === key) rows.push([plainCell("Retried by"), recordLinkHtml(other.id, undefined, otherEntry)]);
+    if (other.rollback_of && recordKey(other.rollback_of) === key) rows.push([plainCell("Rolled back by"), recordLinkHtml(other.id, undefined, otherEntry)]);
   }
   return factRowsHtml(rows, "Not part of a retry or rollback chain.");
 }
@@ -4056,14 +4109,20 @@ function renderRecordPanel(entry) {
     </div>`;
   bindPanelActions(record);
 }
-function selectRecord(id) {
-  const entry = recordIndex.get(recordKey(id));
-  if (!entry) { announce("That record is no longer present."); return; }
+// A panel remembers what opened it by the element and by the identity a render restores focus by (the region, the card and the control),
+// so closing it after a live update focuses the replacement of the opener, or else its column or its view.
+function rememberPanelOpener() {
   const panelBefore = document.getElementById("panel");
   const active = document.activeElement;
-  if (active && active.focus && (!panelBefore || !panelBefore.contains || !panelBefore.contains(active))) state.panelReturnFocus = active;
+  if (active && active.focus && (!panelBefore || !panelBefore.contains || !panelBefore.contains(active))) state.panelReturnFocus = { element: active, saved: captureRenderFocus() };
+}
+function selectRecord(ref) {
+  const entry = findRecordEntry(ref);
+  if (!entry) { announce("That record is no longer present."); return; }
+  rememberPanelOpener();
   state.selected = null;
   state.selectedRecord = String(entry.record.id);
+  state.selectedRecordRef = { kind: entry.kind, path: recordPathOf(entry.record), id: String(entry.record.id) };
   renderRecordPanel(entry);
   const panel = document.getElementById("panel");
   panel.classList.add("open");
@@ -4075,11 +4134,11 @@ function selectRecord(id) {
 // A feature's panel lists the feature's bugs, with their status, and the release records that name it.
 function featureRecordsHtml(node) {
   const ids = new Set([recordKey(node.id), recordKey(canonicalFeatureId(node))]);
-  const bugs = recordList("bugs").filter(bug => bug.feature && ids.has(recordKey(bug.feature))).sort((a, b) => recordNumber(a.id) - recordNumber(b.id));
-  const releases = recordList("releases").filter(release => stringList(release.features).some(id => ids.has(recordKey(id)))).sort(newestFirst);
-  const row = (record, badge) => `<button type="button" class="rec-row" data-record-link="${escapeHtml(record.id)}" aria-label="Open ${escapeHtml(boundedText(record.id, 80))}"><span class="rid">${escapeHtml(record.id)}</span>${boundedSpan(recordTitle(record, "Untitled"), 120, "rtitle")}${badge}</button>`;
-  return (bugs.length ? panelSectionHtml("Bugs - " + bugs.length, bugs.map(bug => row(bug, toneBadgeHtml(labelOf(bug.status, "—"), BUG_STATUS_TONE, bug.status))).join(""), "data-panel-bugs") : "") +
-    (releases.length ? panelSectionHtml("Release records - " + releases.length, releases.map(release => row(release, toneBadgeHtml(labelOf(release.outcome, "—"), OUTCOME_TONE, release.outcome, labelOf(release.date, "")))).join(""), "data-panel-releases") : "");
+  const bugs = recordList("bugs").filter(bug => bug.feature && ids.has(recordKey(bug.feature))).sort((a, b) => compareRecordNumbers(a.id, b.id));
+  const releases = recordList("releases").filter(release => stringList(release.features).some(id => ids.has(recordKey(id)))).sort(latestReleaseFirst);
+  const row = (kind, record, badge) => `<button type="button" class="rec-row" data-record-link="${escapeHtml(record.id)}" data-record-kind="${kind}"${recordPathAttr(record)} aria-label="Open ${escapeHtml(boundedText(record.id, 80))}"><span class="rid">${escapeHtml(record.id)}</span>${boundedSpan(recordTitle(record, "Untitled"), 120, "rtitle")}${badge}</button>`;
+  return (bugs.length ? panelSectionHtml("Bugs - " + bugs.length, bugs.map(bug => row("bug", bug, toneBadgeHtml(labelOf(bug.status, "—"), BUG_STATUS_TONE, bug.status))).join(""), "data-panel-bugs") : "") +
+    (releases.length ? panelSectionHtml("Release records - " + releases.length, releases.map(release => row("release", release, toneBadgeHtml(labelOf(release.outcome, "—"), OUTCOME_TONE, release.outcome, labelOf(release.date, "")))).join(""), "data-panel-releases") : "");
 }
 
 /* ==================== board ==================== */
@@ -4185,11 +4244,10 @@ function selectNode(id) {
     announce(duplicateNodeIds.has(id) ? "Duplicate node identity is inspect-only until source IDs are repaired." : "That source node is no longer present.");
     return;
   }
-  const panelBefore = document.getElementById("panel");
-  const active = document.activeElement;
-  if (active && active.focus && (!panelBefore || !panelBefore.contains || !panelBefore.contains(active))) state.panelReturnFocus = active;
+  rememberPanelOpener();
   state.selected = id;
   state.selectedRecord = null;
+  state.selectedRecordRef = null;
   renderPanel(node);
   const panel = document.getElementById("panel");
   panel.classList.add("open");
@@ -4200,15 +4258,27 @@ function selectNode(id) {
   if (state.view === "graph") focusNode(id);
 }
 function closePanel() {
-  const returnFocus = state.panelReturnFocus;
+  const opener = state.panelReturnFocus;
   state.selected = null;
   state.selectedRecord = null;
+  state.selectedRecordRef = null;
   state.panelReturnFocus = null;
   const panel = document.getElementById("panel");
   panel.classList.remove("open");
   panel.setAttribute("inert", "");
   panel.setAttribute("aria-hidden", "true");
-  if (returnFocus && returnFocus.focus && returnFocus.isConnected !== false) returnFocus.focus();
+  if (opener) returnPanelFocus(opener, panel);
+}
+// Focus goes back to the opener; when a render replaced it, to its replacement by identity; when its record is gone, to its column or
+// its region; and when that is gone too, to the active view. It never stays on the closed panel.
+function returnPanelFocus(opener, panel) {
+  const element = opener.element;
+  if (element && element.focus && element.isConnected !== false && transitionTargetAvailable(element)) { element.focus(); return; }
+  if (restoreRenderFocus(opener.saved, true)) return;
+  const view = document.getElementById(state.view + "-view");
+  if (!transitionTargetAvailable(view)) return;
+  if (!view.hasAttribute("tabindex")) view.setAttribute("tabindex", "-1");
+  view.focus({ preventScroll: true });
 }
 function renderPanel(node) {
   const color = phaseColor(node);
@@ -4313,11 +4383,10 @@ function bindPanelActions(node) {
   bindRecordLinks(document.getElementById("panel"));
 }
 function showIntakePanel(kind, name) {
-  const panelBefore = document.getElementById("panel");
-  const active = document.activeElement;
-  if (active && active.focus && (!panelBefore || !panelBefore.contains || !panelBefore.contains(active))) state.panelReturnFocus = active;
+  rememberPanelOpener();
   state.selected = null;
   state.selectedRecord = null;
+  state.selectedRecordRef = null;
   const quarantined = kind === "quarantined";
   const dir = quarantined ? "knowledge/intake/quarantined/" : "knowledge/intake/pending/";
   const guidance = quarantined
@@ -4426,6 +4495,8 @@ document.addEventListener("keydown", e => {
     closePanel(); searchInput.value = ""; state.query = ""; document.getElementById("diagpanel").classList.remove("open");
   }
   if (document.activeElement === searchInput) return;
+  // A digit typed in a field, a filter or a text area belongs to the control, not to the view switcher.
+  if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(String(e.target.tagName).toUpperCase())) return;
   if (e.key === "1") switchView("firstrun");
   if (e.key === "2") switchView("graph");
   if (e.key === "3") switchView("board");
@@ -4478,8 +4549,10 @@ function adoptData(envelope, version = null) {
       restoreRenderFocus(savedPanelFocus);
     } else if (state.selected) closePanel();
     else if (state.selectedRecord) {
-      const entry = recordIndex.get(recordKey(state.selectedRecord));
+      const entry = findRecordEntry(state.selectedRecordRef);
       if (entry) {
+        state.selectedRecord = String(entry.record.id);
+        state.selectedRecordRef = { kind: entry.kind, path: recordPathOf(entry.record), id: String(entry.record.id) };
         const savedRecordFocus = captureRenderFocus();
         renderRecordPanel(entry);
         restoreRenderFocus(savedRecordFocus);

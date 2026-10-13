@@ -60,7 +60,7 @@ class RecordsViewsTests(BrowserCase):
             expect(page.locator("#bugs-view")).to_have_css("opacity", "1")
             run.screenshot(page, "bugs-view")
             columns = page.locator("#bugs-view .column[data-stage]")
-            self.assertEqual(["open", "in-fix", "fixed", "verified", "released", "closed", "invalid"], columns.evaluate_all("els => els.map(el => el.dataset.stage)"))
+            self.assertEqual(["invalid", "open", "in-fix", "fixed", "verified", "released", "closed"], columns.evaluate_all("els => els.map(el => el.dataset.stage)"))
             expect(page.get_by_role("heading", name="Bug status released")).to_have_count(1)
             # A feature's own column keeps its name: the bug columns do not take over the board's headings.
             expect(board.column_heading("released")).to_have_count(1)
@@ -68,7 +68,9 @@ class RecordsViewsTests(BrowserCase):
             expect(critical).to_contain_text("critical")
             expect(critical).to_contain_text("blocking")
             expect(page.get_by_role("group", name=re.compile(r"^Bug BUG-009:"))).to_contain_text("invalid")
-            run.effect("Bugs view: a column per status plus an invalid one; BUG-001 shows critical and blocking; the invalid page shows a warning")
+            expect(page.locator("#bugs-view .rec-count")).to_contain_text("12 bugs, 2 invalid")
+            expect(page.get_by_role("button", name=re.compile(r"^Blocking only\s*1"))).to_be_visible()
+            run.effect("Bugs view: the invalid column first, then a column per status; the count says how many are invalid; BUG-001 shows critical and blocking; the invalid page shows a warning")
 
             # 2. A bug card opens its panel; a link in the panel opens the release record's panel.
             page.get_by_role("group", name=re.compile(r"^Bug BUG-005:")).locator(".ctitle").click()
@@ -116,7 +118,7 @@ class RecordsViewsTests(BrowserCase):
             self.open_view("Releases")
             run.screenshot(page, "releases-view")
             ids = page.locator("#releases-view [data-record-id]").evaluate_all("els => els.map(el => el.dataset.recordId)")
-            self.assertEqual(["REL-006", "REL-004", "REL-003", "REL-002", "REL-001", "REL-005", "REL-007"], ids)
+            self.assertEqual(["REL-007", "REL-006", "REL-005", "REL-004", "REL-003", "REL-002", "REL-001"], ids)
             retry = page.get_by_role("group", name=re.compile(r"^Release record REL-002:"))
             expect(retry).to_contain_text("retry")
             expect(retry).to_contain_text("released")
@@ -134,7 +136,9 @@ class RecordsViewsTests(BrowserCase):
             page.get_by_role("group", name=re.compile(r"^Release record REL-003:")).get_by_role("button", name="Open REL-002").click()
             expect(panel.get_by_role("heading", name="Review summary export, retry")).to_be_visible()
             page.keyboard.press("Escape")
-            run.effect("Releases view: newest first, kind, outcome and current badges, chain links and delivery rows; the filters match one delivery")
+            first_delivery = page.get_by_role("group", name=re.compile(r"^Release record REL-002:")).locator(".delivery").first
+            self.assertEqual(["F-001", "backend"], first_delivery.evaluate("el => [el.children[0].textContent, el.children[2].textContent]"))
+            run.effect("Releases view: the highest record number first, kind, outcome and current badges, chain links and delivery rows that name their item first; the filters match one delivery")
 
             # 6. The Incidents view and its panel, then from the incident to its feature, and from the feature to a bug.
             self.open_view("Incidents")
@@ -188,6 +192,155 @@ class RecordsViewsTests(BrowserCase):
             page.get_by_role("group", name=re.compile(r"^Incident INC-001:")).scroll_into_view_if_needed()
             self.assertEqual([], self.page_errors)
             run.effect("the record views fit a 390 px wide phone: the page does not scroll sideways, and the view switcher scrolls inside itself")
+
+    def adopt(self, envelope: dict) -> None:
+        """Hand the open page a new snapshot, as a live update does."""
+
+        self.page.evaluate("envelope => adoptData(envelope)", envelope)
+
+    def parent_directory(self, prefix: str) -> Path:
+        work = e2e_directory() / "work"
+        work.mkdir(parents=True, exist_ok=True)
+        parent = Path(tempfile.mkdtemp(prefix=prefix, dir=work))
+        self.addCleanup(shutil.rmtree, parent, True)
+        return parent
+
+    def test_scenario_m_a_card_and_a_link_open_their_own_record(self) -> None:
+        with self.scenario("M-records-identity") as run:
+            page = self.page
+            self.start_trace()
+            parent = self.parent_directory("records-identity-")
+            envelope = records_envelope(parent)
+            bugs = envelope["facts"]["bugs"]
+            third = next(bug for bug in bugs if bug["id"] == "BUG-003")
+            second_page = {**third, "title": "Second page that claims BUG-003", "path": "knowledge/wiki/bugs/BUG-003-second-page.md", "valid": False}
+            declares_release = {**third, "id": "REL-002", "title": "Bug page that declares a release ID", "path": "knowledge/wiki/bugs/BUG-020-declares-a-release-id.md", "valid": False, "status": "open"}
+            bugs[:0] = [second_page, declares_release]
+            target = parent / "identity.html"
+            target.write_text(render_html(envelope), encoding="utf-8")
+            page.goto(target.as_uri())
+            panel = self.panel()
+            self.open_view("Bugs")
+
+            # The second of two BUG-003 pages opens its own panel, and so does the first.
+            page.locator('#bugs-view [data-record-id="BUG-003"][data-record-path$="BUG-003-second-page.md"] .ctitle').click()
+            expect(panel.get_by_role("heading", name="Second page that claims BUG-003")).to_be_visible()
+            expect(panel).to_contain_text("knowledge/wiki/bugs/BUG-003-second-page.md")
+            page.keyboard.press("Escape")
+            page.locator('#bugs-view [data-record-id="BUG-003"]:not([data-record-path$="second-page.md"]) .ctitle').click()
+            expect(panel.get_by_role("heading", name="Reviewer list flickers on refresh")).to_be_visible()
+            page.keyboard.press("Escape")
+
+            # A bug that declares a release's ID opens as a bug; the release card opens the release; a release link never reaches the bug.
+            page.locator('#bugs-view [data-record-id="REL-002"] .ctitle').click()
+            expect(panel.get_by_role("heading", name="Bug page that declares a release ID")).to_be_visible()
+            expect(panel.locator(".type-chip")).to_have_text("Bug")
+            page.keyboard.press("Escape")
+            self.open_view("Releases")
+            page.get_by_role("group", name=re.compile(r"^Release record REL-002:")).locator(".ctitle").click()
+            expect(panel.get_by_role("heading", name="Review summary export, retry")).to_be_visible()
+            expect(panel.locator(".type-chip")).to_have_text("Release")
+            page.keyboard.press("Escape")
+            self.open_view("Bugs")
+            page.get_by_role("group", name=re.compile(r"^Bug BUG-005:")).locator(".ctitle").click()
+            panel.get_by_role("button", name="Open REL-002").click()
+            expect(panel.get_by_role("heading", name="Review summary export, retry")).to_be_visible()
+            expect(panel.locator(".type-chip")).to_have_text("Release")
+            run.effect("a card and a link open exactly their own record: the second BUG-003 page, a bug that declares REL-002 and the release itself each open their own panel")
+            self.assertEqual([], self.page_errors)
+
+    def test_scenario_m_focus_returns_to_the_opener_after_a_live_update(self) -> None:
+        with self.scenario("M-records-focus") as run:
+            page = self.page
+            self.start_trace()
+            parent = self.parent_directory("records-focus-")
+            envelope = records_envelope(parent)
+            target = parent / "focus.html"
+            target.write_text(render_html(envelope), encoding="utf-8")
+            page.goto(target.as_uri())
+            panel = self.panel()
+            self.open_view("Bugs")
+
+            # Open BUG-004 with the keyboard, change its title in a snapshot, close the panel: the new card has focus.
+            page.get_by_role("group", name=re.compile(r"^Bug BUG-004:")).focus()
+            page.keyboard.press("Enter")
+            expect(panel.get_by_role("heading", name="Timeout on a long document")).to_be_visible()
+            retitled = records_envelope(parent)
+            next(bug for bug in retitled["facts"]["bugs"] if bug["id"] == "BUG-004")["title"] = "Timeout on a very long document"
+            self.adopt(retitled)
+            expect(panel.get_by_role("heading", name="Timeout on a very long document")).to_be_visible()
+            page.keyboard.press("Escape")
+            expect(panel).not_to_have_class(re.compile(r"\bopen\b"))
+            expect(page.get_by_role("group", name=re.compile(r"^Bug BUG-004: Timeout on a very long document"))).to_be_focused()
+            run.effect("after a snapshot changed the opener's title, closing the panel focuses the replacement card")
+
+            # The record is deleted from the next snapshot: the panel closes and focus lands in the card's column.
+            page.keyboard.press("Enter")
+            expect(panel.get_by_role("heading", name="Timeout on a very long document")).to_be_visible()
+            deleted = records_envelope(parent)
+            deleted["facts"]["bugs"] = [bug for bug in deleted["facts"]["bugs"] if bug["id"] != "BUG-004"]
+            self.adopt(deleted)
+            expect(panel).not_to_have_class(re.compile(r"\bopen\b"))
+            self.assertEqual("verified", page.evaluate("() => { const column = document.activeElement.closest('.column[data-stage]'); return column ? column.dataset.stage : null; }"))
+            run.effect("a deleted record closes its panel and focus lands in the column it was in")
+
+            # A release has no column: focus lands on the active view.
+            self.adopt(envelope)
+            self.open_view("Releases")
+            page.get_by_role("group", name=re.compile(r"^Release record REL-006:")).focus()
+            page.keyboard.press("Enter")
+            expect(panel.get_by_role("heading", name="Redeploy the backend")).to_be_visible()
+            gone = records_envelope(parent)
+            gone["facts"]["releases"] = [record for record in gone["facts"]["releases"] if record["id"] != "REL-006"]
+            self.adopt(gone)
+            expect(panel).not_to_have_class(re.compile(r"\bopen\b"))
+            self.assertEqual("releases-view", page.evaluate("() => document.activeElement.id"))
+            self.assertEqual([], self.page_errors)
+
+    def test_scenario_m_digits_typed_in_a_filter_do_not_switch_the_view(self) -> None:
+        with self.scenario("M-records-digits") as run:
+            page = self.page
+            self.start_trace()
+            address = self.export()
+            page.goto(address)
+            self.open_view("Bugs")
+            page.get_by_role("combobox", name="Filter bugs by app").focus()
+            for key in ("1", "2", "3", "7"):
+                page.keyboard.press(key)
+            expect(page.locator("#bugs-view")).to_have_class(re.compile(r"\bactive\b"))
+            expect(page.locator("#incidents-view")).not_to_have_class(re.compile(r"\bactive\b"))
+            page.locator("#bugs-view .rec-count").click()
+            page.keyboard.press("7")
+            expect(page.locator("#incidents-view")).to_have_class(re.compile(r"\bactive\b"))
+            run.effect("a digit typed while a filter has focus stays with the filter; outside a control it still switches the view")
+
+    def test_scenario_m_the_bug_columns_fit_at_desktop_and_tablet_widths_in_both_themes(self) -> None:
+        with self.scenario("M-records-layout") as run:
+            page = self.page
+            self.start_trace()
+            address = self.export()
+            page.goto(address)
+            for width in (1360, 768):
+                page.set_viewport_size({"width": width, "height": 900})
+                for round_ in ("first", "second"):
+                    self.open_view("Bugs")
+                    theme = page.evaluate("() => document.documentElement.getAttribute('data-theme') || 'system'")
+                    self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth - window.innerWidth"), 0, f"the page scrolls sideways at {width} px")
+                    columns = page.locator("#bugs-view .column[data-stage]")
+                    self.assertEqual("invalid", columns.first.get_attribute("data-stage"))
+                    box = columns.first.bounding_box()
+                    self.assertIsNotNone(box)
+                    self.assertGreaterEqual(box["x"], 0, f"the invalid column starts left of the page at {width} px")
+                    self.assertLess(box["x"] + 150, width, f"the invalid column is off-screen at {width} px")
+                    count = page.locator("#bugs-view .rec-count")
+                    expect(count).to_contain_text("12 bugs, 2 invalid")
+                    count_box = count.bounding_box()
+                    self.assertIsNotNone(count_box)
+                    self.assertLessEqual(count_box["x"] + count_box["width"], width + 1, f"the count is cut off at {width} px")
+                    run.screenshot(page, f"bugs-{width}-{round_}-{theme}")
+                    page.locator("#theme-toggle").click()
+            run.effect("at 1360 px and 768 px, in both themes, the invalid column comes first inside the screen, the count says how many bugs are invalid, and the page does not scroll sideways")
+            self.assertEqual([], self.page_errors)
 
     def test_scenario_m_an_empty_view_says_so(self) -> None:
         with self.scenario("M-records-empty") as run:
