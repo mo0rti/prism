@@ -87,13 +87,17 @@ def _view_tables(root: Path) -> str:
         operation_row,
         table_text,
     )
-    from prism_cli.wiki_releases import read_release_records
+    from prism_cli.wiki_releases import read_release_records, release_participation
     from prism_cli.workspace import inspect_workspace
 
     wiki_root = root / "knowledge" / "wiki"
     bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
     model = inspect_workspace(root).model
-    cells = {page.feature_id: app_stages_text(page.status, page.apps, page.page.body, model) for page in read_feature_pages(wiki_root)}
+    participation = release_participation(wiki_root)
+    cells = {
+        page.feature_id: app_stages_text(page.status, page.apps, page.page.body, model, page.feature_id, participation)
+        for page in read_feature_pages(wiki_root)
+    }
     incidents, releases = read_incident_pages(wiki_root), read_release_records(wiki_root)
     targets = {app: str(entry["target"]) for app, entry in read_wiki_settings(wiki_root, model).delivery_targets.items()}
     operations = [
@@ -114,12 +118,14 @@ def _complete_rows(root: Path, rows: str) -> str:
     from prism_cli.wiki_bugs import read_bug_pages
     from prism_cli.wiki_model import app_stages_text, read_feature_pages
     from prism_cli.wiki_operations import bug_board_row, design_tracks_text, ids_text, open_bugs_of_feature
+    from prism_cli.wiki_releases import release_participation
     from prism_cli.workspace import inspect_workspace
 
     wiki_root = root / "knowledge" / "wiki"
     pages = {page.feature_id.casefold(): page for page in read_feature_pages(wiki_root)}
     bug_rows = [row for bug in read_bug_pages(wiki_root) if (row := bug_board_row(bug)) is not None]
     model = None
+    participation = release_participation(wiki_root)
     completed: list[str] = []
     for line in rows.splitlines(keepends=True):
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
@@ -129,7 +135,7 @@ def _complete_rows(root: Path, rows: str) -> str:
             if page is not None:
                 if model is None:
                     model = inspect_workspace(root).model
-                stages = app_stages_text(page.status, page.apps, page.page.body, model)
+                stages = app_stages_text(page.status, page.apps, page.page.body, model, page.feature_id, participation)
                 tracks = design_tracks_text(page.page.frontmatter)
                 bugs = ids_text(open_bugs_of_feature(page.feature_id, bug_rows))
             ending = "\n" if line.endswith("\n") else ""

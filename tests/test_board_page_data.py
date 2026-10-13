@@ -31,6 +31,7 @@ from prism_cli.wiki_transitions import (
 from tests import real_temp  # noqa: F401
 from tests.board_page_fixture import BOTH, TwoAppWorkspace
 from tests.browser.harness import EXTRA_FEATURES, build_workspace
+from tests.qa_pages import history_entry
 from tests.test_lifecycle_model import delivery_row, release_row
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -355,6 +356,33 @@ class ReleasedScopeLintTests(TwoAppWorkspace):
         row = next(line for line in board.splitlines() if line.startswith("| F-001 "))
         self.assertIn("| backend: released |", row)
         self.assertNotIn("worker:", row)
+
+    def test_an_app_retired_after_its_rows_moved_into_the_evidence_history_stays_in_the_scope(self) -> None:
+        # No release record names `worker`; the Evidence history that archived its rows is the evidence that it took part.
+        archived = [
+            ("Delivery evidence", delivery_row("worker")),
+            ("QA verification", self.covering_qa()[1]),
+            ("Release", release_row("worker", "released")),
+        ]
+        page = self.page(
+            "released",
+            "none",
+            BOTH,
+            self.criteria(),
+            delivery=[delivery_row("backend")],
+            qa=self.covering_qa()[:1],
+            release=[release_row("backend", "released")],
+            history=history_entry("dev-return-design", affected="worker", archived=archived),
+        )
+        self.seed("released", "none", page)
+        self.retire("worker")
+        self.write_status_board()
+        errors = self.errors()
+        self.assertIn("feature-status-not-minimum", errors)
+        self.assertIn("app-row-missing", errors)
+        self.assertEqual({"F-001": {"backend": "released", "worker": "in-dev"}}, build_status(self.root).feature_app_stages)
+        node = next(item for item in build_graph(self.root)["facts"]["nodes"] if item["id"] == "F-001")
+        self.assertEqual([{"app": "backend", "stage": "released"}, {"app": "worker", "stage": "in-dev"}], node["app_stages"])
 
     def test_the_same_gap_in_a_released_feature_is_reported_while_the_app_is_active(self) -> None:
         self.seed_released_without_worker_release()

@@ -3458,7 +3458,7 @@ function focusNode(id) {
 
 /* ==================== per-app stages, design tracks and operations ==================== */
 // The apps of a feature's scope with the stage of each: an active app carries a stage, and so does a retired app of a released
-// feature when it has evidence rows; a retired app without a stage is marked as retired.
+// feature when it took part in the release (evidence rows, a release record or archived history rows); a retired app without a stage is marked as retired.
 function featureAppRows(node) {
   const stages = Array.isArray(node && node.app_stages) ? node.app_stages : null;
   if (!stages) return [];

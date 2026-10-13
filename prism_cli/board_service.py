@@ -88,6 +88,7 @@ from prism_cli.wiki_model import (
     FEATURE_REVALIDATION_DOMAINS,
     DesignTracks,
     EvidenceProblem,
+    ReleaseParticipation,
     FEATURE_FRONTMATTER_FIELDS,
     FEATURE_SECTIONS,
     FEATURE_STATUS_ORDER,
@@ -8502,8 +8503,17 @@ def _validate_no_placeholders(body: str, relative: str) -> None:
         raise BoardError("template_placeholder", f"`{relative}` contains unresolved template placeholder text.", 409)
 
 
-def _status_row(frontmatter: Mapping[str, Any], body: str = "", model: WorkspaceModel | None = None, open_bugs: str = "—") -> dict[str, str]:
-    """The status-board row of a feature page. `open_bugs` is the `Open bugs` cell, which the bug pages decide (CONTRACTS 8.2)."""
+def _status_row(
+    frontmatter: Mapping[str, Any],
+    body: str = "",
+    model: WorkspaceModel | None = None,
+    open_bugs: str = "—",
+    participation: ReleaseParticipation | None = None,
+) -> dict[str, str]:
+    """The status-board row of a feature page. `open_bugs` is the `Open bugs` cell, which the bug pages decide (CONTRACTS 8.2).
+
+    `participation` is the release records' view of the apps each feature shipped, which decides the retired apps a released feature keeps.
+    """
 
     feature_id = frontmatter.get("id")
     title = frontmatter.get("title")
@@ -8519,7 +8529,7 @@ def _status_row(frontmatter: Mapping[str, Any], body: str = "", model: Workspace
         "owner": owner.strip(),
         "advisory_review": advisory.strip(),
         "design_tracks": design_tracks_text(frontmatter),
-        "app_stages": app_stages_text(status.strip(), _scope_of(frontmatter) or [], body, model),
+        "app_stages": app_stages_text(status.strip(), _scope_of(frontmatter) or [], body, model, feature_id.strip(), participation),
         "open_bugs": open_bugs,
     }
 
