@@ -17,19 +17,23 @@ from uuid import uuid4
 import yaml
 
 from prism_cli.board_service import BoardError, BoardService, _parse_markdown
-from prism_cli.wiki_lint import lint_wiki
+from prism_cli.wiki_lint import _api_contract_pages_for_feature, lint_wiki
 from prism_cli.wiki_model import (
     DesignTracks,
+    FeaturePage,
     contract_citation,
     contract_digest,
     contract_sections,
     initial_design_tracks,
     parse_design_tracks,
     parse_test_strategy,
+    read_app_requirement_pages,
     read_feature_evidence,
+    read_feature_pages,
+    read_wiki_pages,
     technical_design_problems,
 )
-from prism_cli.wiki_transitions import build_board_transition_preflight, build_transition_preflight
+from prism_cli.wiki_transitions import build_board_transition_preflight, build_transition_preflight, matching_contract_pages
 from prism_cli.workflow_install import apply_install, plan_install
 from tests import real_temp  # noqa: F401
 from tests.board_approval import apply_preview, human_with_roles
@@ -948,8 +952,8 @@ class DeliveryBindingTests(TrackCase):
         self.assertIn("workflow:design-track-pending", self.codes(preview))
 
 
-class UnusableContractTests(TrackCase):
-    """CONTRACTS 3.4: an applicable contract without a citation blocks every Delivery row, `none` included."""
+class ContractCase(TrackCase):
+    """A feature at `ready-for-dev` with an own contract and a shared one its requirements link, and the `dev-done` proposal that delivers `backend`."""
 
     SHARED = "knowledge/wiki/api-contracts/SHARED.md"
     OVER_LONG_ID = "F-" + "0" * 30 + "9"
@@ -1006,6 +1010,10 @@ class UnusableContractTests(TrackCase):
 
         self.write(FEATURE, self.delivered_page(contract))
         return [item for item in lint_wiki(self.root).diagnostics if item.code == "stale-delivery-evidence"]
+
+
+class UnusableContractTests(ContractCase):
+    """CONTRACTS 3.4: an applicable contract without a citation blocks every Delivery row, `none` included."""
 
     def test_a_shared_contract_with_an_over_long_feature_id_blocks_none_through_the_board(self) -> None:
         self.at_dev_with(own=None, shared=self.shared_contract())
@@ -1120,6 +1128,160 @@ class UnusableContractTests(TrackCase):
         self.assertEqual("pass", self.transition_check(own)["status"])
         self.assertEqual("blocked", self.transition_check("none")["status"])
         self.assertEqual([], self.delivery_lint(own))
+
+
+class ContractDiscoveryTests(ContractCase):
+    """CONTRACTS 3.4: the board, the transitions and lint find the same API contracts for a feature."""
+
+    TEMPLATE = "knowledge/wiki/api-contracts/_example.md"
+    OTHER = "knowledge/wiki/api-contracts/OTHER.md"
+    LINK ="The shared contract is [SHARED](../api-contracts/SHARED.md)."
+    OTHER_LINK = "The shared contract is [OTHER](../api-contracts/OTHER.md)."
+
+    def outside_the_scope(self, other: str, *, surface: str = SURFACE) -> None:
+        """The feature lists only `backend`; the requirement of `web`, an app of the workspace outside its scope, links `other`."""
+
+        self.at_dev_with(own=None, shared=None, surface=surface)
+        self.seed_feature("ready-for-dev", "dev", DesignTracks("done", "done"), apps=["backend"], surface=surface)
+        self.write(self.OTHER, other)
+        self.write(WEB_REQ, requirement_page("web", body_note=self.OTHER_LINK))
+
+    def workspace_pages(self) -> tuple[FeaturePage, list]:
+        wiki = self.root / "knowledge" / "wiki"
+        feature = next(item for item in read_feature_pages(wiki) if item.feature_id == "F-001")
+        return feature, read_wiki_pages(wiki)
+
+    def relative(self, path: Path) -> str:
+        return Path(path).resolve().relative_to(self.service.root.resolve()).as_posix()
+
+    def board_paths(self, supplied: dict[str, str] | None = None, *, current: bool = False) -> set[str]:
+        proposal = {FEATURE: self.read(FEATURE), **(supplied or {})}
+        return self.service._feature_api_contract_paths({"id": "F-001", "path": FEATURE}, proposal, current=current)
+
+    def transition_paths(self) -> set[str]:
+        feature, pages = self.workspace_pages()
+        return {self.relative(page.path) for page in matching_contract_pages(feature, pages)}
+
+    def lint_paths(self) -> set[str]:
+        feature, pages = self.workspace_pages()
+        wiki = self.root / "knowledge" / "wiki"
+        return {self.relative(page.path) for page in _api_contract_pages_for_feature(feature, read_app_requirement_pages(wiki), pages, wiki)}
+
+    def assert_same_contracts(self, expected: set[str]) -> None:
+        self.assertEqual(expected, self.board_paths(), "the board")
+        self.assertEqual(expected, self.transition_paths(), "the transitions")
+        self.assertEqual(expected, self.lint_paths(), "lint")
+
+    # -- the three discoveries agree ---------------------------------------------------------------------------------
+
+    def test_the_feature_own_contract_is_found_by_all_three(self) -> None:
+        self.at_dev_with(own=contract_page(), shared=None)
+        self.assert_same_contracts({CONTRACT})
+
+    def test_a_contract_found_by_its_file_name_without_a_feature_id_is_found_by_all_three(self) -> None:
+        self.at_dev_with(own=None, shared=None)
+        named = "knowledge/wiki/api-contracts/F-001-export.md"
+        self.write(named, edit_frontmatter(contract_page(), remove=("feature-id",)))
+        self.assert_same_contracts({named})
+
+    def test_a_shared_contract_linked_by_a_requirement_on_disk_is_found_by_all_three(self) -> None:
+        self.at_dev_with(own=None, shared=contract_page(feature_id="F-009"))
+        self.assert_same_contracts({self.SHARED})
+
+    def test_a_template_is_found_by_none_of_the_three(self) -> None:
+        self.at_dev_with(own=contract_page(), shared=None)
+        self.write(self.TEMPLATE, contract_page(version=0, status="draft"))
+        self.assert_same_contracts({CONTRACT})
+        # A link to the template names no contract either.
+        self.write(BACKEND_REQ, requirement_page("backend", body_note="The template is [example](../api-contracts/_example.md)."))
+        self.assert_same_contracts({CONTRACT})
+
+    def test_the_requirement_of_an_app_outside_the_scope_is_followed_by_none_of_the_three(self) -> None:
+        self.outside_the_scope(contract_page(feature_id="F-009"))
+        self.assert_same_contracts(set())
+
+    def test_a_contract_in_a_subfolder_is_found_by_all_three(self) -> None:
+        self.at_dev_with(own=None, shared=None)
+        nested = "knowledge/wiki/api-contracts/archive/F-001.md"
+        self.write(nested, contract_page())
+        self.assert_same_contracts({nested})
+
+    def test_a_draft_the_feature_no_longer_needs_is_left_out_by_all_three(self) -> None:
+        self.at_dev_with(own=contract_page(status="draft"), shared=None, surface="None.")
+        self.assert_same_contracts(set())
+
+    # -- the pages of the proposal replace the pages on disk --------------------------------------------------------
+
+    def test_a_requirement_page_of_the_proposal_replaces_its_disk_version(self) -> None:
+        self.at_dev_with(own=None, shared=contract_page(feature_id="F-009"))
+        without_link = {BACKEND_REQ: requirement_page("backend"), WEB_REQ: requirement_page("web")}
+        self.assertEqual(set(), self.board_paths(without_link))
+        # The pages as they are on disk still decide the contracts the feature holds now.
+        self.assertEqual({self.SHARED}, self.board_paths(without_link, current=True))
+        # A link the proposal adds applies, and the disk pages alone do not have it.
+        self.write(BACKEND_REQ, requirement_page("backend"))
+        self.write(WEB_REQ, requirement_page("web"))
+        self.assertEqual(set(), self.board_paths())
+        with_link = {WEB_REQ: requirement_page("web", body_note=self.LINK)}
+        self.assertEqual({self.SHARED}, self.board_paths(with_link))
+        self.assertEqual(set(), self.board_paths(with_link, current=True))
+
+    def test_a_handoff_that_drops_the_requirement_link_leaves_the_feature_without_a_contract(self) -> None:
+        self.in_design(DesignTracks("done", "pending"))
+        self.write(DESIGN, designs_page())
+        self.write(self.SHARED, contract_page(feature_id="F-009"))
+        self.write(BACKEND_REQ, requirement_page("backend", body_note=self.LINK))
+        self.write(WEB_REQ, requirement_page("web", body_note=self.LINK))
+        proposed = edit_frontmatter(self.read(FEATURE), {"status": "ready-for-dev", "owner": "dev", **DesignTracks("done", "done").frontmatter(), "revalidation": []})
+        # The pages on disk link the shared contract, and the proposal keeps the links: the feature has a contract to build on.
+        kept = self.changes(proposed, (TECH, technical_page()), (BACKEND_REQ, requirement_page("backend", body_note=self.LINK)), (WEB_REQ, requirement_page("web", body_note=self.LINK)))
+        self.ready("design-handoff", kept)
+        # The proposal replaces both pages without the link, so no contract covers the feature any more.
+        dropped = self.changes(proposed, (TECH, technical_page()), (BACKEND_REQ, requirement_page("backend")), (WEB_REQ, requirement_page("web")))
+        self.assertEqual("api_contract_required", self.rejected("design-handoff", dropped).code)
+
+    def test_a_shared_contract_linked_only_by_another_apps_requirement_on_disk_blocks_none(self) -> None:
+        self.at_dev_with(own=None, shared=self.shared_contract())
+        self.write(BACKEND_REQ, requirement_page("backend"))
+        self.note = None
+        self.assertEqual({self.SHARED}, self.board_paths({BACKEND_REQ: requirement_page("backend", "done")}))
+        error = self.refusal("none")
+        self.assertEqual([self.SHARED], error.details["unusable"])
+        self.assertEqual("blocked", self.transition_check("none")["status"])
+        self.assertEqual(1, len(self.delivery_lint("none")))
+
+    def test_the_requirement_of_an_app_outside_the_scope_does_not_block_a_delivery(self) -> None:
+        self.outside_the_scope(contract_page(feature_id="F-009", version=0), surface="None.")
+        proposal = self.deliver("none")
+        # `backend` is the only app of the scope, so its delivery moves the feature to QA.
+        proposal[0]["content"] = edit_frontmatter(proposal[0]["content"], {"status": "ready-for-qa", "owner": "qa"})
+        self.ready("dev-done", proposal)
+        self.assertEqual("pass", self.transition_check("none")["status"])
+        self.assertEqual([], self.delivery_lint("none"))
+
+    # -- a template beside a valid contract --------------------------------------------------------------------------
+
+    def test_a_template_with_the_feature_id_does_not_block_a_delivery_that_cites_the_valid_contract(self) -> None:
+        self.at_dev_with(own=contract_page(), shared=None)
+        self.write(self.TEMPLATE, contract_page(version=0, status="draft"))
+        valid = self.citation()
+        self.ready("dev-done", self.deliver(valid))
+        # `none` is refused, and the refusal names only the valid contract.
+        error = self.refusal("none")
+        self.assertEqual([valid], error.details["current"])
+        self.assertNotIn("unusable", error.details)
+        self.assertEqual("pass", self.transition_check(valid)["status"])
+        self.assertEqual([], self.delivery_lint(valid))
+        errors = {item.code for item in lint_wiki(self.root).diagnostics if item.severity == "error"}
+        self.assertFalse(errors & {"invalid-api-contract-version", "stale-delivery-evidence"}, errors)
+        self.assertEqual("blocked", self.transition_check("none")["status"])
+
+    def test_a_template_with_the_feature_id_is_no_contract_of_a_feature_without_one(self) -> None:
+        self.at_dev_with(own=None, shared=None, surface="None.")
+        self.write(self.TEMPLATE, contract_page(version=0, status="draft"))
+        self.ready("dev-done", self.deliver("none"))
+        self.assertEqual("pass", self.transition_check("none")["status"])
+        self.assertEqual([], self.delivery_lint("none"))
 
 
 class TrackLintTests(TrackCase):

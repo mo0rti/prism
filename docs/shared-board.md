@@ -293,7 +293,11 @@ both files, besides `SCHEMA.md`, `LIFECYCLE.md` and `ACTIONS.md`, or the board s
   current citation with `contract_binding_stale`, and so is every row while an API contract that
   applies to the feature (its own or a shared one its requirements link) has no citation because
   its `version` or `feature-id` is not usable, `none` included; `details.unusable` lists those
-  contract paths beside `current`. A reference the agent cannot check is
+  contract paths beside `current`. A contract applies to the feature when its `feature-id` (or,
+  without one, its file name) is the feature's, or when the feature page or the requirement
+  page of an app in its scope links it; the board reads those requirement pages from disk, and a
+  page in the proposal replaces its disk version. A file whose name starts with `_` is a
+  template, not a contract: it never applies and never blocks a delivery. A reference the agent cannot check is
   `attested`: the approving human vouches for it, and the agent never invents it. The
   feature moves to the minimum of its app stages, so it reaches `ready-for-qa` once every
   active app has a row. `dev-done` is gated (`dev`): the board offers no direct human
@@ -328,7 +332,9 @@ both files, besides `SCHEMA.md`, `LIFECYCLE.md` and `ACTIONS.md`, or the board s
 - **`release-done` records a release.** It settles the Release rows, ships the verified bugs
   and writes one release record under `knowledge/wiki/releases/`; the board allocates the
   record number under its lock (`release_sequence_invalid`). The record snapshots the API
-  contract each delivered row cites. `release-return-dev`, `release-rollback` and
+  contract each delivered row cites, and the release is refused with `contract_binding_stale`
+  while a contract that applies to the feature, one its app requirements link included, has no
+  citation (the Delivery rule of `dev-done`). `release-return-dev`, `release-rollback` and
   `release-redeploy` are forms of the same skill.
 - **`bug-update` changes one bug page** with one action of the bug table (`one_bug_required`,
   `bug_frontmatter_scope`). A bug page is created by a QA action or by `ingest`, never by

@@ -127,6 +127,7 @@ from prism_cli.wiki_model import (
     markdown_sections,
     merge_revalidation,
     minimum_stage,
+    normalize_feature_id,
     normalize_ui_track,
     parse_app_revalidation,
     parse_conflict_report,
@@ -135,6 +136,7 @@ from prism_cli.wiki_model import (
     parse_evidence_history,
     parse_evidence_table,
     parse_iso_date,
+    parse_markdown_text,
     processed_source_path,
     read_feature_evidence,
     row_digest,
@@ -6489,47 +6491,74 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         return own
 
     def _feature_api_contract_paths(self, feature: Mapping[str, Any], supplied: Mapping[str, str], *, current: bool = False) -> set[str]:
-        """Workspace paths of the API contracts that cover a feature: its own pages, pages it links and pages in the proposal.
+        """Workspace paths of the API contracts that cover a feature: the set the transitions and lint find (`matching_contract_pages`).
 
-        With ``current`` the contract pages are judged as they are on disk, before the changes of the proposal: a write that sends a
-        feature back must lower the contracts it holds now, and the draft it writes is not what decides which they are.
+        A contract page covers the feature when its `feature-id` (or, without one, its file name) is the feature's, or when the feature
+        page or the app requirement page of an app in its scope links it. The requirement pages are read from disk, and a page the
+        proposal supplies replaces its disk version. Only the files the wiki readers treat as pages count: a file whose name starts
+        with `_` (a template) is neither found by its `feature-id` or name nor followed through a link.
+
+        With ``current`` the contract and requirement pages are judged as they are on disk, before the changes of the proposal: a
+        write that sends a feature back must lower the contracts it holds now, and the draft it writes is not what decides which they are.
         """
 
-        from prism_cli.wiki_transitions import api_contract_link_targets
+        from prism_cli.wiki_transitions import _contract_owner, api_contract_link_targets
 
-        feature_id = str(feature["id"]).casefold()
+        feature_id = normalize_feature_id(str(feature["id"]))
         wiki_root = self.root / "knowledge" / "wiki"
-        found = set() if current else {path for path in supplied if path.startswith("knowledge/wiki/api-contracts/")}
+        feature_frontmatter, feature_body = _parse_markdown(supplied[feature["path"]], feature["path"])
+        apps = _scope_of(feature_frontmatter) or []
+
+        contracts: dict[str, Any] = {}
         directory = wiki_root / "api-contracts"
         if directory.is_dir():
-            for path in sorted(directory.glob("*.md")):
-                linked = _page_feature_id(self._read_text(path), path.stem)
-                if isinstance(linked, str) and linked.casefold() == feature_id:
-                    found.add(path.relative_to(self.root).as_posix())
-        sources = [path for path in supplied if path.startswith("knowledge/wiki/app-requirements/")]
-        resolved_root = self.root.resolve()
-        for relative in [feature["path"], *sources]:
-            body = _parse_markdown(supplied[relative], relative)[1]
-            for target in api_contract_link_targets(body, self.root / relative, wiki_root):
-                if target.is_file():
-                    try:
-                        found.add(target.relative_to(resolved_root).as_posix())
-                    except ValueError:
-                        continue
-        if api_surface_declares_no_work(_parse_markdown(supplied[feature["path"]], feature["path"])[1]):
+            for path in sorted(directory.rglob("*.md")):
+                if not path.name.startswith("_") and path.is_file():
+                    relative = path.relative_to(self.root).as_posix()
+                    contracts[relative] = parse_markdown_text(path, self._read_text(path))
+        if not current:
+            for relative, text in supplied.items():
+                name = PurePosixPath(relative).name
+                if relative.startswith(_API_CONTRACT_PREFIX) and name.endswith(".md") and not name.startswith("_"):
+                    contracts[relative] = parse_markdown_text(self.root / relative, text)
+        found = {relative for relative, page in contracts.items() if _contract_owner(page) == feature_id}
+
+        # The pages that name the contracts the feature uses: its own page and the requirement page of each app in its scope.
+        sources: list[tuple[Path, str]] = [(self.root / feature["path"], feature_body)]
+        requirements: dict[str, str] = {}
+        requirement_directory = wiki_root / "app-requirements"
+        if requirement_directory.is_dir():
+            for path in sorted(requirement_directory.glob("*.md")):
+                if not path.name.startswith("_") and path.is_file():
+                    # A requirement page that cannot be read could link a contract, so it refuses the action like a contract page does.
+                    requirements[path.relative_to(self.root).as_posix()] = self._read_text(path)
+        if not current:
+            for relative, text in supplied.items():
+                name = PurePosixPath(relative).name
+                if relative.startswith("knowledge/wiki/app-requirements/") and name.endswith(".md") and not name.startswith("_"):
+                    requirements[relative] = text
+        for relative, text in requirements.items():
+            if feature_id not in text.lower():
+                continue
+            page = parse_markdown_text(self.root / relative, text)
+            owner = page.frontmatter.get("feature-id")
+            if isinstance(owner, str) and normalize_feature_id(owner) == feature_id and page.frontmatter.get("app") in apps:
+                sources.append((page.path, page.body))
+
+        by_target = {(self.root / relative).resolve(): relative for relative in contracts}
+        for source_path, body in sources:
+            for target in api_contract_link_targets(body, source_path, wiki_root):
+                if target in by_target:
+                    found.add(by_target[target])
+
+        if api_surface_declares_no_work(feature_body):
             # A draft of the feature's own that a re-specification no longer needs is no obligation: it is not required to be
             # `implemented`, bound to a delivery or lowered by a return. Lint warns (`unused-api-contract`) so a human deletes it.
-            unused: set[str] = set()
-            for relative in found:
-                text = None if current else supplied.get(relative)
-                if text is None:
-                    text = self._optional_text(self._safe_path(relative, allow_missing=True))
-                if text is None:
-                    continue
-                owner = _page_feature_id(text, PurePosixPath(relative).stem)
-                if isinstance(owner, str) and owner.casefold() == feature_id and _parse_markdown(text, relative)[0].get("status") == "draft":
-                    unused.add(relative)
-            found -= unused
+            found = {
+                relative
+                for relative in found
+                if not (contracts[relative].frontmatter.get("status") == "draft" and _contract_owner(contracts[relative]) == feature_id)
+            }
         return found
 
     def _validate_evidence_history(
