@@ -71,7 +71,7 @@ To check a wheel built from a checkout before it is published:
 ```bash
 python -m pip install build
 python -m build
-python -m pip install dist/prism_kit-0.7.4-py3-none-any.whl
+python -m pip install dist/prism_kit-0.7.5-py3-none-any.whl
 ```
 
 An installed CLI uses the canonical GitHub template by default, at the release tag

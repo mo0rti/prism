@@ -1,8 +1,8 @@
 schema_version: 2
-min_prism_cli_version: 0.7.4
+min_prism_cli_version: 0.7.5
 generated_by:
   tool: prism-cli
-  prism_cli_version: 0.7.4
+  prism_cli_version: 0.7.5
   template_source: https://github.com/mo0rti/prism.git
   template_version: unversioned
   template_commit: unversioned
