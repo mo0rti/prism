@@ -296,7 +296,12 @@ both files, besides `SCHEMA.md`, `LIFECYCLE.md` and `ACTIONS.md`, or the board s
   contract paths beside `current`. A contract applies to the feature when its `feature-id` (or,
   without one, its file name) is the feature's, or when the feature page or the requirement
   page of an app in its scope links it; the board reads those requirement pages from disk, and a
-  page in the proposal replaces its disk version. A file whose name starts with `_` is a
+  page in the proposal replaces its disk version. A requirement page belongs to the feature by
+  its parsed `feature-id` and `app`, so a `feature-id` written as a YAML escape counts as written.
+  The wiki reads one folder level: a contract page is a file directly in `api-contracts/` and a
+  requirement page one directly in `app-requirements/`. A page in a sub-folder of either is no
+  contract and no link source, a link to it names no contract, and lint reports it as
+  `page-in-sub-folder`. A file whose name starts with `_` is a
   template, not a contract: it never applies and never blocks a delivery. A reference the agent cannot check is
   `attested`: the approving human vouches for it, and the agent never invents it. The
   feature moves to the minimum of its app stages, so it reaches `ready-for-qa` once every

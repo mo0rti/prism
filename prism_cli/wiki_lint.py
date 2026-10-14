@@ -178,6 +178,8 @@ _CURRENT_STATE_DIRECTORIES = CURRENT_STATE_DIRECTORIES
 # Freshness asks for a review and never gates a lifecycle action or changes a status.
 FRESHNESS_CODES = frozenset({"stale-page", "never-verified"})
 _ADR_ID_PATTERN = re.compile(r"^ADR-[0-9]+$", re.IGNORECASE)
+# The page folders whose pages the lifecycle finds one folder level deep, by feature ID or through a link.
+_ONE_LEVEL_PAGE_DIRECTORIES = frozenset({"api-contracts", "app-requirements"})
 _FRONTMATTER_PAGE_DIRECTORIES = {
     "api-contracts",
     "bugs",
@@ -199,7 +201,7 @@ class WikiDiagnostic:
     path: str
     message: str
     feature_id: str | None = None
-    # False for a finding that asks for a review or reports a link outside the wiki: it never gates a lifecycle action.
+    # False for a finding that asks for a review, reports a link outside the wiki or names a page the lifecycle ignores: it never gates a lifecycle action.
     gates: bool = True
 
     @cached_property
@@ -426,6 +428,7 @@ def _lint_wiki(workspace_root: Path, *, today: date | None = None) -> WikiLintRe
             continue
         diagnostics.extend(_lint_auxiliary_page(page, wiki_root))
 
+    diagnostics.extend(_lint_pages_in_sub_folders(all_pages, wiki_root))
     diagnostics.extend(_lint_feature_blockers(feature_pages, requirements_by_feature_app, model))
     diagnostics.extend(_lint_design_tracks(feature_pages, requirement_pages, all_pages, wiki_root, model))
     diagnostics.extend(_lint_technical_design_pages(all_pages, wiki_root, features_by_id))
@@ -923,7 +926,7 @@ def _api_contract_pages_for_feature(
     wiki_root: Path,
 ) -> list[MarkdownPage]:
     api_root = _resolve(wiki_root / "api-contracts")
-    by_path = {_resolve(page.path): page for page in pages if _is_under(page.path, api_root)}
+    by_path = {_resolve(page.path): page for page in pages if _is_directly_in(page.path, api_root)}
     feature_id = normalize_feature_id(feature.feature_id)
     result: list[MarkdownPage] = []
     for page in by_path.values():
@@ -952,6 +955,15 @@ def _api_contract_pages_for_feature(
         # A draft of the feature's own that a re-specification no longer needs is no obligation (`unused-api-contract`).
         result = [page for page in result if not (page.frontmatter.get("status") == "draft" and _contract_feature_id(page) == feature_id)]
     return sorted(result, key=lambda page: page.path.as_posix())
+
+
+def _is_directly_in(path: Path, folder: Path) -> bool:
+    """Whether a page is a file directly in `folder`: the wiki reads one folder level, so a sub-folder page is no page of it."""
+
+    try:
+        return _resolve(path).parent == _resolve(folder)
+    except (OSError, RuntimeError):
+        return False
 
 
 def _is_under(path: Path, root: Path) -> bool:
@@ -1295,13 +1307,7 @@ def _lint_api_contract_blockers(
     wiki_root: Path,
 ) -> list[WikiDiagnostic]:
     api_root = _resolve(wiki_root / "api-contracts")
-    api_pages: list[MarkdownPage] = []
-    for page in pages:
-        try:
-            _resolve(page.path).relative_to(api_root)
-        except ValueError:
-            continue
-        api_pages.append(page)
+    api_pages = [page for page in pages if _is_directly_in(page.path, api_root)]
     api_by_path = {_resolve(page.path): page for page in api_pages}
     api_by_feature: dict[str, list[MarkdownPage]] = {}
     for page in api_pages:
@@ -3005,6 +3011,33 @@ def _lint_unknown_app_capabilities(model: WorkspaceModel, manifest_path: Path) -
         for name in CAPABILITIES
         if app.capability(name) == UNKNOWN
     ]
+
+
+def _lint_pages_in_sub_folders(pages: list[MarkdownPage], wiki_root: Path) -> list[WikiDiagnostic]:
+    """A page in a sub-folder of `api-contracts/` or `app-requirements/` is no page of the lifecycle: nothing finds, links or lowers it.
+
+    The error does not gate an action: the lifecycle ignores the page, so the page does not hold the feature its name carries.
+    """
+
+    diagnostics: list[WikiDiagnostic] = []
+    root = _resolve(wiki_root)
+    for page in pages:
+        try:
+            relative = _resolve(page.path).relative_to(root)
+        except ValueError:
+            continue
+        if len(relative.parts) > 2 and relative.parts[0] in _ONE_LEVEL_PAGE_DIRECTORIES:
+            diagnostics.append(
+                _diag(
+                    "page-in-sub-folder",
+                    "error",
+                    page.path,
+                    f"`{relative.as_posix()}` is in a sub-folder of `{relative.parts[0]}/`. The wiki reads one folder level, so no feature, "
+                    f"link or lifecycle action finds this page; move it directly into `{relative.parts[0]}/`.",
+                    gates=False,
+                )
+            )
+    return diagnostics
 
 
 def _lint_app_requirement(requirement: AppRequirementPage, model: WorkspaceModel) -> list[WikiDiagnostic]:

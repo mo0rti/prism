@@ -40,6 +40,15 @@ class ReleaseContractTests(ReleaseTests):
         self.put(SHARED, text)
         self.put(BACKEND_REQ, self.read(BACKEND_REQ).rstrip("\n") + LINK)
 
+    def link_shared_with_escaped_feature_id(self, text: str) -> None:
+        """A shared contract that only the requirement of `backend` links, whose `feature-id` is a YAML escape no other text of the page repeats."""
+
+        self.put(SHARED, text)
+        page = self.read(BACKEND_REQ).replace("F-001", "F-00X").rstrip("\n") + LINK
+        page = page.replace("feature-id: F-00X", 'feature-id: "F-\\u0030\\u0030\\u0031"', 1)
+        self.assertNotIn("f-001", page.lower())
+        self.put(BACKEND_REQ, page)
+
     def untouched(self, before: dict[str, str]) -> None:
         """Nothing was written: the feature page, the status and the release records are as they were."""
 
@@ -87,6 +96,41 @@ class ReleaseContractTests(ReleaseTests):
         self.assertEqual([citation], caught.exception.details["current"])
         self.assertNotIn("unusable", caught.exception.details)
         self.untouched(before)
+
+    def test_an_escaped_requirement_feature_id_does_not_hide_an_unusable_shared_contract_from_a_release(self) -> None:
+        self.link_shared_with_escaped_feature_id(contract(feature_id=OVER_LONG_ID))
+        before = self.snapshot()
+        with self.assertRaises(BoardError) as caught:
+            self.propose("release-done", self.release_changes())
+        self.assertEqual(("contract_binding_stale", 409), (caught.exception.code, caught.exception.status), caught.exception.message)
+        self.assertEqual([SHARED], caught.exception.details["unusable"])
+        self.untouched(before)
+
+    def test_an_escaped_requirement_feature_id_does_not_hide_malformed_contract_front_matter_from_a_release(self) -> None:
+        self.link_shared_with_escaped_feature_id(MALFORMED)
+        before = self.snapshot()
+        with self.assertRaises(BoardError) as caught:
+            self.propose("release-done", self.release_changes())
+        self.assertEqual(("invalid_frontmatter", 409), (caught.exception.code, caught.exception.status), caught.exception.message)
+        self.untouched(before)
+
+    def test_an_escaped_requirement_feature_id_does_not_hide_a_usable_shared_contract_from_a_release_that_cites_none(self) -> None:
+        self.link_shared_with_escaped_feature_id(contract(feature_id="F-009"))
+        before = self.snapshot()
+        with self.assertRaises(BoardError) as caught:
+            self.propose("release-done", self.release_changes())
+        self.assertEqual(("contract_binding_stale", 409), (caught.exception.code, caught.exception.status), caught.exception.message)
+        self.untouched(before)
+
+    def test_a_requirement_in_a_sub_folder_does_not_hold_a_release_for_the_contract_it_links(self) -> None:
+        self.put(SHARED, contract(feature_id=OVER_LONG_ID))
+        nested = self.read(BACKEND_REQ).rstrip("\n").replace("(../", "(../../") + LINK.replace("(../", "(../../")
+        self.put("knowledge/wiki/app-requirements/nested/F-001-backend.md", nested)
+        self.release()
+        self.assertEqual(("released", "none"), self.status())
+        self.assertEqual(["REL-001.md"], self.records())
+        # Lint reports the unusable contract itself and the requirement page that no lifecycle action reads.
+        self.assertEqual({"invalid-api-contract-feature-id", "page-in-sub-folder"}, self.errors())
 
     def test_a_template_with_the_feature_id_does_not_block_a_release_that_cites_none(self) -> None:
         self.put(TEMPLATE, contract(version=0))

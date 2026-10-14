@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import unittest
 
 import yaml
@@ -259,6 +260,21 @@ class ReturnTests(QaBoard):
         # After the return the draft is unused: no obligation for the feature, and lint only warns.
         self.assertEqual(set(), self.service._feature_api_contract_paths({"id": "F-001", "path": FEATURE}, {FEATURE: self.read(FEATURE)}))
         self.assertNotIn("api-contract-not-ready", self.errors())
+
+    def test_an_implemented_contract_in_a_sub_folder_is_not_lowered_by_the_return_and_lint_reports_it(self) -> None:
+        nested = "knowledge/wiki/api-contracts/nested/F-001.md"
+        page = self.qa_table([app_row("backend"), integration_row()])
+        self.apply("qa-verify", [{"path": FEATURE, "content": self.with_status("in-qa", "qa", page)}])
+        self.seed_tracks()
+        self.put(nested, CONTRACT_TEXT)
+        self.assertEqual(set(), self.service._feature_api_contract_paths({"id": "F-001", "path": FEATURE}, {FEATURE: self.read(FEATURE)}, current=True))
+        self.assertNotIn(nested, self.expected_pages())
+        preview = self.apply("feature-reopen", self.return_changes("qa-return-spec"))
+        self.assertEqual("qa-return-spec", preview["action"])
+        self.assertEqual(("specified", "po"), self.status())
+        self.assertEqual(CONTRACT_TEXT, self.read(nested))
+        diagnostics = [item for item in lint_wiki(self.root).diagnostics if item.code == "page-in-sub-folder"]
+        self.assertEqual([nested], [Path(item.path).resolve().relative_to(self.root.resolve()).as_posix() for item in diagnostics])
 
     def test_an_unused_draft_contract_is_neither_required_nor_accepted_as_a_write_of_the_return(self) -> None:
         self.assertEqual(
