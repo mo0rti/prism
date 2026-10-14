@@ -2038,9 +2038,7 @@ def _transition_sources(
         page_feature = page.frontmatter.get("feature-id") if hasattr(page, "frontmatter") else None
         if not isinstance(page_feature, str) or page_feature.strip().lower() != feature_id:
             continue
-        try:
-            page.path.resolve().relative_to((wiki_root / "api-contracts").resolve())
-        except ValueError:
+        if not _is_directly_in(page.path, wiki_root / "api-contracts"):
             continue
         sources.append(str(page.path))
     return _unique_strings(sources)
@@ -2451,9 +2449,20 @@ def _contract_owner(page: Any) -> str | None:
     return normalize_feature_id(value) if isinstance(value, str) and value.strip() else None
 
 
+def _is_directly_in(path: Path, folder: Path) -> bool:
+    """Whether a page is a file directly in `folder`, not in a sub-folder of it."""
+
+    try:
+        return path.parent.resolve() == folder.resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
 def matching_contract_pages(feature: FeaturePage, wiki_pages: list[Any]) -> list[Any]:
     """The API contract pages that cover a feature: its own, those with its `feature-id`, and those its pages link.
 
+    A contract page is a file directly in `api-contracts/` and a requirement page one directly in `app-requirements/`: the wiki
+    reads one folder level, so a file in a sub-folder is neither a contract nor a link source (lint reports it as `page-in-sub-folder`).
     A `draft` contract of the feature's own does not cover it while its one `## API surface` section declares no API work.
     """
 
@@ -2461,12 +2470,9 @@ def matching_contract_pages(feature: FeaturePage, wiki_pages: list[Any]) -> list
     feature_id = normalize_feature_id(feature.feature_id)
     wiki_root = path.parent.parent
     api_root = wiki_root / "api-contracts"
+    contract_pages = [page for page in wiki_pages if _is_directly_in(page.path, api_root)]
     matching: list[Any] = []
-    for page in wiki_pages:
-        try:
-            page.path.resolve().relative_to(api_root.resolve())
-        except (ValueError, OSError, RuntimeError):
-            continue
+    for page in contract_pages:
         page_feature_id = page.frontmatter.get("feature-id")
         if not isinstance(page_feature_id, str) or not page_feature_id.strip():
             page_feature_id = feature_id_from_path(page.path)
@@ -2483,14 +2489,12 @@ def matching_contract_pages(feature: FeaturePage, wiki_pages: list[Any]) -> list
             continue
         if page.frontmatter.get("app") not in feature.apps:
             continue
-        try:
-            page.path.resolve().relative_to((wiki_root / "app-requirements").resolve())
-        except (ValueError, OSError, RuntimeError):
+        if not _is_directly_in(page.path, wiki_root / "app-requirements"):
             continue
         source_pages.append(page)
     for source in source_pages:
         for target in api_contract_link_targets(source.body, source.path, wiki_root):
-            for page in wiki_pages:
+            for page in contract_pages:
                 if page.path.resolve() == target and page not in matching:
                     matching.append(page)
     if api_surface_declares_no_work(feature.page.body):

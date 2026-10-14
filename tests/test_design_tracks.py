@@ -1172,6 +1172,19 @@ class ContractDiscoveryTests(ContractCase):
         self.assertEqual(expected, self.transition_paths(), "the transitions")
         self.assertEqual(expected, self.lint_paths(), "lint")
 
+    def sub_folder_pages(self) -> list[str]:
+        """The pages lint reports as `page-in-sub-folder`, as workspace paths."""
+
+        return [self.relative(Path(item.path)) for item in lint_wiki(self.root).diagnostics if item.code == "page-in-sub-folder"]
+
+    def escape_feature_id(self, relative: str) -> None:
+        """Write the requirement page with its `feature-id` as a YAML escape, so no other text of the page names the feature."""
+
+        page = self.read(relative).replace("F-001", "F-00X")
+        page = page.replace("feature-id: F-00X", 'feature-id: "F-\\u0030\\u0030\\u0031"', 1)
+        self.assertNotIn("f-001", page.lower())
+        self.write(relative, page)
+
     # -- the three discoveries agree ---------------------------------------------------------------------------------
 
     def test_the_feature_own_contract_is_found_by_all_three(self) -> None:
@@ -1200,11 +1213,57 @@ class ContractDiscoveryTests(ContractCase):
         self.outside_the_scope(contract_page(feature_id="F-009"))
         self.assert_same_contracts(set())
 
-    def test_a_contract_in_a_subfolder_is_found_by_all_three(self) -> None:
+    def test_a_contract_in_a_subfolder_is_found_by_none_of_the_three_and_lint_reports_it(self) -> None:
         self.at_dev_with(own=None, shared=None)
         nested = "knowledge/wiki/api-contracts/archive/F-001.md"
         self.write(nested, contract_page())
-        self.assert_same_contracts({nested})
+        self.assert_same_contracts(set())
+        self.assertEqual([nested], self.sub_folder_pages())
+        message = next(item.message for item in lint_wiki(self.root).diagnostics if item.code == "page-in-sub-folder")
+        self.assertIn("reads one folder level", message)
+        self.assertIn("directly into `api-contracts/`", message)
+
+    def test_a_link_to_a_contract_in_a_subfolder_names_no_contract(self) -> None:
+        self.at_dev_with(own=None, shared=None)
+        self.write("knowledge/wiki/api-contracts/archive/SHARED.md", contract_page(feature_id="F-009"))
+        self.write(BACKEND_REQ, requirement_page("backend", body_note="The shared contract is [SHARED](../api-contracts/archive/SHARED.md)."))
+        self.assert_same_contracts(set())
+
+    def test_a_requirement_in_a_subfolder_is_a_link_source_for_none_of_the_three_and_lint_reports_it(self) -> None:
+        self.at_dev_with(own=None, shared=None, surface="None.")
+        self.write(self.SHARED, self.shared_contract())
+        nested = "knowledge/wiki/app-requirements/nested/F-001-backend.md"
+        self.write(nested, requirement_page("backend", body_note="The shared contract is [SHARED](../../api-contracts/SHARED.md)."))
+        self.assert_same_contracts(set())
+        self.assertEqual([nested], self.sub_folder_pages())
+        message = next(item.message for item in lint_wiki(self.root).diagnostics if item.code == "page-in-sub-folder")
+        self.assertIn("directly into `app-requirements/`", message)
+        # The shared contract does not apply, so a delivery that cites `none` is not blocked by it.
+        self.ready("dev-done", self.deliver("none"))
+        self.assertEqual("pass", self.transition_check("none")["status"])
+        self.assertEqual([], self.delivery_lint("none"))
+
+    def test_a_page_directly_in_the_folders_is_not_reported_as_a_page_in_a_sub_folder(self) -> None:
+        self.at_dev_with(own=contract_page(), shared=contract_page(feature_id="F-009"))
+        self.assertEqual([], self.sub_folder_pages())
+
+    def test_a_requirement_with_an_escaped_feature_id_links_its_contract_for_all_three(self) -> None:
+        self.at_dev_with(own=None, shared=contract_page(feature_id="F-009"))
+        self.write(BACKEND_REQ, requirement_page("backend"))
+        self.escape_feature_id(WEB_REQ)
+        self.assert_same_contracts({self.SHARED})
+        # The proposal replaces the page of `backend` only: the escaped page of `web` on disk still names the contract.
+        self.assertEqual({self.SHARED}, self.board_paths({BACKEND_REQ: requirement_page("backend", "done")}))
+
+    def test_a_delivery_is_blocked_by_a_contract_only_a_requirement_with_an_escaped_feature_id_links(self) -> None:
+        self.at_dev_with(own=None, shared=self.shared_contract())
+        self.write(BACKEND_REQ, requirement_page("backend"))
+        self.escape_feature_id(WEB_REQ)
+        self.note = None
+        error = self.refusal("none")
+        self.assertEqual([self.SHARED], error.details["unusable"])
+        self.assertEqual("blocked", self.transition_check("none")["status"])
+        self.assertEqual(1, len(self.delivery_lint("none")))
 
     def test_a_draft_the_feature_no_longer_needs_is_left_out_by_all_three(self) -> None:
         self.at_dev_with(own=contract_page(status="draft"), shared=None, surface="None.")

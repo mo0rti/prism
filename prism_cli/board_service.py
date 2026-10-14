@@ -252,6 +252,7 @@ _LINKED_PAGE_PREFIXES = (
 )
 _TECHNICAL_DESIGN_PREFIX = "knowledge/wiki/technical-design/"
 _API_CONTRACT_PREFIX = "knowledge/wiki/api-contracts/"
+_APP_REQUIREMENT_PREFIX = "knowledge/wiki/app-requirements/"
 _DESIGN_PREFIX = "knowledge/wiki/design/"
 # The returns from implementation (CONTRACTS F10 and F11) and the order of the requirement and contract states they may lower.
 _DEV_RETURN_ACTIONS = frozenset({"dev-return-spec", "dev-return-design"})
@@ -6495,8 +6496,10 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
 
         A contract page covers the feature when its `feature-id` (or, without one, its file name) is the feature's, or when the feature
         page or the app requirement page of an app in its scope links it. The requirement pages are read from disk, and a page the
-        proposal supplies replaces its disk version. Only the files the wiki readers treat as pages count: a file whose name starts
-        with `_` (a template) is neither found by its `feature-id` or name nor followed through a link.
+        proposal supplies replaces its disk version; a requirement page belongs to the feature by its parsed, normalized `feature-id`
+        and its `app`, never by the text it contains. Only the files the wiki readers treat as pages count: a file whose name starts
+        with `_` (a template) is neither found by its `feature-id` or name nor followed through a link, and neither is a file in a
+        sub-folder of `api-contracts/` or `app-requirements/` (the wiki reads one folder level, and lint reports such a file).
 
         With ``current`` the contract and requirement pages are judged as they are on disk, before the changes of the proposal: a
         write that sends a feature back must lower the contracts it holds now, and the draft it writes is not what decides which they are.
@@ -6512,14 +6515,14 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         contracts: dict[str, Any] = {}
         directory = wiki_root / "api-contracts"
         if directory.is_dir():
-            for path in sorted(directory.rglob("*.md")):
+            for path in sorted(directory.glob("*.md")):
                 if not path.name.startswith("_") and path.is_file():
                     relative = path.relative_to(self.root).as_posix()
                     contracts[relative] = parse_markdown_text(path, self._read_text(path))
         if not current:
             for relative, text in supplied.items():
                 name = PurePosixPath(relative).name
-                if relative.startswith(_API_CONTRACT_PREFIX) and name.endswith(".md") and not name.startswith("_"):
+                if _is_direct_page(relative, _API_CONTRACT_PREFIX) and name.endswith(".md") and not name.startswith("_"):
                     contracts[relative] = parse_markdown_text(self.root / relative, text)
         found = {relative for relative, page in contracts.items() if _contract_owner(page) == feature_id}
 
@@ -6535,11 +6538,9 @@ class BoardService(QaActionsMixin, BugActionsMixin, ReleaseActionsMixin, Inciden
         if not current:
             for relative, text in supplied.items():
                 name = PurePosixPath(relative).name
-                if relative.startswith("knowledge/wiki/app-requirements/") and name.endswith(".md") and not name.startswith("_"):
+                if _is_direct_page(relative, _APP_REQUIREMENT_PREFIX) and name.endswith(".md") and not name.startswith("_"):
                     requirements[relative] = text
         for relative, text in requirements.items():
-            if feature_id not in text.lower():
-                continue
             page = parse_markdown_text(self.root / relative, text)
             owner = page.frontmatter.get("feature-id")
             if isinstance(owner, str) and normalize_feature_id(owner) == feature_id and page.frontmatter.get("app") in apps:
@@ -8939,6 +8940,12 @@ def _history_entry_text(entry: Any) -> tuple[str, str]:
     """An Evidence history entry as it is compared: its heading and its lines, without trailing blanks after the last line or on a line."""
 
     return entry.heading.strip(), "\n".join(line.rstrip() for line in entry.text.splitlines()).strip()
+
+
+def _is_direct_page(relative: str, prefix: str) -> bool:
+    """Whether a workspace path is a file directly in the folder `prefix` names; the wiki reads one folder level."""
+
+    return relative.startswith(prefix) and "/" not in relative[len(prefix):]
 
 
 def _page_feature_id(content: str, filename: str) -> str | None:
